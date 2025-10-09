@@ -1,4 +1,4 @@
-# Discord Bot – Kompletní dokumentace
+# Discord Bot NEPornu
 
 Tento bot je **modulární, rozšiřitelný systém** postavený na **Discord.py (v2.3+)** s využitím **Cogů**, zaměřený na:
 - správu serveru (logování, verifikace, reporty),
