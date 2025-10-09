@@ -1,4 +1,4 @@
-# 🤖 Discord Bot – Kompletní dokumentace
+# Discord Bot – Kompletní dokumentace
 
 Tento bot je **modulární, rozšiřitelný systém** postavený na **Discord.py (v2.3+)** s využitím **Cogů**, zaměřený na:
 - správu serveru (logování, verifikace, reporty),
@@ -8,7 +8,7 @@ Tento bot je **modulární, rozšiřitelný systém** postavený na **Discord.py
 
 ---
 
-## 🧱 Struktura projektu
+## Struktura projektu
 
 ```
 📁 bot/
@@ -33,28 +33,28 @@ Tento bot je **modulární, rozšiřitelný systém** postavený na **Discord.py
 
 ---
 
-## ⚙️ Funkce
+## Funkce
 
-### 📈 Analytika a reporty
+### Analytika a reporty
 - Denní / měsíční reporty (DAU/MAU, nové členy, online stav)
 - Redis HLL → unikátní uživatelé a heavy-hitters
 - `/report` → generuje embed se statistikami
 - Automaticky se spouští 1. den v měsíci 00:05 UTC
 
-### 🔒 Moderace a správa
+### Moderace a správa
 - `*purge`, `*status`, `*notify`, `*vyzva`
 - `/log` systém (kanály, role, členové, moderace, automod)
 - Auditní embedy v reálném čase
 - Verifikační systém přes DM
 
-### 🧠 Inteligentní design
+### Inteligentní design
 - Každý modul je samostatný *Cog* s vlastním lifecyclem
 - Konfigurace příkazů (`enabled`, `admin_only`) v `config.py`
 - Log kanály a report kanál nastavitelné z jednoho místa
 
 ---
 
-## 🧰 Nasazení
+## Nasazení
 
 ### Lokálně (venv)
 ```bash
@@ -94,7 +94,7 @@ services:
 
 ---
 
-## 📊 Datové výstupy
+## Datové výstupy
 
 | Soubor | Účel |
 |--------|------|
@@ -106,7 +106,7 @@ services:
 
 ---
 
-## 🔐 Bezpečnost
+## Bezpečnost
 - Token nikdy necommituješ (soubor `bot_token.py` ignorovaný v `.gitignore`).
 - Minimální oprávnění.
 - Safe rate-limity (např. notify má intervaly 90±30 s).
@@ -114,21 +114,18 @@ services:
 
 ---
 
-## 🧩 Rozšíření
+## Rozšíření
 - Redis HLL analytika (`activity_hll_optimized.py`)
 - Metriky do Google Sheets / Grafana
 - REST endpoint `/api/getrating` pro integrace
 
 ---
 
-## ✅ TODO
+##  TODO
 
 - [ ] Přenést ID log kanálů do `config.py`
 - [ ] Fix syntaxe v `activity_hll_optimized.py`
 - [ ] Reporty napojit na Redis HLL
 - [ ] Přidat `docker-compose.yml` do repo
 
----
 
-> Dokumentace psaná v češtině, formátována jako pro vývojáře.  
-> Vhodné pro sdílení s moderátory i pro deployment tým.
