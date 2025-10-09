@@ -1,7 +1,7 @@
-# Discord bot – dokumentace (balíček)
+# Discord bot – dokumentace
 Vítej! Tohle je přehledová dokumentace k tvému Discord botovi (styl ala Carl-bot), rozdělená do menších souborů.
 
-**Co v balíčku najdeš:**
+**Co tu najdeš:**
 - `CONFIG.md` – vše o nastavení (`config.py`, `verification_config.py`), oprávnění a intent.
 - `COMMANDS.md` – přehled všech příkazů a chování podle jednotlivých *cogů*.
 - `DEPLOYMENT.md` – nasazení: systemd (Debian/Fedora), Docker, Redis.
@@ -11,5 +11,3 @@ Vítej! Tohle je přehledová dokumentace k tvému Discord botovi (styl ala Carl
 - `SECURITY.md` – bezpečnost, soukromí, rate-limity a práva bota.
 - `TROUBLESHOOTING.md` – ladění a časté problémy.
 - `TODO.md` – drobnosti k dořešení a doporučené úpravy.
-
-> Tuhle dokumentaci můžeš vložit do repo (složka `docs/`) nebo ji poslat týmu moderátorů.
