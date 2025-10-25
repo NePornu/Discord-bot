@@ -6,6 +6,58 @@
 - **Globální check** čte `COMMANDS_CONFIG` (enabled/admin_only).
 
 ---
+## Nápověda (`commands/help.py`)
+
+* Nahrazuje výchozí Discord `help` systém (ten je v `bot.py` odstraněn pomocí `bot.remove_command("help")`).
+* Hybridní příkaz — dostupný jako `*help` i `/help`.
+* Načítá se automaticky jako Cog `HelpCustom`.
+
+### Prefix příkazy (`*help`)
+
+```
+*help
+*help <příkaz>
+*help <kategorie>
+```
+
+* Zobrazí přehled všech dostupných příkazů a kategorií.
+* Umožňuje zobrazit detailní nápovědu ke konkrétnímu příkazu nebo celé skupině.
+* Umí stránkování pomocí `HelpPaginator` (tlačítka „◀️ ▶️ Zavřít“).
+
+### Slash příkaz (`/help`)
+
+```
+/help
+/help příkaz:<název>
+```
+
+* Identické chování jako prefix verze.
+* Slash varianta se **registruje ihned po startu** díky `bot.tree.copy_global_to(guild=...)`.
+
+### Embed výstup
+
+* Automaticky rozděluje příkazy podle kategorií (název Cog = sekce).
+* Každý příkaz se zobrazuje jako:
+
+  ```
+  *ping        – test připojení
+  *status      – stav služby
+  *report      – měsíční report
+  ```
+* Barvy a rozložení lze měnit v metodě `HelpCustom.format_help_for()`.
+
+### Třídy
+
+* **`HelpCustom`** – hlavní třída, dědí z `commands.HelpCommand`.
+* **`HelpPaginator`** – interní view pro stránkování embedů.
+
+### Chování
+
+* Prefixové i slash příkazy sdílí stejný embed systém.
+* Pokud je příkaz v `COMMANDS_CONFIG` vypnutý (`enabled=False`), v helpu se nezobrazí.
+* Administrátorské příkazy (`admin_only=True`) jsou označeny 🔒.
+
+---
 
 ## Logování (`commands/log.py`)
 - Dva log kanály (ID jsou v souboru): **MAIN** a **PROFILE**.
