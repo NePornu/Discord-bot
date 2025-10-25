@@ -85,10 +85,64 @@ Konfigurace v souboru (`CONFIG = { ... }`): `REDIS_URL`, retenční dny, cooldow
 
 ---
 
-## Emoji role (`commands/emojirole.py`)
-- Když zpráva v definovaném kanálu obsahuje zadanou **kombinaci emoji**, přidá roli, zareaguje a pošle potvrzení.
+## Emoji Challenge (`commands/emojirole.py`) – admin
+Automatický systém odměn za poslání správné kombinace emoji v určeném kanále.
+
+### Nastavení
+**Slash příkazy** (`/challenge`):
+```
+/challenge setup role:@Role channel_name:<#kanál> emojis:"🍁 :strongdoge: 🔥"
+/challenge show                    – zobrazí aktuální konfiguraci
+/challenge settings                – nastavení chování (react_ok, reply_on_success, require_all)
+/challenge messages add text:"..."  – přidá vlastní zprávu pro úspěch
+/challenge messages list           – seznam všech zpráv
+/challenge messages clear          – smaže všechny zprávy
+/challenge clear                   – smaže celou konfiguraci
+```
+
+**Prefix příkazy** (`*challenge`):
+```
+*challenge setup role:@Role channel_name:<#kanál> emojis:"🍁 :strongdoge: 🔥"
+*challenge show
+*challenge messages add text:"Vítej!"
+*challenge messages list
+*challenge messages clear
+*challenge clear
+```
+
+### Chování
+- **Úspěšná kombinace**:
+  - Bot zareaguje ✅
+  - Přidá roli uživateli (pokud ji ještě nemá)
+  - Odpoví náhodnou zprávou z 30 přednastavených (nebo vlastních)
+  
+- **Ostatní zprávy**: Bot je tiché ignoruje (žádná reakce, žádná odpověď)
+
+### Formát emoji
+- **Unicode emoji**: `🍁 🔥 💪`
+- **Custom emoji**: `:strongdoge:` nebo `<:strongdoge:123456789>`
+- **Kombinované**: `🍁 :strongdoge: 🔥`
+
+### Nastavení
+- `require_all: true` – musí obsahovat všechna emoji (výchozí)
+- `require_all: false` – stačí alespoň jedno emoji
+- `react_ok: true` – reaguje checkmarkem na úspěch
+- `reply_on_success: true` – posílá náhodnou zprávu
+
+### Datové soubory
+- `data/challenge_config.json` – konfigurace per guild (role, kanál, emoji, zprávy)
+
+### Přednastavené zprávy (30)
+Při úspěšné kombinaci bot vybere náhodně z těchto zpráv:
+- Vítej ve výzvě! ✅
+- Gratuluji, máš to! 🔥
+- Achievement unlocked! 🏅
+- Beast mode activated! 🐺
+- Level up! 📈
+- ... a dalších 25 variací
 
 ---
+
 
 ## Výzvy (`commands/vyzva.py`) – admin
 ```
