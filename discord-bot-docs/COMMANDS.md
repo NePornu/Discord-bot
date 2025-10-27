@@ -206,3 +206,87 @@ Při úspěšné kombinaci bot vybere náhodně z těchto zpráv:
 - **fotosum** – počet příspěvků s fotkou (vyžaduje filtr `photo`)
 - **weekly** – po sobě jdoucí X-denní intervaly s aktivitou
 - Může **přidělovat role** po dosažení prahů.
+# Echo / Say (hybridní příkaz)
+
+Jednoduchý utilitní příkaz pro „přeříkání“ textu do aktuálního nebo jiného kanálu – se stejným chováním dostupný jako prefixový `*echo`/`*say` a slash `/echo`/`/say`. Umí poslat až 3 přílohy, potlačit @mentions a pohodlně vybrat kanál přes autocomplete.
+
+## Rychlý přehled
+
+* **Cesty k příkazu:**
+
+  * Prefix: `*echo`, aliasy `*say`, `*repeat`
+  * Slash: `/echo`, alias `/say`
+* **Cílový kanál:** volitelně jako ID, název (`general`), nebo mention (`<#1234567890>`). Slash varianta podporuje **autocomplete** (max 25 návrhů).
+* **Přílohy:** až 3 soubory (u slash přes parametry `file1..3`, u prefixu přes přílohy zprávy).
+* **Mentions:** výchozí chování **zakazuje** všem @mentions (`no_mentions=True`). Lze vypnout.
+* **Soukromé odpovědi:** u slash lze použít `hide=True` → pošle se jako *ephemeral*.
+
+## Syntaxe a příklady
+
+### Prefix
+
+```txt
+*echo "Ahoj světe!"
+*echo "Ahoj z ved vedle!" <#kanál>
+*echo "Pozdrav do #oznámení" oznámení no_mentions=false
+```
+
+> U prefixu se **přílohy** přikládají k původní zprávě. Po úspěchu je příkazová zpráva smazána. Text nesmí být prázdný.
+
+### Slash
+
+```txt
+/echo text:"Ahoj světe!"
+/echo text:"Report" channel:"#oznámení" file1:<soubor.pdf>
+/echo text:"Tichá zpráva" hide:true
+/say  text:"Alias na echo" no_mentions:false
+```
+
+> U slashe se soubory před odesláním stáhnou; při odeslání do jiného kanálu dostanete potvrzení „✅ Odesláno do …“.
+
+## Parametry
+
+* `text: str` – povinný, nesmí být prázdný.
+* `channel: Optional[str]` – cílový kanál (ID, název, `<#mention>`). Není-li uveden, použije se aktuální.
+* `hide: bool` – **jen slash**; pošle odpověď jako *ephemeral* (skrytou).
+* `no_mentions: bool` – když `True` (výchozí), **zakáže všechny mentions** přes `AllowedMentions.none()`.
+* `file1..file3: Attachment` – až 3 přílohy (**slash**). U prefixu vezme přílohy z příkazové zprávy.
+
+## Chování a okrajové situace
+
+* **Přeposlání do jiného kanálu:**
+  Pokud `channel` ukazuje na jiný kanál než aktuální, zpráva se odešle tam; u slash příkazu dostanete soukromé potvrzení.
+* **Mazání příkazové zprávy (prefix):**
+  Po úspěchu se původní `*echo` zpráva smaže, aby nezůstával „šum“.
+* **Oprávnění a chyby:**
+
+  * Při chybě oprávnění (`discord.Forbidden`) dostanete stručnou chybovou hlášku (u slashe *ephemeral*, u prefixu s `delete_after`).
+  * U nedostupného kanálu / špatného formátu kanálu se zpráva pošle do aktuálního kanálu (pokud je to možné).
+* **Limity:** max. 10 stažených příloh v interní metodě (použito konzervativně na 3 veřejné parametry).
+
+## Autocomplete kanálů (slash)
+
+Parametr `channel` nabízí až 25 návrhů textových kanálů podle podřetězce (case-insensitive). Hodnota se vrací jako `<#id>`, takže funguje i při přejmenování kanálu.
+
+## Bezpečnost mentions
+
+Výchozí `no_mentions=True` chrání před nechtěným pingováním rolí/uživatelů. Pokud opravdu potřebujete pingovat, přepněte na `no_mentions:false`. Interně se používá:
+
+* `AllowedMentions.none()` (bez pingů)
+* `AllowedMentions.all()` (povolí pingy)
+
+## Požadovaná oprávnění bota
+
+* **V cílovém kanálu:** `Send Messages`, `Attach Files` (pokud posíláte soubory), případně `Embed Links`.
+* **Pro prefixovou verzi:** `Manage Messages` (volitelné – k smazání příkazové zprávy).
+
+## Integrace s projektem
+
+* Příkaz je **hybridní** (funguje přes prefix i slash) a respektuje globální checky (např. `COMMANDS_CONFIG`: `enabled`, `admin_only`).
+* Alias `/say` je samostatný slash příkaz se stejnými parametry – pro uživatele, kteří očekávají „/say“.
+
+## Rychlé tipy
+
+* Chcete „hlášení“ do #console? Použijte `/echo text:"…" channel:"#console" hide:true` – uvidíte jen soukromé potvrzení.
+* Potřebujete ztlumit pingy u kopírovaných oznámení? Nechte `no_mentions` na výchozí `True`.
+* Posíláte soubory? U slash přiložte přes `file1..3`; u prefixu stačí přidat přílohy ke zprávě s příkazem.
