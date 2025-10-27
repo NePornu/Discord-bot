@@ -40,7 +40,6 @@
 * Každý příkaz se zobrazuje jako:
 
   ```
-  *ping        – test připojení
   *status      – stav služby
   *report      – měsíční report
   ```
@@ -290,3 +289,104 @@ Výchozí `no_mentions=True` chrání před nechtěným pingováním rolí/uživ
 * Chcete „hlášení“ do #console? Použijte `/echo text:"…" channel:"#console" hide:true` – uvidíte jen soukromé potvrzení.
 * Potřebujete ztlumit pingy u kopírovaných oznámení? Nechte `no_mentions` na výchozí `True`.
 * Posíláte soubory? U slash přiložte přes `file1..3`; u prefixu stačí přidat přílohy ke zprávě s příkazem.
+## Ping (hybridní příkaz)
+
+Nástroj pro měření odezvy bota s přidanou motivační zprávou. Funguje jako **hybridní příkaz**, tedy jak přes prefix `*ping`, tak přes **slash** `/ping`. V obou případech změří latenci (reakční dobu bota) a pošle **náhodný citát** o svobodě, sebekontrole a skutečné intimitě.
+
+---
+
+### Přehled
+
+* **Název příkazu:** `ping`
+* **Typ:** Hybridní (prefix i slash)
+* **Popis:** Měří odezvu bota a připojuje náhodný citát
+* **Parametry:**
+
+  * `detailed` *(bool)* — zobrazí podrobný rozpis měření (volitelné)
+  * `hide` *(bool)* — u slash verze skrytá odpověď (*ephemeral*)
+
+---
+
+### Syntaxe
+
+#### Prefix varianta
+
+```
+*ping
+*ping detailed=True
+```
+
+#### Slash varianta
+
+```
+/ping
+/ping detailed:true
+/ping hide:true
+```
+
+---
+
+### Výstup
+
+Základní odpověď:
+
+```
+🏓 Pong! Odezva: ~123.45 ms (WS 47.83 ms)
+📖 „Skutečná intimita není na obrazovce.“ — Matt Fradd
+```
+
+Podrobný výstup (`detailed=True`):
+
+```
+🏓 Pong!
+📖 „Síla člověka se ukazuje v tom, co dokáže ovládnout.“ — Sokrates
+
+### Detaily měření
+• WebSocket: 47.83 ms
+• Odeslání zprávy: 82.64 ms
+• Editace zprávy: 61.14 ms
+```
+
+---
+
+### Citáty
+
+Při každém spuštění se náhodně vybere jeden z více než dvaceti citátů o svobodě, intimitě, závislosti a sebeovládání.
+Autoři zahrnují:
+
+* John Eldredge
+* Gary Wilson
+* Noah Church
+* Matt Fradd
+* Jan Pavel II.
+* C. S. Lewis
+* Jason Evert
+* Christopher West
+* a další anonymní či komunitní zdroje (např. NoFap, NePornu.cz)
+
+Citáty jsou formátovány jako:
+
+```
+📖 „Text citátu.“ — Autor
+```
+
+---
+
+### Funkce měření
+
+Příkaz měří tři typy odezvy:
+
+1. **WebSocket latency** – průměrná odezva mezi botem a Discordem.
+2. **Send roundtrip** – doba odeslání první zprávy.
+3. **Edit roundtrip** – doba potřebná ke změně obsahu zprávy.
+
+Výsledek kombinuje tyto údaje do přehledného výpisu.
+
+---
+
+### Chování
+
+* **U prefixu**: odpověď se zobrazí veřejně v kanále.
+* **U slashe**: volitelný *ephemeral* režim (`hide=True`).
+* **Oprávnění**: vyžaduje pouze `Send Messages` a `Embed Links`.
+* **Bezpečné selhání**: při chybě vrací jasnou hlášku (bez výjimky do konzole).
