@@ -1,0 +1,26 @@
+cat > .gitignore << 'EOF'
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+venv/
+.venv/
+env/
+
+*.swp
+*.swo
+.idea/
+.vscode/
+
+*.save
+*~
+*.log
+
+config.py
+verification_config.py
+bot_token.py
+
+data/*.json
+data/**/*.json
+EOF
