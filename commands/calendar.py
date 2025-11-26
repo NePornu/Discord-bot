@@ -181,7 +181,6 @@ class UniversalCalendar(commands.Cog):
     async def calendar_new(self, interaction: discord.Interaction):
         await interaction.response.send_modal(CalendarNewModal(self))
 
-
     @app_commands.command(
         name="calendar_list",
         description="Zobrazí seznam všech kalendářů."
@@ -217,7 +216,6 @@ class UniversalCalendar(commands.Cog):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
     @app_commands.command(
         name="calendar_announce",
         description="Propaguje kalendář do kanálu (kdykoliv v roce)."
@@ -244,7 +242,6 @@ class UniversalCalendar(commands.Cog):
             ephemeral=True
         )
 
-
     @app_commands.command(
         name="calendar_start",
         description="Spustí kalendář pro uživatele."
@@ -261,125 +258,75 @@ class UniversalCalendar(commands.Cog):
 
         self.load_event(event_id)
         uid = str(interaction.user.id)
+        cfg = self.config
 
         now = datetime.now()
-        total = self.config["total_days"]
-
+        total = cfg["total_days"]
         mode = mode.lower()
+
         if mode not in ("live", "test"):
             return await interaction.response.send_message(
                 "❌ Režim musí být `live` nebo `test`.",
                 ephemeral=True
             )
 
-        # ============ OMEZENÍ NA MĚSÍC ===============
+        # ============================
+        #   LIVE MODE
+        # ============================
         if mode == "live":
-            if self.config["month"] is not None and self.config["month"] != now.month:
-                return await interaction.response.send_message(
-                    f"❌ Tento kalendář lze otevírat jen v měsíci **{self.config['month']}**.",
-                    ephemeral=True
+
+            active_month = cfg.get("month")
+
+            # Mimo měsíc = nic nepovolíme
+            if active_month is not None and active_month != now.month:
+                max_day = 0
+                status_text = (
+                    f"⏳ Tento kalendář lze otevírat až v měsíci **{active_month}**.\n"
+                    f"Do té doby jsou všechna okénka zamčená."
                 )
 
-            # ============ START DAY ⁠–⁠ NE DŘÍVE =============
-            unlock_day = max(now.day, self.config.get("start_day", 1))
-            max_day = min(unlock_day, total)
+            else:
+                # Ve správném měsíci
+                start_day = cfg.get("start_day", 1)
 
+                unlock_from = start_day
+                unlock_today = now.day
+
+                max_day = min(max(unlock_from, unlock_today), total)
+
+                status_text = (
+                    f"Dostupné dny: **{max_day}/{total}**\n"
+                    f"Kalendář začíná od dne **{start_day}**."
+                )
+
+        # ============================
+        #   TEST MODE
+        # ============================
         else:
-            max_day = total  # test mód vždy odemyká vše
+            max_day = total
+            status_text = (
+                f"Režim: **TEST**\n"
+                f"Dostupné dny: **{total}/{total}**"
+            )
 
         opened = self.progress.get(uid, [])
 
         embed = discord.Embed(
-            title=f"📅 {self.config['event_name']}",
-            description=(
-                f"Režim: **{mode.upper()}**\n"
-                f"Dostupné dny: **{max_day}/{total}**\n"
-                f"Tvůj progres: **{len(opened)}** dnů"
-            ),
+            title=f"📅 {cfg['event_name']}",
+            description=status_text + f"\nTvůj progres: **{len(opened)}** dnů",
             color=discord.Color.gold()
         )
 
-        view = CalendarGridView(self, interaction.user, max_day, admin=False)
-
-        await interaction.response.send_message(
-            embed=embed,
-            view=view
+        view = CalendarGridView(
+            self,
+            interaction.user,
+            max_day=max_day,
+            admin=False
         )
 
-
-    @app_commands.command(
-        name="calendar_admin",
-        description="Admin panel kalendáře."
-    )
-    @app_commands.describe(event_id="ID kalendáře")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def calendar_admin(self, interaction: discord.Interaction,
-                             event_id: str):
-
-        if event_id not in self.events:
-            return await interaction.response.send_message(
-                "❌ Kalendář nenalezen.",
-                ephemeral=True
-            )
-
-        self.load_event(event_id)
-
-        embed = discord.Embed(
-            title=f"🛠️ Admin panel — {self.config['event_name']}",
-            description=(
-                f"ID: `{event_id}`\n"
-                f"Dny: {self.config['total_days']}\n"
-                f"Aktivní měsíc: {self.config['month']}\n"
-                f"Broadcast: {self.config['broadcast_mode']} "
-                f"({self.config['broadcast_hour']:02d}:{self.config['broadcast_minute']:02d})"
-            ),
-            color=discord.Color.red()
-        )
-
-        view = AdminControlView(self, event_id)
-
-        await interaction.response.send_message(
-            embed=embed,
-            view=view,
-            ephemeral=True
-        )
+        await interaction.response.send_message(embed=embed, view=view)
 
 
-    @app_commands.command(
-        name="calendar_stats",
-        description="Statistiky kalendáře."
-    )
-    @app_commands.describe(event_id="ID kalendáře")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def calendar_stats(self, interaction: discord.Interaction, event_id: str):
-
-        if event_id not in self.events:
-            return await interaction.response.send_message(
-                "❌ Kalendář neexistuje.",
-                ephemeral=True
-            )
-
-        self.load_event(event_id)
-        progress = self.progress
-
-        embed = discord.Embed(
-            title=f"📊 Statistiky — {self.config['event_name']}",
-            color=discord.Color.blue()
-        )
-
-        unique_users = len(progress)
-        total_opens = sum(len(v) for v in progress.values())
-
-        embed.add_field(
-            name="Souhrn",
-            value=(
-                f"👥 Unikátních uživatelů: **{unique_users}**\n"
-                f"📬 Celkem otevření: **{total_opens}**"
-            ),
-            inline=False
-        )
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
     @app_commands.command(
@@ -1176,30 +1123,69 @@ class EditConfigModalBroadcast(Modal, title="Broadcast nastavení"):
 #   BROADCAST MODE SELECT VIEW (kvůli omezení Discordu)
 # ============================================================
 
-class BroadcastModeSelectView(View):
+class EditConfigModalBroadcast(Modal, title="Broadcast nastavení"):
     def __init__(self, cog):
-        super().__init__(timeout=200)
+        super().__init__(timeout=None)
         self.cog = cog
+        cfg = cog.config
 
-        self.select = Select(
-            placeholder="Vyber režim broadcastu...",
-            options=[
-                discord.SelectOption(label="Denně", value="daily"),
-                discord.SelectOption(label="Týdně", value="weekly"),
-                discord.SelectOption(label="Každý N-tý den", value="nth_day"),
-                discord.SelectOption(label="Vypnuto", value="off")
-            ],
-            default=cog.config.get("broadcast_mode", "daily")
+        self.n_field = TextInput(
+            label="N hodnota (nth_day režim)",
+            default=str(cfg.get("broadcast_n", 1)),
+            required=False
         )
-        self.select.callback = self.select_callback
-        self.add_item(self.select)
+        self.start_field = TextInput(
+            label="Broadcast start day",
+            default=str(cfg.get("broadcast_start_day", 1)),
+            required=False
+        )
+        self.end_field = TextInput(
+            label="Broadcast end day (prázdné = žádný limit)",
+            default=str(cfg.get("broadcast_end_day") or ""),
+            required=False
+        )
 
-    async def select_callback(self, interaction: discord.Interaction):
-        # uložíme vybraný mód
-        self.cog._pending_broadcast_mode = self.select.values[0]
+        self.add_item(self.n_field)
+        self.add_item(self.start_field)
+        self.add_item(self.end_field)
 
-        # otevřeme modal
-        await interaction.response.send_modal(EditConfigModalBroadcast(self.cog))
+    async def on_submit(self, interaction: discord.Interaction):
+        cfg = self.cog.config
+
+        # získáme pending mode ze select menu
+        mode = getattr(self.cog, "_pending_broadcast_mode", None)
+        if mode is None:
+            mode = cfg.get("broadcast_mode", "daily")
+
+        cfg["broadcast_mode"] = mode
+
+        # nth-day
+        try:
+            cfg["broadcast_n"] = max(1, int(self.n_field.value))
+        except:
+            cfg["broadcast_n"] = 1
+
+        # start day
+        try:
+            cfg["broadcast_start_day"] = max(1, int(self.start_field.value))
+        except:
+            cfg["broadcast_start_day"] = 1
+
+        # end day
+        val = self.end_field.value.strip()
+        cfg["broadcast_end_day"] = int(val) if val.isdigit() else None
+
+        self.cog.save_all()
+
+        # cleanup
+        if hasattr(self.cog, "_pending_broadcast_mode"):
+            delattr(self.cog, "_pending_broadcast_mode")
+
+        await interaction.response.send_message(
+            f"✔ Broadcast byl nastaven.\nRežim: **{mode}**",
+            ephemeral=True
+        )
+
 
 # ============================================================
 #   COG REGISTRATION
