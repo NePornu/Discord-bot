@@ -805,54 +805,56 @@ class CalendarNewModal(Modal, title="Vytvořit nový kalendář"):
         )
         self.month = TextInput(
             label="Měsíc (1–12 nebo prázdné):",
-            placeholder="12 = prosinec, prázdné = celoroční"
+            placeholder="12 = prosinec, prázdné = celoroční",
+            required=False
         )
         self.prefix = TextInput(
             label="Prefix názvů (Den, Box, Gift…):",
-            default="Den"
+            default="Den",
+            required=True
         )
-        self.hour = TextInput(
-            label="Broadcast – hodina:",
-            default="8"
-        )
-        self.minute = TextInput(
-            label="Broadcast – minuta:",
-            default="0"
-        )
-        self.channel = TextInput(
-            label="ID kanálu pro broadcast (volitelné):",
-            placeholder="Nech prázdné pro DM-only",
-            required=False
+        self.broadcast_time = TextInput(
+            label="Broadcast čas (HH:MM):",
+            default="08:00",
+            required=True
         )
 
+        # MAX 5 položek!
         self.add_item(self.days)
         self.add_item(self.name)
         self.add_item(self.month)
         self.add_item(self.prefix)
-        self.add_item(self.hour)
-        self.add_item(self.minute)
-        self.add_item(self.channel)
+        self.add_item(self.broadcast_time)
 
     async def on_submit(self, interaction: discord.Interaction):
 
+        # základní věci
         days = int(self.days.value)
-        name = self.name.value
-        prefix = self.prefix.value
+        name = self.name.value.strip()
+        prefix = self.prefix.value.strip() or "Den"
 
-        month = self.month.value.strip()
-        if month:
-            month = int(month)
+        # měsíc
+        month_str = self.month.value.strip()
+        if month_str:
+            month = int(month_str)
         else:
             month = None
 
-        hour = int(self.hour.value)
-        minute = int(self.minute.value)
+        # čas broadcastu
+        time_str = self.broadcast_time.value.strip()
+        hour, minute = 8, 0
+        try:
+            parts = time_str.split(":")
+            if len(parts) == 2:
+                hour = int(parts[0])
+                minute = int(parts[1])
+        except ValueError:
+            # necháme 8:00 jako fallback
+            pass
 
+        # kanál při vytvoření nedáváme, necháme None
         channel_id = None
-        if self.channel.value.strip().isdigit():
-            channel_id = int(self.channel.value.strip())
 
-        # Vytvořit event
         event_id = self.cog.generate_event_id()
         config = self.cog.generate_event_files(
             event_id,
@@ -870,7 +872,8 @@ class CalendarNewModal(Modal, title="Vytvořit nový kalendář"):
         await interaction.response.send_message(
             f"🎉 Kalendář **{name}** byl vytvořen!\n"
             f"ID: `{event_id}`\n"
-            f"Dní: **{days}**",
+            f"Dní: **{days}**\n"
+            f"Broadcast: **{hour:02d}:{minute:02d}**",
             ephemeral=True
         )
 
@@ -964,6 +967,9 @@ class EditConfigModal(Modal, title="Upravit nastavení kalendáře"):
         self.cog = cog
         cfg = cog.config
 
+        # složíme broadcast do jednoho pole HH:MM
+        default_time = f"{cfg.get('broadcast_hour', 8):02d}:{cfg.get('broadcast_minute', 0):02d}"
+
         self.name_field = TextInput(
             label="Název:",
             default=cfg.get("event_name", ""),
@@ -979,14 +985,9 @@ class EditConfigModal(Modal, title="Upravit nastavení kalendáře"):
             default=str(cfg.get("total_days", 24)),
             required=True
         )
-        self.hour_field = TextInput(
-            label="Broadcast hodina:",
-            default=str(cfg.get("broadcast_hour", 8)),
-            required=True
-        )
-        self.minute_field = TextInput(
-            label="Broadcast minuta:",
-            default=str(cfg.get("broadcast_minute", 0)),
+        self.time_field = TextInput(
+            label="Broadcast čas (HH:MM):",
+            default=default_time,
             required=True
         )
         self.channel_field = TextInput(
@@ -995,38 +996,59 @@ class EditConfigModal(Modal, title="Upravit nastavení kalendáře"):
             required=False
         )
 
+        # MAX 5 položek!
         self.add_item(self.name_field)
         self.add_item(self.month_field)
         self.add_item(self.days_field)
-        self.add_item(self.hour_field)
-        self.add_item(self.minute_field)
+        self.add_item(self.time_field)
         self.add_item(self.channel_field)
 
     async def on_submit(self, interaction: discord.Interaction):
         cfg = self.cog.config
 
-        cfg["event_name"] = self.name_field.value
+        cfg["event_name"] = self.name_field.value.strip()
 
-        if self.month_field.value.strip():
-            cfg["month"] = int(self.month_field.value)
+        # měsíc
+        month_str = self.month_field.value.strip()
+        if month_str:
+            cfg["month"] = int(month_str)
         else:
             cfg["month"] = None
 
+        # počet dní
         cfg["total_days"] = int(self.days_field.value)
-        cfg["broadcast_hour"] = int(self.hour_field.value)
-        cfg["broadcast_minute"] = int(self.minute_field.value)
 
-        if self.channel_field.value.strip().isdigit():
-            cfg["broadcast_channel_id"] = int(self.channel_field.value.strip())
+        # čas HH:MM
+        time_str = self.time_field.value.strip()
+        hour, minute = cfg.get("broadcast_hour", 8), cfg.get("broadcast_minute", 0)
+        try:
+            parts = time_str.split(":")
+            if len(parts) == 2:
+                hour = int(parts[0])
+                minute = int(parts[1])
+        except ValueError:
+            pass
+
+        cfg["broadcast_hour"] = hour
+        cfg["broadcast_minute"] = minute
+
+        # kanál
+        ch_str = self.channel_field.value.strip()
+        if ch_str.isdigit():
+            cfg["broadcast_channel_id"] = int(ch_str)
         else:
             cfg["broadcast_channel_id"] = None
 
+        # uložit
         self.cog.save_all()
 
         await interaction.response.send_message(
-            "✔ Nastavení kalendáře aktualizováno.",
+            f"✔ Nastavení kalendáře aktualizováno.\n"
+            f"Broadcast: **{hour:02d}:{minute:02d}**"
+            + (f"\nKanál: `<#{cfg['broadcast_channel_id']}>`" if cfg.get("broadcast_channel_id") else "\nKanál: žádný"),
             ephemeral=True
         )
+
 # ============================================================
 #   DOPLŇKOVÉ UI A FINÁLNÍ REGISTRACE COGU
 # ============================================================
