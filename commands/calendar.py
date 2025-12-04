@@ -7,6 +7,7 @@ import os
 import asyncio
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
+import math
 
 # =====================================================================
 #   CONFIG & CONSTANTS
@@ -15,6 +16,7 @@ DB_DIR = "data"
 DB_FILE = "calendar.db"
 DB_PATH = os.path.join(DB_DIR, DB_FILE)
 TZ = ZoneInfo("Europe/Prague")
+ITEMS_PER_PAGE = 20
 
 # =====================================================================
 #   HELPERS
@@ -51,7 +53,6 @@ class CalendarDB:
             os.makedirs(DB_DIR)
             
         async with aiosqlite.connect(DB_PATH) as db:
-            # Tabulka kalendářů s podporou pro broadcast
             await db.execute("""
             CREATE TABLE IF NOT EXISTS calendars (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,12 +91,10 @@ class CalendarDB:
                 UNIQUE(calendar_id, day, user)
             )""")
             
-            # Migrace sloupců, pokud tabulka existuje ze staré verze
             try:
                 await db.execute("ALTER TABLE calendars ADD COLUMN broadcast_days INTEGER DEFAULT 0")
                 await db.execute("ALTER TABLE calendars ADD COLUMN last_broadcast TEXT")
-            except:
-                pass 
+            except: pass 
 
             await db.commit()
 
@@ -108,11 +107,14 @@ class CalendarDB:
             """, (channel_id, name, start_date, num_days))
             cid = cursor.lastrowid
             
+            days_data = []
             for i in range(1, num_days + 1):
-                await db.execute("""
-                    INSERT INTO days (calendar_id, day, title, emoji, btn_label, btn_emoji)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (cid, i, f"Den {i}", "🎁", f"Den {i}", "🎄"))
+                days_data.append((cid, i, f"Den {i}", "🎁", f"{i}", "🎄"))
+            
+            await db.executemany("""
+                INSERT INTO days (calendar_id, day, title, emoji, btn_label, btn_emoji)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, days_data)
             await db.commit()
             return cid
 
@@ -207,7 +209,7 @@ class CalendarDB:
             return total_users, days_stats
 
 # =====================================================================
-#   PUBLIC VIEW
+#   PUBLIC VIEW (STRÁNKOVANÁ)
 # =====================================================================
 class PublicDayButton(discord.ui.Button):
     def __init__(self, cid: int, day: int, label: str, emoji: str):
@@ -264,14 +266,81 @@ class PublicDayButton(discord.ui.Button):
                 await interaction.followup.send(f"⚠ Máš zablokované DM. Tady je odměna:\n\n{content}", ephemeral=True)
 
 class PublicCalendarView(discord.ui.View):
-    def __init__(self, cid: int, days_list: list):
+    def __init__(self, cid: int, days_list: list, page: int = 0):
         super().__init__(timeout=None)
-        for row in days_list:
-            self.add_item(PublicDayButton(cid, row['day'], row['btn_label'], row['btn_emoji']))
+        self.cid = cid
+        self.days_list = days_list
+        self.page = page
+        self.total_pages = math.ceil(len(days_list) / ITEMS_PER_PAGE)
+        self.render_buttons()
+
+    def render_buttons(self):
+        self.clear_items()
+        
+        start = self.page * ITEMS_PER_PAGE
+        end = start + ITEMS_PER_PAGE
+        current_batch = self.days_list[start:end]
+
+        for row in current_batch:
+            self.add_item(PublicDayButton(self.cid, row['day'], row['btn_label'], row['btn_emoji']))
+
+        if self.total_pages > 1:
+            btn_prev = discord.ui.Button(style=discord.ButtonStyle.primary, label="◀", disabled=(self.page == 0), custom_id=f"nav_prev:{self.cid}:{self.page}", row=4)
+            btn_prev.callback = self.on_prev
+            self.add_item(btn_prev)
+
+            btn_info = discord.ui.Button(style=discord.ButtonStyle.secondary, label=f"{self.page + 1} / {self.total_pages}", disabled=True, row=4)
+            self.add_item(btn_info)
+
+            btn_next = discord.ui.Button(style=discord.ButtonStyle.primary, label="▶", disabled=(self.page >= self.total_pages - 1), custom_id=f"nav_next:{self.cid}:{self.page}", row=4)
+            btn_next.callback = self.on_next
+            self.add_item(btn_next)
+
+    async def on_prev(self, interaction: discord.Interaction):
+        if self.page > 0:
+            self.page -= 1
+            self.render_buttons()
+            await interaction.response.edit_message(view=self)
+        else:
+            await interaction.response.defer()
+
+    async def on_next(self, interaction: discord.Interaction):
+        if self.page < self.total_pages - 1:
+            self.page += 1
+            self.render_buttons()
+            await interaction.response.edit_message(view=self)
+        else:
+            await interaction.response.defer()
 
 # =====================================================================
 #   ADMIN MODALS & VIEWS
 # =====================================================================
+class SelectDayModal(discord.ui.Modal):
+    def __init__(self, parent_view, max_days):
+        super().__init__(title="Vybrat den k úpravě")
+        self.parent_view = parent_view
+        self.max_days = max_days
+        self.day_num = discord.ui.TextInput(
+            label=f"Číslo dne (1-{max_days})", 
+            placeholder="Např. 42", 
+            min_length=1, 
+            max_length=4
+        )
+        self.add_item(self.day_num)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            val = int(self.day_num.value)
+            if val < 1 or val > self.max_days:
+                raise ValueError
+        except:
+            return await interaction.response.send_message(f"❌ Neplatné číslo. Zadej 1 až {self.max_days}.", ephemeral=True)
+            
+        await interaction.response.defer()
+        self.parent_view.selected_day = val
+        self.parent_view.showing_stats = False
+        await self.parent_view.refresh_dashboard(interaction)
+
 class EditContentModal(discord.ui.Modal):
     def __init__(self, parent_view, cid, day, data):
         super().__init__(title=f"Obsah Dne {day}")
@@ -351,22 +420,25 @@ class SettingsModal(discord.ui.Modal):
         await self.parent_view.refresh_dashboard(interaction)
 
 class NewCalendarModal(discord.ui.Modal, title="Nový Kalendář"):
-    name = discord.ui.TextInput(label="Název", placeholder="Vánoce 2025")
-    start = discord.ui.TextInput(label="Start (DD.MM.YYYY)", placeholder="01.12.2025")
-    days = discord.ui.TextInput(label="Počet dní", default="24")
+    name = discord.ui.TextInput(label="Název", placeholder="Velký Kalendář 2025")
+    start = discord.ui.TextInput(label="Start (DD.MM.YYYY)", placeholder="01.01.2025")
+    days = discord.ui.TextInput(label="Počet dní (Bez limitu)", default="50")
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
             date_obj = parse_date(self.start.value)
             num = int(self.days.value)
+            if num < 1: raise ValueError
         except:
             return await interaction.response.send_message("❌ Chybný formát data nebo čísla.", ephemeral=True)
 
         await interaction.response.defer(ephemeral=True)
         cid = await CalendarDB.create_calendar(interaction.channel_id, self.name.value, date_obj.strftime("%Y-%m-%d"), num)
+        
         days = await CalendarDB.list_days(cid)
-        view = PublicCalendarView(cid, days)
-        embed = discord.Embed(title=f"🗓 {self.name.value}", description=f"Start: **{date_obj.strftime('%d.%m.%Y')}**", color=discord.Color.gold())
+        view = PublicCalendarView(cid, days, page=0)
+        
+        embed = discord.Embed(title=f"🗓 {self.name.value}", description=f"Start: **{date_obj.strftime('%d.%m.%Y')}**\nCelkem dní: **{num}**", color=discord.Color.gold())
         
         msg = await interaction.channel.send(embed=embed, view=view)
         await CalendarDB.update_message_id(cid, msg.id)
@@ -462,7 +534,13 @@ class AdminDashboardView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"Chyba: {e}", ephemeral=True)
 
-    @discord.ui.button(label="Obsah", emoji="📝", style=discord.ButtonStyle.primary, row=2, disabled=True)
+    # --- ROW 1: Nové tlačítko pro výběr dne ---
+    @discord.ui.button(label="🔎 Vybrat den", style=discord.ButtonStyle.primary, row=1, disabled=True)
+    async def btn_select_day(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SelectDayModal(self, self.cal_data['num_days']))
+
+    # --- ROW 2: Tlačítka úprav ---
+    @discord.ui.button(label="Obsah", emoji="📝", style=discord.ButtonStyle.secondary, row=2, disabled=True)
     async def btn_edit_content(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = await CalendarDB.get_day(self.selected_cid, self.selected_day)
         await interaction.response.send_modal(EditContentModal(self, self.selected_cid, self.selected_day, data))
@@ -487,7 +565,8 @@ class AdminDashboardView(discord.ui.View):
                 msg = await channel.fetch_message(self.cal_data['message_id'])
                 days = await CalendarDB.list_days(self.selected_cid)
                 embed = discord.Embed(title=f"🗓 {self.cal_data['name']}", description=f"Start: **{parse_date(self.cal_data['start_date']).strftime('%d.%m.%Y')}**", color=discord.Color.gold())
-                await msg.edit(embed=embed, view=PublicCalendarView(self.selected_cid, days))
+                # Reset na stranu 0 při refreshi
+                await msg.edit(embed=embed, view=PublicCalendarView(self.selected_cid, days, page=0))
                 await interaction.followup.send("✅ Veřejná zpráva aktualizována.", ephemeral=True)
             except:
                 await interaction.followup.send("❌ Zpráva nenalezena.", ephemeral=True)
@@ -503,7 +582,6 @@ class AdminDashboardView(discord.ui.View):
         current = self.cal_data['broadcast_days']
         await interaction.response.send_modal(SettingsModal(self, self.selected_cid, current))
 
-    # ZDE JE ZPĚT TLAČÍTKO SMAZAT
     @discord.ui.button(label="Smazat", emoji="🗑", style=discord.ButtonStyle.danger, row=3, disabled=True)
     async def btn_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(
@@ -520,32 +598,20 @@ class AdminDashboardView(discord.ui.View):
     async def update_view(self, interaction: discord.Interaction, use_followup=False):
         for child in self.children:
             if isinstance(child, discord.ui.Button):
-                if child.emoji.name in ["📝", "🎨", "🖼"]:
+                # ZDE BYLA CHYBA: child.emoji může být None.
+                # Musíme nejprve zkontrolovat, zda emoji existuje.
+                if child.emoji and child.emoji.name in ["📝", "🎨", "🖼"]:
                     child.disabled = self.selected_day is None
+                elif child.label == "🔎 Vybrat den":
+                    child.disabled = self.selected_cid is None
                 else:
                     child.disabled = self.selected_cid is None
 
+        # Odstraníme starý select menu pro dny, pokud tam zbyl (z předchozí verze)
         items_to_remove = [c for c in self.children if isinstance(c, discord.ui.Select) and c.row == 1]
         for item in items_to_remove:
             self.remove_item(item)
         
-        if self.selected_cid:
-            num_days = self.cal_data['num_days']
-            options = []
-            limit = min(num_days + 1, 26)
-            for i in range(1, limit):
-                is_sel = (i == self.selected_day)
-                options.append(discord.SelectOption(label=f"Den {i}", value=str(i), default=is_sel))
-            
-            day_select = discord.ui.Select(placeholder="2. Vyber den...", options=options, min_values=1, max_values=1, row=1)
-            async def day_callback(inter: discord.Interaction):
-                await inter.response.defer()
-                self.selected_day = int(day_select.values[0])
-                self.showing_stats = False
-                await self.update_view(inter)
-            day_select.callback = day_callback
-            self.add_item(day_select)
-
         embed = discord.Embed(title="⚙ Správa Kalendáře", color=discord.Color.from_rgb(47, 49, 54))
         
         if not self.selected_cid:
@@ -557,11 +623,13 @@ class AdminDashboardView(discord.ui.View):
             embed.add_field(name="Broadcast", value=f"Každých {self.cal_data['broadcast_days']} dní", inline=False)
             embed.add_field(name="Unikátní uživatelé", value=f"**{users}**", inline=False)
             stats_text = ""
-            max_val = max((c for d, c in day_stats), default=0)
-            for d, c in day_stats:
+            sorted_stats = sorted(day_stats, key=lambda x: x[1], reverse=True)[:15]
+            max_val = max((c for d, c in sorted_stats), default=0)
+            
+            for d, c in sorted_stats:
                 bar = create_progress_bar(c, max_val, 12)
                 stats_text += f"`{d:02d}` {bar} **{c}**\n"
-            embed.add_field(name="Otevření po dnech", value=stats_text or "Zatím žádná data.", inline=False)
+            embed.add_field(name="Top otevření", value=stats_text or "Zatím žádná data.", inline=False)
         elif self.selected_day:
             day_data = await CalendarDB.get_day(self.selected_cid, self.selected_day)
             embed.title = f"Editace: {self.cal_data['name']} / Den {self.selected_day}"
@@ -571,7 +639,8 @@ class AdminDashboardView(discord.ui.View):
             v_info = f"**Label:** {day_data['btn_label']}\n**Emoji:** {day_data['btn_emoji'] or '❌'}\n**Obrázek:** {'✅' if day_data['reward_image'] else '❌'}"
             embed.add_field(name="🎨 Vzhled", value=v_info, inline=True)
         else:
-            embed.description = f"**Vybrán:** {self.cal_data['name']}\n**Broadcast:** {self.cal_data['broadcast_days']} dní\n\n👇 Vyber den pro úpravu obsahu.\n📊 Klikni na Stats pro přehled.\n⚙ Klikni na Nastavení pro změnu připomínání."
+            info = f"**Vybrán:** {self.cal_data['name']}\n**Dní:** {self.cal_data['num_days']}\n**Broadcast:** {self.cal_data['broadcast_days']} dní\n\n👇 Klikni na **🔎 Vybrat den** pro úpravu."
+            embed.description = info
 
         if use_followup:
             await interaction.edit_original_response(embed=embed, view=self)
@@ -598,11 +667,17 @@ class AdventCalendar(commands.Cog):
         for cal in calendars:
             try:
                 days = await CalendarDB.list_days(cal['id'])
-                view = PublicCalendarView(cal['id'], days)
-                self.bot.add_view(view, message_id=cal['message_id'])
+                view = PublicCalendarView(cal['id'], days, page=0)
+                channel = self.bot.get_channel(cal['channel_id'])
+                if channel:
+                    try:
+                        msg = await channel.fetch_message(cal['message_id'])
+                        await msg.edit(view=view)
+                        self.bot.add_view(view, message_id=cal['message_id'])
+                    except:
+                        pass
             except: pass
 
-    # --- BROADCAST TASK ---
     @tasks.loop(hours=1)
     async def broadcast_task(self):
         calendars = await CalendarDB.get_active_calendars()
@@ -610,7 +685,7 @@ class AdventCalendar(commands.Cog):
         
         for cal in calendars:
             interval = cal['broadcast_days']
-            if interval <= 0: continue # Broadcast vypnut
+            if interval <= 0: continue
 
             last_run_str = cal['last_broadcast']
             should_send = False
@@ -619,7 +694,6 @@ class AdventCalendar(commands.Cog):
                 should_send = True
             else:
                 last_run = datetime.fromisoformat(last_run_str)
-                # Pokud rozdíl dnů >= interval
                 if (now - last_run).days >= interval:
                     should_send = True
             
