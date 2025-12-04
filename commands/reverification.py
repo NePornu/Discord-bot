@@ -1,22 +1,27 @@
-# commands/reverification.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional, Iterable, List, Tuple
+from typing import Optional, Iterable, List, Union
 
 import discord
 from discord import app_commands, Interaction
 from discord.ext import commands
 
+# Konfigurace - pokus o načtení, jinak default
 try:
-    from config import GUILD_ID, MOD_CHANNEL_ID  # volitelné, lze přepsat parametry v příkazech
+    from config import GUILD_ID, MOD_CHANNEL_ID
     from verification_config import VERIFICATION_CODE, VERIFIED_ROLE_ID
     logging.debug("✅ Načteny hodnoty z configů (ReverificationCog).")
+except ImportError:
+    logging.warning("⚠️ Nelze načíst configy (ReverificationCog) - použijí se výchozí hodnoty.")
+    GUILD_ID = None
+    MOD_CHANNEL_ID = None
+    VERIFICATION_CODE = "Restart"
+    VERIFIED_ROLE_ID = None
 except Exception as e:
-    logging.warning(f"⚠️ Nelze načíst configy (ReverificationCog): {e}")
-    # Poskytneme rozumné defaulty (přepiš v příkazech parametry role/code/mod_channel)
+    logging.error(f"⚠️ Chyba při importu configů: {e}")
     GUILD_ID = None
     MOD_CHANNEL_ID = None
     VERIFICATION_CODE = "123456"
@@ -50,8 +55,9 @@ class ReverificationCog(commands.Cog):
 
     group = app_commands.Group(name="reverify", description="Re-verifikace uživatelů (DM s kódem)")
 
-    # ---------- Pomocné vyhledávání ----------
+    # ---------- Pomocné metody ----------
     async def _resolve_guild(self, itx: Interaction, guild_id: Optional[int]) -> Optional[discord.Guild]:
+        """Vrátí objekt guildy buď z configu, nebo z kontextu interakce."""
         if guild_id:
             g = self.bot.get_guild(guild_id)
             if g:
@@ -61,6 +67,7 @@ class ReverificationCog(commands.Cog):
     def _resolve_mod_channel(
         self, guild: discord.Guild, mod_channel_id: Optional[int]
     ) -> Optional[discord.TextChannel]:
+        """Najde kanál pro logování."""
         if mod_channel_id:
             ch = guild.get_channel(mod_channel_id)
             if isinstance(ch, discord.TextChannel):
@@ -82,23 +89,29 @@ class ReverificationCog(commands.Cog):
         self,
         itx: Interaction,
         role: Optional[discord.Role] = None,
-        hide: Optional[bool] = True,
+        hide: bool = True,
     ):
         await itx.response.defer(ephemeral=hide)
         guild = await self._resolve_guild(itx, GUILD_ID)
         if not guild:
             return await itx.followup.send("❌ Nelze určit server (guild).", ephemeral=True)
 
-        target_role = role or (guild.get_role(VERIFIED_ROLE_ID) if VERIFIED_ROLE_ID else None)
+        # Určení role
+        target_role = role
+        if not target_role and VERIFIED_ROLE_ID:
+            target_role = guild.get_role(VERIFIED_ROLE_ID)
+        
         if not isinstance(target_role, discord.Role):
-            return await itx.followup.send("❌ Zadej platnou roli nebo nastav VERIFIED_ROLE_ID v configu.", ephemeral=True)
+            return await itx.followup.send(
+                "❌ Zadej platnou roli nebo nastav VERIFIED_ROLE_ID v configu.", ephemeral=True
+            )
 
         members = [m for m in guild.members if target_role in m.roles and not m.bot]
         bots = [m for m in guild.members if target_role in m.roles and m.bot]
 
         await itx.followup.send(
             f"ℹ️ **Status re-verifikace**\n"
-            f"• Role: {target_role.mention} ({target_role.id})\n"
+            f"• Role: {target_role.mention} (ID: {target_role.id})\n"
             f"• Uživatelé: **{len(members)}**\n"
             f"• Boti: **{len(bots)}**",
             ephemeral=hide,
@@ -117,18 +130,23 @@ class ReverificationCog(commands.Cog):
         self,
         itx: Interaction,
         role: Optional[discord.Role] = None,
-        include_bots: Optional[bool] = False,
+        include_bots: bool = False,
         limit_preview: app_commands.Range[int, 1, 50] = 15,
-        hide: Optional[bool] = True,
+        hide: bool = True,
     ):
         await itx.response.defer(ephemeral=hide)
         guild = await self._resolve_guild(itx, GUILD_ID)
         if not guild:
             return await itx.followup.send("❌ Nelze určit server (guild).", ephemeral=True)
 
-        target_role = role or (guild.get_role(VERIFIED_ROLE_ID) if VERIFIED_ROLE_ID else None)
+        target_role = role
+        if not target_role and VERIFIED_ROLE_ID:
+            target_role = guild.get_role(VERIFIED_ROLE_ID)
+
         if not isinstance(target_role, discord.Role):
-            return await itx.followup.send("❌ Zadej platnou roli nebo nastav VERIFIED_ROLE_ID v configu.", ephemeral=True)
+            return await itx.followup.send(
+                "❌ Zadej platnou roli nebo nastav VERIFIED_ROLE_ID v configu.", ephemeral=True
+            )
 
         members_all = [m for m in guild.members if target_role in m.roles]
         members = members_all if include_bots else [m for m in members_all if not m.bot]
@@ -150,8 +168,7 @@ class ReverificationCog(commands.Cog):
         role="Cílová role (výchozí VERIFIED_ROLE_ID).",
         code="Kód do DM (výchozí VERIFICATION_CODE).",
         dm_text="Vlastní text DM (použij {member} a {code}).",
-        batch_size="Velikost dávky pro odesílání (1–50).",
-        delay_ms="Prodleva mezi členy v ms (0–3000).",
+        delay_ms="Prodleva mezi členy v ms (min 100ms, doporučeno 500+).",
         include_bots="Zahrnout i boty (nedoporučuje se).",
         mod_channel="Přesměrování logu do jiného mod kanálu.",
         reason="Důvod akce (zaloguje se).",
@@ -165,13 +182,12 @@ class ReverificationCog(commands.Cog):
         role: Optional[discord.Role] = None,
         code: Optional[str] = None,
         dm_text: Optional[str] = None,
-        batch_size: app_commands.Range[int, 1, 50] = 10,
-        delay_ms: app_commands.Range[int, 0, 3000] = 300,
-        include_bots: Optional[bool] = False,
+        delay_ms: app_commands.Range[int, 100, 5000] = 500,
+        include_bots: bool = False,
         mod_channel: Optional[discord.TextChannel] = None,
         reason: Optional[str] = None,
-        dry_run: Optional[bool] = False,
-        hide: Optional[bool] = True,
+        dry_run: bool = False,
+        hide: bool = True,
     ):
         await itx.response.defer(ephemeral=hide)
 
@@ -179,71 +195,98 @@ class ReverificationCog(commands.Cog):
         if not guild:
             return await itx.followup.send("❌ Nelze určit server (guild).", ephemeral=True)
 
-        target_role = role or (guild.get_role(VERIFIED_ROLE_ID) if VERIFIED_ROLE_ID else None)
+        target_role = role
+        if not target_role and VERIFIED_ROLE_ID:
+            target_role = guild.get_role(VERIFIED_ROLE_ID)
+
         if not isinstance(target_role, discord.Role):
-            return await itx.followup.send("❌ Zadej platnou roli nebo nastav VERIFIED_ROLE_ID v configu.", ephemeral=True)
+            return await itx.followup.send(
+                "❌ Zadej platnou roli nebo nastav VERIFIED_ROLE_ID v configu.", ephemeral=True
+            )
 
         mod_ch = mod_channel or self._resolve_mod_channel(guild, MOD_CHANNEL_ID)
         code_final = code or VERIFICATION_CODE
         template = dm_text or DEFAULT_DM_TEMPLATE
 
-        # Kandidáti
+        # Filtrace kandidátů
         members_all = [m for m in guild.members if target_role in m.roles]
         members: List[discord.Member] = members_all if include_bots else [m for m in members_all if not m.bot]
 
         if not members:
             return await itx.followup.send("ℹ️ Nikdo s cílovou rolí (po aplikaci filtrů).", ephemeral=True)
 
-        # Dry-run?
+        # --- Dry Run ---
         if dry_run:
             sample = ", ".join(m.display_name for m in members[:15])
             more = "" if len(members) <= 15 else f"\n… a dalších **{len(members) - 15}**"
+            
+            preview_msg = template.format(member='Uzivatel', code=code_final)
+            
             return await itx.followup.send(
                 f"🧪 **Dry-run**: DM by bylo odesláno **{len(members)}** členům.\n"
                 f"• Role: {target_role.mention}\n"
-                f"• Ukázka: {sample}{more}\n"
-                f"• Text DM (náhled):\n```\n{template.format(member='{display_name}', code=code_final)}\n```",
+                f"• Delay: {delay_ms} ms\n"
+                f"• Ukázka adresátů: {sample}{more}\n"
+                f"• Text DM (náhled):\n```\n{preview_msg}\n```",
                 ephemeral=True,
             )
 
+        # --- Ostrý Start ---
+        await itx.followup.send(
+            f"🚀 Spouštím hromadnou re-verifikaci pro **{len(members)}** uživatelů.\n"
+            f"⏳ Odhadovaný čas: {len(members) * (delay_ms/1000) / 60:.1f} min.",
+            ephemeral=hide
+        )
+
         sent_ok = 0
         sent_fail = 0
+        blocked_dms = 0
 
-        # Odesílání po dávkách
-        for block in chunked(members, batch_size):
-            tasks = []
-            for m in block:
-                msg_text = template.format(member=m.display_name, code=code_final)
-                async def send_dm(member: discord.Member, text: str):
-                    nonlocal sent_ok, sent_fail
-                    try:
-                        await member.send(text)
-                        sent_ok += 1
-                    except Exception as e:
-                        logging.warning(f"⚠️ Nelze poslat DM {member} ({member.id}): {e}")
-                        sent_fail += 1
-                tasks.append(send_dm(m, msg_text))
-                if delay_ms:
-                    await asyncio.sleep(delay_ms / 1000.0)
-            # Paralelní dokončení dávky (max batch_size paralelně)
-            await asyncio.gather(*tasks, return_exceptions=True)
+        # Sekvenční odesílání je pro DMs bezpečnější než asyncio.gather
+        # aby se předešlo rate-limitům a spam filtrům Discordu.
+        for i, member in enumerate(members):
+            msg_text = template.format(member=member.display_name, code=code_final)
+            
+            try:
+                await member.send(msg_text)
+                sent_ok += 1
+            except discord.Forbidden:
+                # Uživatel má vypnuté DMs
+                blocked_dms += 1
+                sent_fail += 1
+            except Exception as e:
+                logging.warning(f"⚠️ Nelze poslat DM {member} ({member.id}): {e}")
+                sent_fail += 1
+            
+            # Pauza mezi odesláním (rate limit prevence)
+            # Nečekáme po posledním členovi
+            if i < len(members) - 1:
+                await asyncio.sleep(delay_ms / 1000.0)
 
         # Log do mod kanálu
         if mod_ch:
             try:
                 await mod_ch.send(
-                    f"📬 **Re-verifikace**\n"
+                    f"📬 **Re-verifikace Dokončena**\n"
                     f"• Spustil: {itx.user.mention}\n"
                     f"• Role: {target_role.mention}\n"
-                    f"• Odesláno OK: **{sent_ok}**, neúspěch: **{sent_fail}**\n"
+                    f"• Celkem cílů: **{len(members)}**\n"
+                    f"• ✅ Odesláno: **{sent_ok}**\n"
+                    f"• ❌ Selhalo: **{sent_fail}** (z toho **{blocked_dms}** má vypnuté DMs)\n"
                     f"{'• Důvod: ' + reason if reason else ''}"
                 )
             except Exception as e:
                 logging.warning(f"⚠️ Nelze logovat do mod kanálu: {e}")
 
-        await itx.followup.send(
-            f"✅ Hotovo. DM odesláno **{sent_ok}** členům, neúspěch **{sent_fail}**.", ephemeral=hide
-        )
+        # Finální zpráva (pokud nebyla ephemeral, pošleme novou, jinak edit/followup)
+        # Protože jsme už odpověděli (defer/send), použijeme followup
+        try:
+            await itx.followup.send(
+                f"✅ Akce dokončena. Odesláno: **{sent_ok}**, Selhalo: **{sent_fail}**.",
+                ephemeral=True 
+            )
+        except Exception:
+            pass # Pokud uživatel zahodil interakci, nevadí
 
     # ---------- /reverify resend ----------
     @group.command(name="resend", description="Znovu pošle DM s re-verifikačním kódem jednomu uživateli.")
@@ -260,19 +303,25 @@ class ReverificationCog(commands.Cog):
         member: discord.Member,
         code: Optional[str] = None,
         dm_text: Optional[str] = None,
-        hide: Optional[bool] = True,
+        hide: bool = True,
     ):
         await itx.response.defer(ephemeral=hide)
 
         code_final = code or VERIFICATION_CODE
         template = dm_text or DEFAULT_DM_TEMPLATE
+        
         try:
             await member.send(template.format(member=member.display_name, code=code_final))
+        except discord.Forbidden:
+            return await itx.followup.send(
+                f"❌ Uživatel {member.mention} má **zablokované soukromé zprávy** (DMs).", 
+                ephemeral=True
+            )
         except Exception as e:
             logging.warning(f"⚠️ Nelze poslat DM {member} ({member.id}): {e}")
-            return await itx.followup.send("❌ Nepodařilo se odeslat DM tomuto uživateli.", ephemeral=True)
+            return await itx.followup.send("❌ Nastala chyba při odesílání DM.", ephemeral=True)
 
-        await itx.followup.send("✅ DM odesláno.", ephemeral=hide)
+        await itx.followup.send(f"✅ DM úspěšně odesláno uživateli {member.mention}.", ephemeral=hide)
 
     # ---------- /reverify ping ----------
     @group.command(name="ping", description="Pošle ukázkovou re-verifikační zprávu tobě (DM).")
@@ -287,7 +336,7 @@ class ReverificationCog(commands.Cog):
         itx: Interaction,
         code: Optional[str] = None,
         dm_text: Optional[str] = None,
-        hide: Optional[bool] = True,
+        hide: bool = True,
     ):
         await itx.response.defer(ephemeral=hide)
         code_final = code or VERIFICATION_CODE
@@ -295,9 +344,14 @@ class ReverificationCog(commands.Cog):
 
         try:
             await itx.user.send(template.format(member=itx.user.display_name, code=code_final))
+        except discord.Forbidden:
+            return await itx.followup.send(
+                "❌ Nemohu ti poslat DM. Zkontroluj si nastavení soukromí na tomto serveru.", 
+                ephemeral=True
+            )
         except Exception as e:
             logging.warning(f"⚠️ Nelze poslat DM iniciátorovi: {e}")
-            return await itx.followup.send("❌ Nepodařilo se poslat DM tobě (zřejmě máš zamčené zprávy).", ephemeral=True)
+            return await itx.followup.send("❌ Nepodařilo se poslat DM (neznámá chyba).", ephemeral=True)
 
         await itx.followup.send("📨 Zaslali jsme ti ukázkové DM s re-verifikační zprávou.", ephemeral=hide)
 
