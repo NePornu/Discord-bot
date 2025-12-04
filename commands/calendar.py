@@ -568,3 +568,7 @@ class AdventCalendar(commands.Cog):
         
         embed = discord.Embed(title="⚙ Calendar Admin", description="Načítám...", color=discord.Color.dark_grey())
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+async def setup(bot):
+    await CalendarDB.init()
+    await bot.add_cog(AdventCalendar(bot))

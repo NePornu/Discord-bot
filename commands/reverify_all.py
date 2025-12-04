@@ -4,19 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional, Iterable, List, Tuple
+from typing import Optional, Iterable, List
 
 import discord
 from discord import app_commands, Interaction
 from discord.ext import commands
 
+# Konfigurace - import s fallbackem
 try:
-    from config import GUILD_ID, MOD_CHANNEL_ID  # volitelné, lze přepsat parametry v příkazech
+    from config import GUILD_ID, MOD_CHANNEL_ID
     from verification_config import VERIFICATION_CODE, VERIFIED_ROLE_ID
-    logging.debug("✅ Načteny hodnoty z configů (ReverificationCog).")
+    logging.debug("✅ Načteny hodnoty z configů (ReverificationManager).")
 except Exception as e:
-    logging.warning(f"⚠️ Nelze načíst configy (ReverificationCog): {e}")
-    # Poskytneme rozumné defaulty (přepiš v příkazech parametry role/code/mod_channel)
+    logging.warning(f"⚠️ Nelze načíst configy (ReverificationManager): {e}")
     GUILD_ID = None
     MOD_CHANNEL_ID = None
     VERIFICATION_CODE = "123456"
@@ -42,7 +42,7 @@ def chunked(seq: Iterable, n: int) -> Iterable[list]:
         yield buf
 
 
-class ReverificationCog(commands.Cog):
+class ReverificationManager(commands.Cog):
     """/reverify – nástroje pro hromadnou re-verifikaci (slash)."""
 
     def __init__(self, bot: commands.Bot):
@@ -303,5 +303,13 @@ class ReverificationCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
-    """Načtení cogu (discord.py 2.x)."""
-    await bot.add_cog(ReverificationCog(bot))
+    """Načtení cogu s ochranou proti duplicitám."""
+    # Pokud by starý Cog se stejným jménem existoval, odebereme ho
+    if bot.get_cog("ReverificationManager"):
+        await bot.remove_cog("ReverificationManager")
+    
+    # Pokud v botovi straší i původní název "ReverificationCog" z druhého souboru:
+    if bot.get_cog("ReverificationCog"):
+        await bot.remove_cog("ReverificationCog")
+
+    await bot.add_cog(ReverificationManager(bot))
