@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import aiosqlite
 import aiohttp
@@ -51,6 +51,7 @@ class CalendarDB:
             os.makedirs(DB_DIR)
             
         async with aiosqlite.connect(DB_PATH) as db:
+            # Tabulka kalendářů s podporou pro broadcast
             await db.execute("""
             CREATE TABLE IF NOT EXISTS calendars (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,8 +60,11 @@ class CalendarDB:
                 name TEXT,
                 start_date TEXT,
                 num_days INTEGER,
-                test_mode INTEGER DEFAULT 0
+                test_mode INTEGER DEFAULT 0,
+                broadcast_days INTEGER DEFAULT 0, 
+                last_broadcast TEXT
             )""")
+            
             await db.execute("""
             CREATE TABLE IF NOT EXISTS days (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,6 +80,7 @@ class CalendarDB:
                 reward_role TEXT,
                 UNIQUE(calendar_id, day)
             )""")
+            
             await db.execute("""
             CREATE TABLE IF NOT EXISTS claims (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,14 +89,22 @@ class CalendarDB:
                 user TEXT,
                 UNIQUE(calendar_id, day, user)
             )""")
+            
+            # Migrace sloupců, pokud tabulka existuje ze staré verze
+            try:
+                await db.execute("ALTER TABLE calendars ADD COLUMN broadcast_days INTEGER DEFAULT 0")
+                await db.execute("ALTER TABLE calendars ADD COLUMN last_broadcast TEXT")
+            except:
+                pass 
+
             await db.commit()
 
     @staticmethod
     async def create_calendar(channel_id: int, name: str, start_date: str, num_days: int) -> int:
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute("""
-                INSERT INTO calendars (message_id, channel_id, name, start_date, num_days)
-                VALUES (0, ?, ?, ?, ?)
+                INSERT INTO calendars (message_id, channel_id, name, start_date, num_days, broadcast_days)
+                VALUES (0, ?, ?, ?, ?, 0)
             """, (channel_id, name, start_date, num_days))
             cid = cursor.lastrowid
             
@@ -102,6 +115,19 @@ class CalendarDB:
                 """, (cid, i, f"Den {i}", "🎁", f"Den {i}", "🎄"))
             await db.commit()
             return cid
+
+    @staticmethod
+    async def update_settings(cid: int, broadcast_days: int):
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE calendars SET broadcast_days=? WHERE id=?", (broadcast_days, cid))
+            await db.commit()
+
+    @staticmethod
+    async def mark_broadcast_sent(cid: int):
+        now_str = datetime.now(TZ).isoformat()
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE calendars SET last_broadcast=? WHERE id=?", (now_str, cid))
+            await db.commit()
 
     @staticmethod
     async def update_message_id(cid: int, mid: int):
@@ -172,19 +198,16 @@ class CalendarDB:
     @staticmethod
     async def get_stats(cid: int):
         async with aiosqlite.connect(DB_PATH) as db:
-            # Total unique users
             cursor = await db.execute("SELECT COUNT(DISTINCT user) FROM claims WHERE calendar_id=?", (cid,))
             res = await cursor.fetchone()
             total_users = res[0] if res else 0
             
-            # Claims per day
             cursor = await db.execute("SELECT day, COUNT(*) FROM claims WHERE calendar_id=? GROUP BY day ORDER BY day", (cid,))
-            days_stats = await cursor.fetchall() # list of (day, count)
-            
+            days_stats = await cursor.fetchall() 
             return total_users, days_stats
 
 # =====================================================================
-#   PUBLIC VIEW (Co vidí uživatelé)
+#   PUBLIC VIEW
 # =====================================================================
 class PublicDayButton(discord.ui.Button):
     def __init__(self, cid: int, day: int, label: str, emoji: str):
@@ -247,7 +270,7 @@ class PublicCalendarView(discord.ui.View):
             self.add_item(PublicDayButton(cid, row['day'], row['btn_label'], row['btn_emoji']))
 
 # =====================================================================
-#   ADMIN MODALS (Formuláře)
+#   ADMIN MODALS & VIEWS
 # =====================================================================
 class EditContentModal(discord.ui.Modal):
     def __init__(self, parent_view, cid, day, data):
@@ -265,7 +288,6 @@ class EditContentModal(discord.ui.Modal):
         self.add_item(self.rr)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # DŮLEŽITÉ: Defer hned na začátku, aby nedošlo k chybě
         await interaction.response.defer() 
         await CalendarDB.update_day(self.cid, self.day, {
             "title": self.t.value, "reward_text": self.rt.value,
@@ -303,6 +325,31 @@ class EditImageModal(discord.ui.Modal):
         await CalendarDB.update_day(self.cid, self.day, {"reward_image": self.ri.value})
         await self.parent_view.refresh_dashboard(interaction)
 
+class SettingsModal(discord.ui.Modal):
+    def __init__(self, parent_view, cid, current_days):
+        super().__init__(title="Nastavení Broadcastu")
+        self.parent_view = parent_view
+        self.cid = cid
+        self.bd = discord.ui.TextInput(
+            label="Interval připomenutí (dny)", 
+            placeholder="0 = vypnuto, 1 = každý den...", 
+            default=str(current_days),
+            max_length=3
+        )
+        self.add_item(self.bd)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            val = int(self.bd.value)
+            if val < 0: val = 0
+        except:
+            return await interaction.response.send_message("❌ Musí být číslo.", ephemeral=True)
+            
+        await interaction.response.defer()
+        await CalendarDB.update_settings(self.cid, val)
+        await interaction.followup.send(f"✅ Interval nastaven na: **{val} dní**", ephemeral=True)
+        await self.parent_view.refresh_dashboard(interaction)
+
 class NewCalendarModal(discord.ui.Modal, title="Nový Kalendář"):
     name = discord.ui.TextInput(label="Název", placeholder="Vánoce 2025")
     start = discord.ui.TextInput(label="Start (DD.MM.YYYY)", placeholder="01.12.2025")
@@ -326,7 +373,7 @@ class NewCalendarModal(discord.ui.Modal, title="Nový Kalendář"):
         await interaction.followup.send(f"✅ Vytvořeno (ID: {cid}). Spusť `/calendar_admin` pro úpravy.")
 
 # =====================================================================
-#   DELETE CONFIRMATION
+#   DELETE CONFIRMATIONS
 # =====================================================================
 class DeleteConfirmView(discord.ui.View):
     def __init__(self, cid, cal_name, bot):
@@ -338,62 +385,83 @@ class DeleteConfirmView(discord.ui.View):
     @discord.ui.button(label="POTVRDIT SMAZÁNÍ", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        # 1. Get calendar info to find message
         cal = await CalendarDB.get_calendar(self.cid)
-        
-        # 2. Delete from DB
         await CalendarDB.delete_calendar(self.cid)
-        
-        # 3. Try to delete message
         if cal:
             channel = self.bot.get_channel(cal['channel_id'])
             if channel:
                 try:
                     msg = await channel.fetch_message(cal['message_id'])
                     await msg.delete()
-                except:
-                    pass
+                except: pass
 
         embed = discord.Embed(title="✅ Smazáno", description=f"Kalendář **{self.cal_name}** byl nenávratně smazán.", color=discord.Color.red())
         await interaction.edit_original_response(embed=embed, view=None)
 
-    @discord.ui.button(label="Zrušit", style=discord.ButtonStyle.secondary)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Operace zrušena.", ephemeral=True)
-        await interaction.message.delete()
+class BulkDeleteView(discord.ui.View):
+    def __init__(self, calendars, bot):
+        super().__init__(timeout=60)
+        self.bot = bot
+        options = []
+        for cal in calendars[:25]:
+            options.append(discord.SelectOption(label=f"{cal['name']} (ID: {cal['id']})", value=str(cal['id']), description=f"Kanál ID: {cal['channel_id']}"))
+
+        self.select = discord.ui.Select(placeholder="Vyber kalendáře ke smazání...", min_values=1, max_values=len(options), options=options)
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        self.selected_ids = self.select.values
+        await interaction.response.defer()
+
+    @discord.ui.button(label="SMAZAT VYBRANÉ", style=discord.ButtonStyle.danger, row=1)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not hasattr(self, 'selected_ids') or not self.selected_ids:
+            return await interaction.response.send_message("❌ Nic nebylo vybráno.", ephemeral=True)
+        
+        await interaction.response.defer()
+        count = 0
+        for cid in self.selected_ids:
+            cid = int(cid)
+            cal = await CalendarDB.get_calendar(cid)
+            if cal:
+                try:
+                    ch = self.bot.get_channel(cal['channel_id'])
+                    if ch:
+                        msg = await ch.fetch_message(cal['message_id'])
+                        await msg.delete()
+                except: pass
+                await CalendarDB.delete_calendar(cid)
+                count += 1
+        
+        embed = discord.Embed(title="🗑 Hotovo", description=f"Úspěšně smazáno **{count}** kalendářů.", color=discord.Color.red())
+        await interaction.edit_original_response(embed=embed, view=None)
 
 # =====================================================================
-#   ADMIN DASHBOARD (OPRAVENÁ LOGIKA)
+#   ADMIN DASHBOARD
 # =====================================================================
 class AdminDashboardView(discord.ui.View):
     def __init__(self, bot):
-        super().__init__(timeout=None) # Timeout None = panel nezmizí tak rychle
+        super().__init__(timeout=None)
         self.bot = bot
         self.selected_cid = None
         self.selected_day = None
         self.cal_data = None
         self.showing_stats = False
 
-    # --- ROW 0: Calendar Select ---
     @discord.ui.select(placeholder="1. Vyber kalendář...", min_values=1, max_values=1, row=0)
     async def select_calendar(self, interaction: discord.Interaction, select: discord.ui.Select):
-        # Okamžitá reakce pro uživatele
         await interaction.response.defer()
-        
         try:
             val = int(select.values[0])
             self.selected_cid = val
             self.cal_data = await CalendarDB.get_calendar(self.selected_cid)
-            
-            # Reset vnořených stavů
             self.selected_day = None 
             self.showing_stats = False
-            
             await self.update_view(interaction)
         except Exception as e:
-            await interaction.followup.send(f"Chyba při výběru kalendáře: {e}", ephemeral=True)
+            await interaction.followup.send(f"Chyba: {e}", ephemeral=True)
 
-    # --- ROW 2: Buttons ---
     @discord.ui.button(label="Obsah", emoji="📝", style=discord.ButtonStyle.primary, row=2, disabled=True)
     async def btn_edit_content(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = await CalendarDB.get_day(self.selected_cid, self.selected_day)
@@ -409,7 +477,7 @@ class AdminDashboardView(discord.ui.View):
         data = await CalendarDB.get_day(self.selected_cid, self.selected_day)
         await interaction.response.send_modal(EditImageModal(self, self.selected_cid, self.selected_day, data))
 
-    # --- ROW 3: Actions ---
+    # --- ROW 3: Akce ---
     @discord.ui.button(label="Refresh", emoji="🔄", style=discord.ButtonStyle.success, row=3, disabled=True)
     async def btn_refresh_public(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
@@ -424,29 +492,32 @@ class AdminDashboardView(discord.ui.View):
             except:
                 await interaction.followup.send("❌ Zpráva nenalezena.", ephemeral=True)
 
-    @discord.ui.button(label="Statistiky", emoji="📊", style=discord.ButtonStyle.secondary, row=3, disabled=True)
+    @discord.ui.button(label="Stats", emoji="📊", style=discord.ButtonStyle.secondary, row=3, disabled=True)
     async def btn_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        self.showing_stats = not self.showing_stats # Toggle
+        self.showing_stats = not self.showing_stats
         await self.update_view(interaction)
 
+    @discord.ui.button(label="Nastavení", emoji="⚙", style=discord.ButtonStyle.secondary, row=3, disabled=True)
+    async def btn_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
+        current = self.cal_data['broadcast_days']
+        await interaction.response.send_modal(SettingsModal(self, self.selected_cid, current))
+
+    # ZDE JE ZPĚT TLAČÍTKO SMAZAT
     @discord.ui.button(label="Smazat", emoji="🗑", style=discord.ButtonStyle.danger, row=3, disabled=True)
     async def btn_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(
             title="⚠ POZOR", 
-            description=f"Opravdu chceš smazat kalendář **{self.cal_data['name']}**?\nTato akce je nevratná a smaže všechna data i veřejnou zprávu.",
+            description=f"Opravdu chceš smazat kalendář **{self.cal_data['name']}**?\nTato akce je nevratná.",
             color=discord.Color.red()
         )
         await interaction.response.send_message(embed=embed, view=DeleteConfirmView(self.selected_cid, self.cal_data['name'], self.bot), ephemeral=True)
 
-    # --- Metody pro update UI ---
     async def refresh_dashboard(self, interaction: discord.Interaction):
-        # Tato metoda je volána z Modalu, který už udělal defer/response
-        # Proto používáme edit_original_response
+        self.cal_data = await CalendarDB.get_calendar(self.selected_cid)
         await self.update_view(interaction, use_followup=True)
 
     async def update_view(self, interaction: discord.Interaction, use_followup=False):
-        # 1. Nastavit stavy tlačítek
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 if child.emoji.name in ["📝", "🎨", "🖼"]:
@@ -454,76 +525,54 @@ class AdminDashboardView(discord.ui.View):
                 else:
                     child.disabled = self.selected_cid is None
 
-        # 2. Vyčistit starý Select pro dny
-        # OPRAVA: self.children je read-only. Musíme použít remove_item.
         items_to_remove = [c for c in self.children if isinstance(c, discord.ui.Select) and c.row == 1]
         for item in items_to_remove:
             self.remove_item(item)
         
-        # 3. Přidat Select pro dny, pokud je vybrán kalendář
         if self.selected_cid:
             num_days = self.cal_data['num_days']
             options = []
-            # Omezení na 25 dní kvůli limitu Discordu
             limit = min(num_days + 1, 26)
             for i in range(1, limit):
                 is_sel = (i == self.selected_day)
                 options.append(discord.SelectOption(label=f"Den {i}", value=str(i), default=is_sel))
             
-            # Vytvoření dynamického selectu
             day_select = discord.ui.Select(placeholder="2. Vyber den...", options=options, min_values=1, max_values=1, row=1)
-            
-            # Callback pro výběr dne
             async def day_callback(inter: discord.Interaction):
                 await inter.response.defer()
                 self.selected_day = int(day_select.values[0])
                 self.showing_stats = False
                 await self.update_view(inter)
-            
             day_select.callback = day_callback
             self.add_item(day_select)
 
-        # 4. Sestavit Embed
         embed = discord.Embed(title="⚙ Správa Kalendáře", color=discord.Color.from_rgb(47, 49, 54))
         
         if not self.selected_cid:
             embed.description = "⬅ Začni výběrem kalendáře v menu nahoře."
-        
         elif self.showing_stats:
             users, day_stats = await CalendarDB.get_stats(self.selected_cid)
             embed.title = f"📊 Statistiky: {self.cal_data['name']}"
             embed.color = discord.Color.blue()
+            embed.add_field(name="Broadcast", value=f"Každých {self.cal_data['broadcast_days']} dní", inline=False)
             embed.add_field(name="Unikátní uživatelé", value=f"**{users}**", inline=False)
-            
             stats_text = ""
             max_val = max((c for d, c in day_stats), default=0)
-            
             for d, c in day_stats:
                 bar = create_progress_bar(c, max_val, 12)
                 stats_text += f"`{d:02d}` {bar} **{c}**\n"
-            
             embed.add_field(name="Otevření po dnech", value=stats_text or "Zatím žádná data.", inline=False)
-
         elif self.selected_day:
             day_data = await CalendarDB.get_day(self.selected_cid, self.selected_day)
             embed.title = f"Editace: {self.cal_data['name']} / Den {self.selected_day}"
             embed.color = discord.Color.green()
-            
-            c_info = f"**Nadpis:** {day_data['title']}\n"
-            c_info += f"**Text:** {day_data['reward_text'][:40] + '...' if day_data['reward_text'] else '❌'}\n"
-            c_info += f"**Link:** {'✅' if day_data['reward_link'] else '❌'}\n"
-            c_info += f"**Role:** `{day_data['reward_role']}`" if day_data['reward_role'] else "**Role:** ❌"
+            c_info = f"**Nadpis:** {day_data['title']}\n**Text:** {day_data['reward_text'][:40] + '...' if day_data['reward_text'] else '❌'}\n**Link:** {'✅' if day_data['reward_link'] else '❌'}\n**Role:** `{day_data['reward_role']}`" if day_data['reward_role'] else "**Role:** ❌"
             embed.add_field(name="📝 Obsah", value=c_info, inline=True)
-            
-            v_info = f"**Label:** {day_data['btn_label']}\n"
-            v_info += f"**Emoji:** {day_data['btn_emoji'] or '❌'}\n"
-            v_info += f"**Obrázek:** {'✅' if day_data['reward_image'] else '❌'}"
+            v_info = f"**Label:** {day_data['btn_label']}\n**Emoji:** {day_data['btn_emoji'] or '❌'}\n**Obrázek:** {'✅' if day_data['reward_image'] else '❌'}"
             embed.add_field(name="🎨 Vzhled", value=v_info, inline=True)
-            
         else:
-            embed.description = f"**Vybrán:** {self.cal_data['name']} (ID: {self.cal_data['id']})\n\n👇 Vyber den pro úpravu obsahu.\n📊 Klikni na Statistiky pro přehled."
+            embed.description = f"**Vybrán:** {self.cal_data['name']}\n**Broadcast:** {self.cal_data['broadcast_days']} dní\n\n👇 Vyber den pro úpravu obsahu.\n📊 Klikni na Stats pro přehled.\n⚙ Klikni na Nastavení pro změnu připomínání."
 
-        # 5. Odeslání změn
         if use_followup:
             await interaction.edit_original_response(embed=embed, view=self)
         else:
@@ -535,6 +584,10 @@ class AdminDashboardView(discord.ui.View):
 class AdventCalendar(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.broadcast_task.start()
+
+    def cog_unload(self):
+        self.broadcast_task.cancel()
 
     async def cog_load(self):
         self.bot.loop.create_task(self.restore_views())
@@ -549,6 +602,42 @@ class AdventCalendar(commands.Cog):
                 self.bot.add_view(view, message_id=cal['message_id'])
             except: pass
 
+    # --- BROADCAST TASK ---
+    @tasks.loop(hours=1)
+    async def broadcast_task(self):
+        calendars = await CalendarDB.get_active_calendars()
+        now = datetime.now(TZ)
+        
+        for cal in calendars:
+            interval = cal['broadcast_days']
+            if interval <= 0: continue # Broadcast vypnut
+
+            last_run_str = cal['last_broadcast']
+            should_send = False
+            
+            if not last_run_str:
+                should_send = True
+            else:
+                last_run = datetime.fromisoformat(last_run_str)
+                # Pokud rozdíl dnů >= interval
+                if (now - last_run).days >= interval:
+                    should_send = True
+            
+            if should_send:
+                channel = self.bot.get_channel(cal['channel_id'])
+                if channel:
+                    try:
+                        msg = await channel.fetch_message(cal['message_id'])
+                        link = msg.jump_url
+                        await channel.send(f"🎄 **Připomínka kalendáře: {cal['name']}**\nNezapomeňte si otevřít dnešní okénko!\n👉 {link}")
+                        await CalendarDB.mark_broadcast_sent(cal['id'])
+                    except:
+                        pass
+
+    @broadcast_task.before_loop
+    async def before_broadcast(self):
+        await self.bot.wait_until_ready()
+
     @app_commands.command(name="calendar_create", description="Vytvořit nový adventní kalendář")
     @app_commands.checks.has_permissions(administrator=True)
     async def calendar_create(self, interaction: discord.Interaction):
@@ -559,14 +648,24 @@ class AdventCalendar(commands.Cog):
     async def calendar_admin(self, interaction: discord.Interaction):
         calendars = await CalendarDB.get_active_calendars()
         if not calendars:
-            return await interaction.response.send_message("❌ Žádné kalendáře. Vytvoř první pomocí `/calendar_create`.", ephemeral=True)
+            return await interaction.response.send_message("❌ Žádné kalendáře.", ephemeral=True)
 
         view = AdminDashboardView(self.bot)
-        # Naplnění prvního selectu
         select = view.children[0]
         select.options = [discord.SelectOption(label=f"{c['name']} (ID:{c['id']})", value=str(c['id'])) for c in calendars[:25]]
         
         embed = discord.Embed(title="⚙ Calendar Admin", description="Načítám...", color=discord.Color.dark_grey())
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @app_commands.command(name="calendar_delete", description="Smazat více kalendářů najednou")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def calendar_delete(self, interaction: discord.Interaction):
+        calendars = await CalendarDB.get_active_calendars()
+        if not calendars:
+            return await interaction.response.send_message("❌ Žádné kalendáře ke smazání.", ephemeral=True)
+        
+        view = BulkDeleteView(calendars, self.bot)
+        embed = discord.Embed(title="🗑 Hromadné mazání", description="Vyber kalendáře, které chceš smazat.", color=discord.Color.red())
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 async def setup(bot):
