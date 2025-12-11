@@ -8,9 +8,6 @@
 ## Slash /log
 - `/log status` – přehled a metriky (uptime, fronta, cache členů…).
 - `/log toggle` – zap/vyp jednotlivé oblasti: messages, members, channels, roles, voice, moderation, reactions, invites, threads, webhooks, emojis, stickers, integrations, automod, applications, presence.
-- `/log ignore` – přidá/odebere **kanál** nebo **uživatele** z ignorování.
-- `/log stats` – stručné statistiky cogu.
-- `/log test` – pošle testovací zprávy do obou log kanálů.
 
 ## Perzistence
 - `data/log_config.json` – volby

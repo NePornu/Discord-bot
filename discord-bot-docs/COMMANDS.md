@@ -64,9 +64,6 @@
 - Slash **group**: `/log`
   - `/log status` – stav, metriky, detaily
   - `/log toggle <typ|all> <true/false>` – granularita (messages/members/channels/roles/voice/…)
-  - `/log ignore <channel|user> <id> <add|remove>` – ignorování
-  - `/log stats` – statistiky cogu
-  - `/log test` – zkušební embed do obou log kanálů
 
 Loguje:
 - Členy (join/leave/update, role, timeout, pending…), profily (globálně)
@@ -110,12 +107,50 @@ Konfigurace v souboru (`CONFIG = { ... }`): `REDIS_URL`, retenční dny, cooldow
 ---
 
 ## Verifikace (`commands/verification.py`)
-- Při joinu:
-  - přidá ověřovací roli,
-  - pošle DM s kódem,
-  - čeká na odpověď,
-  - moderátor potvrdí tlačítkem v `MOD_CHANNEL_ID`.
-- Po ověření: DM „Vítej“ + uvítací zpráva do `WELCOME_CHANNEL_ID`.
+
+Systém pro ověřování nových uživatelů pomocí DM a kódu.
+
+### Slash příkazy (`/verify`)
+- `/verify send user:@User` – Pošle uživateli DM s ověřovacím kódem.
+- `/verify resend user:@User` – Znovu pošle kód (alias pro send).
+- `/verify approve user:@User` – Manuálně ověří uživatele (odebere roli).
+- `/verify status user:@User` – Zobrazí info o uživateli (role, stáří účtu, bezpečnost).
+- `/verify ping` – Pošle testovací DM tobě.
+- `/verify suspicious` – Zobrazí log podezřelých aktivit (rate limits, failed checks).
+
+### Konfigurace (`/verifysettings`)
+- `/verifysettings setpassword password:<heslo>` – Nastaví bypass heslo.
+- `/verifysettings setmaxattempts attempts:<N>` – Počet pokusů před zamčením.
+- `/verifysettings setaccountage days:<N>` – Min. stáří účtu.
+- `/verifysettings requireavatar required:<True/False>` – Vyžadování avatara.
+- `/verifysettings view` – Zobrazí aktuální nastavení.
+- `/verifysettings reset` – Reset do výchozího stavu.
+
+### Automatizace
+- **Při joinu**:
+  - Kontrola bezpečnosti (stáří účtu, avatar).
+  - Přiřazení "unverified" role.
+  - Odeslání DM s kódem `VERIFICATION_CODE`.
+  - Logování do `MOD_CHANNEL_ID`.
+- **Po ověření**:
+  - Odebrání role.
+  - Uvítací zpráva do `WELCOME_CHANNEL_ID`.
+
+---
+
+## Hromadná re-verifikace (`commands/reverification.py`) – admin
+
+Nástroj pro hromadné ověření stávajících uživatelů (např. při změně pravidel).
+
+### Slash příkazy (`/reverify`) Group
+- `/reverify status [role]` – Statistiky (kolik lidí má roli).
+- `/reverify preview [role]` – Náhled, kdo dostane DM.
+- `/reverify run [role] [code] [dm_text] ...` – Spustí hromadné rozesílání DM.
+  - Smart queue (batching, delay, error handling).
+- `/reverify resend user:@User` – Znovu pošle kód jednotlivci.
+- `/reverify ping` – Testovací zpráva tobě.
+
+- **Status & Logy**: Posílá progress bar a výsledky do kanálu a mod logu.
 
 ---
 
@@ -205,6 +240,31 @@ Při úspěšné kombinaci bot vybere náhodně z těchto zpráv:
 - **fotosum** – počet příspěvků s fotkou (vyžaduje filtr `photo`)
 - **weekly** – po sobě jdoucí X-denní intervaly s aktivitou
 - Může **přidělovat role** po dosažení prahů.
+
+---
+
+## Adventní kalendář (`commands/calendar.py`) – admin
+
+Interaktivní kalendář s denními odměnami (role, obrázky, texty).
+
+### Slash příkazy
+- `/calendar_create` – Wizard pro vytvoření nového kalendáře.
+- `/calendar_admin` – Hlavní dashboard pro správu.
+  - Úprava dnů (text, odměna, obrázek).
+  - Nastavení broadcastu (připomínky).
+  - Statistiky otevření.
+- `/calendar_delete` – Hromadné mazání kalendářů.
+
+### Funkce
+- **Databáze**: SQLite (`data/calendar.db`).
+- **Odměny**: Text, odkaz, role, nebo obrázek (DM).
+- **Logika**:
+  - Nelze otevřít budoucí dny (pokud není test_mode).
+  - Každý uživatel může otevřít den jen jednou.
+  - Broadcast task připomíná neotevřená okénka.
+
+---
+
 # Echo / Say (hybridní příkaz)
 
 Jednoduchý utilitní příkaz pro „přeříkání“ textu do aktuálního nebo jiného kanálu – se stejným chováním dostupný jako prefixový `*echo`/`*say` a slash `/echo`/`/say`. Umí poslat až 3 přílohy, potlačit @mentions a pohodlně vybrat kanál přes autocomplete.
