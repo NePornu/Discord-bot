@@ -76,7 +76,7 @@ def load_log_configs() -> Dict[str, LogConfig]:
             logger.error(f"Chyba načtení log_config.json: {e}")
     return out
 
-def save_log_configs(configs: Dict[str, LogConfig]) -> None:
+async def save_log_configs(configs: Dict[str, LogConfig]) -> None:
     try:
         data: Dict[str, Any] = {}
         for gid, cfg in configs.items():
@@ -101,25 +101,26 @@ def save_log_configs(configs: Dict[str, LogConfig]) -> None:
                 "ignored_channels": list(cfg.ignored_channels),
                 "ignored_users": list(cfg.ignored_users),
             }
-        LOG_CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        await asyncio.get_event_loop().run_in_executor(None, lambda: LOG_CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"))
     except Exception as e:
         logger.error(f"Chyba ukládání log_config.json: {e}")
 
 class MemberCache:
     def __init__(self):
         self.cache: Dict[int, Dict[str, Any]] = {}
-        self.load()
+        self.bot.loop.create_task(self.load())
 
-    def load(self):
+    async def load(self):
         if CACHE_FILE.exists():
             try:
-                self.cache = {int(k): v for k, v in json.loads(CACHE_FILE.read_text(encoding="utf-8")).items()}
+                text = await asyncio.get_event_loop().run_in_executor(None, lambda: CACHE_FILE.read_text(encoding="utf-8"))
+                self.cache = {int(k): v for k, v in json.loads(text).items()}
             except Exception as e:
                 logger.error(f"Chyba načtení cache: {e}")
 
-    def save(self):
+    async def save(self):
         try:
-            CACHE_FILE.write_text(json.dumps({str(k): v for k, v in self.cache.items()}, ensure_ascii=False, indent=2), encoding="utf-8")
+            await asyncio.get_event_loop().run_in_executor(None, lambda: CACHE_FILE.write_text(json.dumps({str(k): v for k, v in self.cache.items()}, ensure_ascii=False, indent=2), encoding="utf-8"))
         except Exception as e:
             logger.error(f"Chyba ukládání cache: {e}")
 
@@ -219,7 +220,7 @@ class LogQueue:
             return
         self.processing = True
         try:
-            batch_size = 3  # zpracuj více najednou
+            batch_size = 15  # zpracuj více najednou
             processed = 0
             while self.q and processed < batch_size:
                 ch_id, emb, files = self.q.pop(0)
@@ -284,9 +285,9 @@ class LogCog(commands.Cog):
     def cfg(self, gid: int) -> LogConfig:
         return self.cfgs.get(str(gid), LogConfig())
 
-    def set_cfg(self, gid: int, cfg: LogConfig):
+    async def set_cfg(self, gid: int, cfg: LogConfig):
         self.cfgs[str(gid)] = cfg
-        save_log_configs(self.cfgs)
+        await save_log_configs(self.cfgs)
 
     def _embed(self, title: str, desc: str = "", color: int = 0x5865F2) -> discord.Embed:
         e = discord.Embed(title=clamp(title, 256), description=clamp(desc, 4000), color=color, timestamp=datetime.now(timezone.utc))
@@ -320,7 +321,7 @@ class LogCog(commands.Cog):
 
     @tasks.loop(minutes=3)  # častější ukládání
     async def _cache_saver(self):
-        self.cache.save()
+        await self.cache.save()
 
     @tasks.loop(minutes=10)
     async def _housekeeping(self):
@@ -333,7 +334,7 @@ class LogCog(commands.Cog):
         self._queue_worker.cancel()
         self._cache_saver.cancel()
         self._housekeeping.cancel()
-        self.cache.save()
+        self.bot.loop.create_task(self.cache.save())
 
     # ===== Slash commands =====
     log_group = app_commands.Group(name="log", description="Nastavení logování")
@@ -419,7 +420,7 @@ class LogCog(commands.Cog):
                 await itx.response.send_message(f"❌ Neznámý typ: `{log_type}`", ephemeral=True)
                 return
                 
-        self.set_cfg(itx.guild_id, cfg)
+        await self.set_cfg(itx.guild_id, cfg)
         emoji = "✅" if enabled else "❌"
         await itx.response.send_message(f"{emoji} `{status}` {'ZAPNUTO' if enabled else 'VYPNUTO'}", ephemeral=True)
 

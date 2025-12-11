@@ -27,13 +27,12 @@ def parse_date(value: str) -> date:
         return datetime.strptime(v, "%d.%m.%Y").date()
     return datetime.strptime(v, "%Y-%m-%d").date()
 
-async def fetch_image(url: str) -> bytes:
+async def fetch_image(session: aiohttp.ClientSession, url: str) -> bytes:
     if not url: return None
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as r:
-                if r.status == 200:
-                    return await r.read()
+        async with session.get(url) as r:
+            if r.status == 200:
+                return await r.read()
     except:
         return None
     return None
@@ -258,7 +257,11 @@ class PublicDayButton(discord.ui.Button):
                     content += "\n⚠ Nepodařilo se přidat roli."
 
             try:
-                img_data = await fetch_image(day_data['reward_image'])
+                # Získání session z cogu
+                cog = interaction.client.get_cog("AdventCalendar")
+                session = cog.session if cog else None
+                
+                img_data = await fetch_image(session, day_data['reward_image']) if session else None
                 file = discord.File(fp=img_data, filename="reward.png") if img_data else None
                 await user.send(content, file=file)
                 await interaction.followup.send("🎁 Odměna odeslána do DM!", ephemeral=True)
@@ -655,11 +658,14 @@ class AdventCalendar(commands.Cog):
         self.bot = bot
         self.broadcast_task.start()
 
+    async def cog_load(self):
+        self.session = aiohttp.ClientSession()
+        self.bot.loop.create_task(self.restore_views())
+
     def cog_unload(self):
         self.broadcast_task.cancel()
-
-    async def cog_load(self):
-        self.bot.loop.create_task(self.restore_views())
+        if self.session:
+            self.bot.loop.create_task(self.session.close())
 
     async def restore_views(self):
         await self.bot.wait_until_ready()
