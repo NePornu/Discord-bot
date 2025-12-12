@@ -106,7 +106,8 @@ async def save_log_configs(configs: Dict[str, LogConfig]) -> None:
         logger.error(f"Chyba ukládání log_config.json: {e}")
 
 class MemberCache:
-    def __init__(self):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
         self.cache: Dict[int, Dict[str, Any]] = {}
         self.bot.loop.create_task(self.load())
 
@@ -252,7 +253,7 @@ class LogCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.cfgs = load_log_configs()
-        self.cache = MemberCache()
+        self.cache = MemberCache(bot) # Pass bot instance
         self.queue = LogQueue()
         self.stats = defaultdict(int)
         self.started_at = datetime.now(timezone.utc)
