@@ -121,6 +121,10 @@ class VerificationModView(discord.ui.View):
         member = await self.get_member(interaction.guild)
         if not member:
             return await interaction.followup.send("❌ Uživatel už není na serveru.", ephemeral=True)
+
+        st = cog.get_user_state(member.id)
+        if st.get("status") != "WAITING_FOR_APPROVAL":
+             return await interaction.followup.send("❌ Uživatel zatím nezadal správný kód. (Použij /verify bypass pokud je to nutné)", ephemeral=True)
             
         success = await cog.approve_user(member, approver=interaction.user)
         if success:
@@ -130,6 +134,7 @@ class VerificationModView(discord.ui.View):
             await interaction.message.edit(view=self)
         else:
             await interaction.followup.send("❌ Chyba při schvalování (Role? Config?).", ephemeral=True)
+
 
     @discord.ui.button(label="Upozornit", style=discord.ButtonStyle.secondary, emoji="⚠️", custom_id="verif_warn")
     async def btn_warn(self, interaction: Interaction, button: discord.ui.Button):
@@ -203,8 +208,6 @@ class VerificationCog(commands.Cog):
         if sid in self.state:
             del self.state[sid]
             self.bot.loop.create_task(self.save_state())
-        if user_id in self.mod_messages:
-            del self.mod_messages[user_id]
 
     def get_user_state(self, user_id: int) -> dict:
         sid = str(user_id)
@@ -214,7 +217,8 @@ class VerificationCog(commands.Cog):
                 "attempts": 0,
                 "created_at": datetime.now().timestamp(),
                 "locked_until": 0,
-                "status": "PENDING" # PENDING, WAITING_FOR_APPROVAL, LOCKED
+                "status": "PENDING",
+                "mod_message_id": None
             }
             self.bot.loop.create_task(self.save_state())
         return self.state[sid]
@@ -229,9 +233,9 @@ class VerificationCog(commands.Cog):
         issues = []
         age_days = (datetime.now(member.created_at.tzinfo) - member.created_at).days
         if age_days < self.settings["min_account_age_days"]:
-            issues.append(f"• Účet je příliš nový ({age_days} dní). Min: {self.settings['min_account_age_days']}")
+            issues.append(f"⚠️ Účet mladší než {self.settings['min_account_age_days']} dní (stáří: {age_days} dní)")
         if self.settings["require_avatar"] and not member.avatar:
-            issues.append("• Chybí profilový obrázek.")
+            issues.append("⚠️ Chybí profilový obrázek.")
         return (len(issues) == 0), "\n".join(issues)
 
     async def send_verification_dm(self, member: discord.Member, otp: str):
@@ -240,9 +244,27 @@ class VerificationCog(commands.Cog):
             f"Ahoj **{member.name}**! Vítej na serveru.\n"
             f"Pro dokončení ověření prosím pošli sem do chatu tento kód:\n\n"
             f"> **`{otp}`**\n\n"
-            f"*(Máš na to 24 hodin. Pokud kód nefunguje, použij `/reverify resend`)*"
         )
         await member.send(msg)
+
+    async def _update_mod_message(self, guild: discord.Guild, user_id: int, content: str = None, view = None, delete: bool = False):
+        """Helper to update the persistent mod message"""
+        st = self.state.get(str(user_id))
+        if not st or not st.get("mod_message_id"): return
+
+        mod_ch = guild.get_channel(MOD_CHANNEL_ID)
+        if not mod_ch: return
+        
+        try:
+            msg = await mod_ch.fetch_message(st["mod_message_id"])
+            if delete:
+                await msg.delete()
+            else:
+                await msg.edit(content=content, view=view)
+        except discord.NotFound:
+            pass # Message already deleted
+        except Exception as e:
+            logging.error(f"Failed to update mod message: {e}")
 
     async def approve_user(self, member: discord.Member, approver: Optional[discord.User] = None, bypass_used: bool = False) -> bool:
         guild = member.guild
@@ -261,37 +283,45 @@ class VerificationCog(commands.Cog):
         if WELCOME_CHANNEL_ID:
             ch = guild.get_channel(WELCOME_CHANNEL_ID)
             if ch:
-                # Resolve mentions
                 rules_ch = f"<#{RULES_CHANNEL_ID}>" if RULES_CHANNEL_ID else "⁠📗pravidla"
                 info_ch = f"<#{INFO_CHANNEL_ID}>" if INFO_CHANNEL_ID else "⁠ℹ️úvod"
-                intro_ch = f"<#{INTRO_CHANNEL_ID}>" if INTRO_CHANNEL_ID else "⁠👋představ-se"
+                intro_ch = "<#1191296600631431198>"
                 
                 welcome_msg = (
                     f"Nový člen se k nám připojil! Všichni přivítejme {member.mention}! "
                     f"Nezapomeň se podívat do {rules_ch} a {info_ch}. "
                     f"Můžeš se představit v {intro_ch}."
                 )
-                try:
-                    await ch.send(welcome_msg)
-                except Exception as e:
-                    logging.error(f"Failed to send welcome msg: {e}")
+                try: await ch.send(welcome_msg)
+                except: pass
 
         # Notify User
         try:
             await member.send("✅ **Ověření úspěšné!** Byli jste schváleni a máte přístup na server. Vítejte!")
         except: pass
 
-        # Update Mod Log
-        if member.id in self.mod_messages:
-            mod_ch = guild.get_channel(MOD_CHANNEL_ID)
-            if mod_ch:
-                try:
-                    msg = await mod_ch.fetch_message(self.mod_messages[member.id])
-                    status = "BYPASS HESLO" if bypass_used else (f"Schválil {approver.display_name}" if approver else "Schváleno")
-                    await msg.reply(f"✅ **{member.display_name}** je ověřen. ({status})")
-                    await msg.edit(view=None)
-                except: pass
-
+        # Update Mod Log (EDIT original message)
+        if bypass_used:
+            if approver:
+                status_text = f"MANUÁLNÍ BYPASS (Schválil {approver.display_name})"
+            else:
+                status_text = "BYPASS HESLEM"
+        else:
+            status_text = f"Schválil {approver.display_name}" if approver else "Schváleno"
+        
+        # We construct the final log content based on previous state or just append/modify
+        # Simpler: Just replace the "Status" line or append result.
+        # To do it cleanly, we need to regenerate the full message or just simplify.
+        # Let's try to preserve the info header.
+        
+        header = (
+            f"**Uživatel:** {member.mention} (`{member.name}`)\n"
+            f"**ID:** {member.id}\n"
+            f"**Výsledek:** ✅ **OVĚŘEN** ({status_text})"
+        )
+        
+        await self._update_mod_message(guild, member.id, content=header, view=None)
+        
         self.cleanup_state(member.id)
         return True
 
@@ -306,22 +336,36 @@ class VerificationCog(commands.Cog):
 
         st = self.get_user_state(member.id)
         otp = st["otp"]
+        
+        # Info Gathering
+        created_at_fmt = f"<t:{int(member.created_at.timestamp())}:f> (<t:{int(member.created_at.timestamp())}:R>)"
+        avatar_url = member.display_avatar.url
+        
         sec_ok, sec_reason = await self.check_security(member)
         
         mod_ch = member.guild.get_channel(MOD_CHANNEL_ID)
         if mod_ch:
-            status_icon = "🟢" if sec_ok else "🟠"
+            # Construct Detailed Message
             desc = (
-                f"**Nový uživatel:** {member.mention} (`{member.id}`)\n"
-                f"**Účet založen:** <t:{int(member.created_at.timestamp())}:R>\n"
-                f"**Status:** {status_icon} {'OK' if sec_ok else 'Podezřelý'}\n"
+                f"**Nový uživatel se připojil na server!**\n\n"
+                f"**Uživatel:** {member.mention} ({member.name})\n"
+                f"**ID:** {member.id}\n"
+                f"**Účet vytvořen:** {created_at_fmt}\n"
+                f"**Avatar:** {avatar_url}\n"
+                f"**Bio:** Bio není dostupné\n\n"
+                f"Automaticky mu byla přidělena ověřovací role.\n"
             )
-            if not sec_ok: desc += f"\n⚠ **Nálezy:**\n{sec_reason}"
+            
+            if not sec_ok:
+                desc += f"\n⚠️ **Bezpečnostní varování:**\n{sec_reason}\n"
+            
             view = VerificationModView(self.bot, member.id)
             try:
                 m = await mod_ch.send(desc, view=view)
-                self.mod_messages[member.id] = m.id
-            except: pass
+                # Store message ID in persistent state
+                self.update_user_state(member.id, mod_message_id=m.id)
+            except Exception as e:
+                logging.error(f"Failed to send mod log: {e}")
 
         try: await self.send_verification_dm(member, otp)
         except: pass
@@ -329,14 +373,13 @@ class VerificationCog(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
         if str(member.id) in self.state:
-            if member.id in self.mod_messages:
-                mod_ch = member.guild.get_channel(MOD_CHANNEL_ID)
-                if mod_ch:
-                    try:
-                        msg = await mod_ch.fetch_message(self.mod_messages[member.id])
-                        await msg.reply(f"❌ **{member.display_name}** opustil server během verifikace.")
-                        await msg.edit(view=None)
-                    except: pass
+            # Edit existing message
+            header = (
+               f"**Uživatel:** {member.mention} ({member.name})\n"
+               f"**ID:** {member.id}\n"
+               f"**Výsledek:** ❌ **Opustil server** během verifikace."
+            )
+            await self._update_mod_message(member.guild, member.id, content=header, view=None)
             self.cleanup_state(member.id)
 
     @commands.Cog.listener()
@@ -363,26 +406,34 @@ class VerificationCog(commands.Cog):
         member = guild.get_member(message.author.id)
         if not member: return
 
-        # 1. BYPASS PASSWORD -> Immediate Success
+        # 1. BYPASS
         bypass_hash = self.settings.get("bypass_password_hash")
         if bypass_hash and verify_password(user_input, bypass_hash):
             await self.approve_user(member, bypass_used=True)
             await message.channel.send("✅ **Tajné heslo přijato.** Vstup povolen.")
             return
 
-        # 2. OTP -> Wait for Approval
+        # 2. OTP
         if user_input == st["otp"] or (VERIFICATION_CODE and user_input.upper() == VERIFICATION_CODE.upper()):
             self.update_user_state(member.id, status="WAITING_FOR_APPROVAL")
             await message.channel.send("✅ **Kód je správný.** Nyní prosím čekej, než moderátor potvrdí tvůj přístup.")
             
-            # Notify Mods
-            if member.id in self.mod_messages:
+            # Update Mod Message to indicate "WAITING FOR APPROVAL"
+            # Fetch original content or just append?
+            # Ideally, we allow the mod view to stay interactive.
+            # We can send a reply OR update the embed/text. 
+            # User dislikes "million messages". So update text.
+            
+            try:
                 mod_ch = guild.get_channel(MOD_CHANNEL_ID)
-                if mod_ch:
-                    try:
-                        orig_msg = await mod_ch.fetch_message(self.mod_messages[member.id])
-                        await orig_msg.reply(f"🔔 **{member.display_name}** zadal správný kód. Čeká na schválení.")
-                    except: pass
+                if mod_ch and st.get("mod_message_id"):
+                    msg = await mod_ch.fetch_message(st["mod_message_id"])
+                    
+                    # Keep original content roughly but add status
+                    new_content = msg.content + "\n\n🟢 **Uživatel zadal správný kód.** Čeká na schválení tlačítkem."
+                    await msg.edit(content=new_content)
+            except: pass
+            
             return
 
         # 3. Fail
@@ -393,13 +444,13 @@ class VerificationCog(commands.Cog):
             self.update_user_state(member.id, status="LOCKED")
             await message.channel.send("⛔ **Vyčerpal jsi počet pokusů.** Kontaktuj moderátory na serveru pro manuální ověření.")
             # Log To Mod
-            if member.id in self.mod_messages:
+            try:
                 mod_ch = guild.get_channel(MOD_CHANNEL_ID)
-                if mod_ch:
-                    try:
-                        orig_msg = await mod_ch.fetch_message(self.mod_messages[member.id])
-                        await orig_msg.reply(f"⛔ **{member.display_name}** vyčerpal pokusy a byl zablokován.")
-                    except: pass
+                if mod_ch and st.get("mod_message_id"):
+                    msg = await mod_ch.fetch_message(st["mod_message_id"])
+                    new_content = msg.content + "\n\n⛔ **Uživatel vyčerpal pokusy a byl zablokován.**"
+                    await msg.edit(content=new_content)
+            except: pass
         else:
             left = self.settings["max_attempts"] - attempts
             await message.channel.send(f"❌ **Špatný kód.** Zbývá pokusů: {left}")
@@ -413,6 +464,16 @@ class VerificationCog(commands.Cog):
         self.settings["bypass_password_hash"] = hash_password(password)
         self.save_settings()
         await itx.response.send_message("✅ Heslo nastaveno.", ephemeral=True)
+
+    @verify_group.command(name="bypass", description="Manuálně schválí uživatele (Bypass).")
+    @app_commands.checks.has_permissions(ban_members=True)
+    async def verify_bypass(self, itx: Interaction, user: discord.Member):
+        await itx.response.defer()
+        success = await self.approve_user(user, approver=itx.user, bypass_used=True)
+        if success:
+            await itx.followup.send(f"✅ **{user.display_name}** byl manuálně schválen.")
+        else:
+            await itx.followup.send("❌ Nepodařilo se schválit uživatele (nelze najít roli nebo uživatel už je ověřen?).")
 
     @verify_group.command(name="ping", description="Pošle ti testovací DM s OTP.")
     async def verify_ping(self, itx: Interaction):
