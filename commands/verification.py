@@ -128,10 +128,8 @@ class VerificationModView(discord.ui.View):
             
         success = await cog.approve_user(member, approver=interaction.user)
         if success:
-            await interaction.followup.send(f"✅ **{member.display_name}** byl schválen moderátorem {interaction.user.mention}.")
+            # Message is updated in approve_user
             self.stop()
-            for child in self.children: child.disabled = True
-            await interaction.message.edit(view=self)
         else:
             await interaction.followup.send("❌ Chyba při schvalování (Role? Config?).", ephemeral=True)
 
@@ -288,9 +286,7 @@ class VerificationCog(commands.Cog):
                 intro_ch = "<#1191296600631431198>"
                 
                 welcome_msg = (
-                    f"Nový člen se k nám připojil! Všichni přivítejme {member.mention}! "
-                    f"Nezapomeň se podívat do {rules_ch} a {info_ch}. "
-                    f"Můžeš se představit v {intro_ch}."
+                    f"Nový člen se k nám připojil! Všichni přivítejme {member.mention}!"
                 )
                 try: await ch.send(welcome_msg)
                 except: pass
