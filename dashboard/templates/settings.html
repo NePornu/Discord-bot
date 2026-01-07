@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header">
+    <h1 class="title">Konfigurace</h1>
+    <p>Nastavení modulů bota. Změny se projeví po restartu.</p>
+</div>
+
+{% if message %}
+<div
+    style="background: rgba(35, 134, 54, 0.2); border: 1px solid var(--success); color: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+    {{ message }}
+</div>
+{% endif %}
+
+<div class="card">
+    <div style="margin-bottom: 20px;">
+        <h3>Emoji Challenge Config</h3>
+        <p style="opacity: 0.7; font-size: 0.9rem;">Editace `challenge_config.json` pro Guild ID: <b>{{ target_gid
+                }}</b></p>
+    </div>
+
+    <form method="post" action="/settings">
+        <!-- Guild ID (Hidden or Readonly if we want to force specific guild) -->
+        <div class="form-group">
+            <label>Guild ID</label>
+            <input type="text" name="guild_id" value="{{ current_cfg.guild_id or target_gid }}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Role ID (Reward)</label>
+            <input type="text" name="role_id" value="{{ current_cfg.role_id or '' }}" placeholder="123456789012345678">
+            <small>ID role, kterou uživatel dostane.</small>
+        </div>
+
+        <div class="form-group">
+            <label>Channel ID (Target)</label>
+            <input type="text" name="channel_id" value="{{ current_cfg.channel_id or '' }}"
+                placeholder="123456789012345678">
+            <small>ID kanálu, kde bot sleduje reakce.</small>
+        </div>
+
+        <div class="form-group">
+            <label>Emojis (Required)</label>
+            <input type="text" name="emojis" value="{{ current_cfg.emojis | join(' ') if current_cfg.emojis else '' }}"
+                placeholder="🍁 :fire: 🚀">
+            <small>Seznam emoji oddělených mezerou (Unicode nebo :shortcode:).</small>
+        </div>
+
+        <button type="submit" class="btn-save">Uložit Konfiguraci</button>
+    </form>
+</div>
+
+<!-- Debug View -->
+<div class="card" style="margin-top: 30px; opacity: 0.7;">
+    <h3>Raw Config (Debug)</h3>
+    <pre
+        style="background: #000; padding: 10px; border-radius: 6px; overflow-x: auto;">{{ config_json | tojson(indent=2) }}</pre>
+</div>
+
+<style>
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+    }
+
+    input[type="text"] {
+        width: 100%;
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--glass-border);
+        color: #fff;
+        border-radius: 6px;
+        font-size: 1rem;
+    }
+
+    input[type="text"]:focus {
+        outline: none;
+        border-color: var(--accent);
+    }
+
+    small {
+        display: block;
+        margin-top: 5px;
+        opacity: 0.6;
+        font-size: 0.85rem;
+    }
+
+    .btn-save {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        padding: 12px 24px;
+        font-size: 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .btn-save:hover {
+        background: var(--accent-hover);
+    }
+</style>
+{% endblock %}

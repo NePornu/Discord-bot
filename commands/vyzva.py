@@ -9,7 +9,7 @@ class VyzvaCog(commands.Cog):
     Cog pro univerzální vyhodnocení aktivity uživatelů v kanále podle různých kritérií.
     Umožňuje:
     - hodnotit podle počtu dní s aktivitou (originální režim)
-    - hodnotit podle celkového počtu zpráv s fotkou (fotosum)
+    - hodnotit podle počtu zpráv s fotkou (fotosum)
     - hodnotit podle týdenní aktivity (weekly) - každých X dní aspoň jedna zpráva
     - automaticky přidělovat role podle dosaženého výsledku
     """
@@ -99,8 +99,22 @@ class VyzvaCog(commands.Cog):
             
             odmeny = [o for o in odmeny if o != "-"]
 
+            # Určení počtu intervalů pro weekly mód a Safety Cutoff
+            now = datetime.now()
+            cutoff_date = None
+            
+            if mode == "weekly":
+                max_intervals = 12  # Kontrolujeme maximálně 12 intervalů zpětně
+                # Bezpečnostní limit: nepotřebujeme starší zprávy než max_intervals * interval
+                days_needed = (max_intervals + 2) * interval
+                cutoff_date = now - timedelta(days=days_needed)
+            else:
+                # Pro ostatní módy (days, fotosum) dáme hard limit 1 rok (safety break)
+                cutoff_date = now - timedelta(days=365)
+
             status_message = await ctx.send(
-                f"📊 Analyzuji zprávy v {channel.mention} (režim: {self._get_mode_description(mode, interval)})..."
+                f"📊 Analyzuji zprávy v {channel.mention} (režim: {self._get_mode_description(mode, interval)}).\n"
+                f"🕒 Limit historie: zprávy novější než {cutoff_date.strftime('%d.%m.%Y')}..."
             )
 
             # Sběr aktivity uživatelů podle módu
@@ -114,12 +128,10 @@ class VyzvaCog(commands.Cog):
                 await status_message.edit(content="❌ Neplatný mód! Použijte: days, fotosum nebo weekly")
                 return
 
-            # Určení počtu intervalů pro weekly mód
-            if mode == "weekly":
-                now = datetime.now()
-                max_intervals = 12  # Kontrolujeme maximálně 12 intervalů zpětně
-
-            async for message in channel.history(limit=None):
+            # after=cutoff_date zajistí, že nejdeme do pravěku (Discord API vrátí jen novější)
+            count_scanned = 0
+            async for message in channel.history(limit=None, after=cutoff_date):
+                count_scanned += 1
                 if message.author.bot:
                     continue
                     
@@ -151,7 +163,7 @@ class VyzvaCog(commands.Cog):
                 return
 
             results = []
-            activity_report = [f"📋 **Aktivita uživatelů** ({self._get_report_header(mode, interval)}):"]
+            activity_report = [f"📋 **Aktivita uživatelů** ({self._get_report_header(mode, interval)}) [Scanned: {count_scanned}]:"]
 
             for user_id, value in user_dict.items():
                 if mode == "weekly":

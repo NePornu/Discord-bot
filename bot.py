@@ -11,9 +11,10 @@ from datetime import datetime
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks # Added tasks
 import bot_token
 import config
+import redis.asyncio as redis # Early import for type hinting/usage
 
 # ---------- util ----------
 def ts() -> str:
@@ -94,6 +95,49 @@ async def load_commands():
 
     await send_console_log(f"Načítání cogů hotovo za {time.time()-start:.2f}s")
 
+# --- Background Task via tasks.loop ---
+@tasks.loop(seconds=10)
+async def member_stats_task():
+    """Periodically update the count of online members AND total members in Redis."""
+    # Use container hostname for Redis connection from bot
+    try:
+        r = redis.from_url("redis://redis-hll:6379/0", decode_responses=True)
+        # Debug print to stderr to bypass buffering
+        sys.stderr.write(f"{ts()} [DEBUG] MemberStatsTask: Checking {len(bot.guilds)} guilds (Ready: {bot.is_ready()})\n")
+        
+        for guild in bot.guilds:
+            # 1. Online Count (Status != offline)
+            online_count = sum(
+                1 for m in guild.members 
+                if m.status != discord.Status.offline
+            )
+            
+            # 2. Total Member Count
+            total_members = guild.member_count
+            
+            sys.stderr.write(f"{ts()} [DEBUG] Guild {guild.id}: {total_members} total, {online_count} online\n")
+            
+            # Write to Redis with short expiration
+            async with r.pipeline() as pipe:
+                await pipe.setex(f"presence:online:{guild.id}", 60, str(online_count))
+                await pipe.setex(f"presence:total:{guild.id}", 60, str(total_members))
+                
+                # Add to Live Log (User visible)
+                # log_entry = f"[{datetime.now().strftime('%H:%M:%S')}] 👥 STATUS: {online_count} online / {total_members} celkem"
+                # await pipe.rpush("dashboard:live_logs", log_entry)
+                # await pipe.ltrim("dashboard:live_logs", -50, -1) # Keep last 50
+                
+                await pipe.execute()
+        
+        await r.close()
+    except Exception as e:
+        print(f"Error in member_stats_task: {e}")
+
+@member_stats_task.before_loop
+async def before_member_stats_task():
+    # Don't restrict to wait_until_ready as it might hang on RESUME
+    pass
+
 @bot.event
 async def on_ready():
     await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
@@ -128,6 +172,11 @@ async def on_ready():
         await send_console_log(f"❌ Sync selhal: {e}")
 
     await send_console_log("✅ Start dokončen, bot připraven.")
+    
+    # Start background task if not running
+    if not member_stats_task.is_running():
+        member_stats_task.start()
+        print("✅ Background task: Member stats sync started")
 
 # ---- /sync (admin only) ----
 def _is_admin(itx: discord.Interaction) -> bool:
@@ -177,6 +226,12 @@ async def main():
         print(ts(), "[FATAL] Chybí validní bot token")
         return
     await send_console_log("Token OK, startuji…")
+    
+    # Start background task regardless of on_ready
+    if not member_stats_task.is_running():
+        member_stats_task.start()
+        print(ts(), "✅ Background task: Member stats sync started (from main)")
+    
     async with bot:
         await bot.start(token)
 
@@ -186,4 +241,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except Exception as e:
         print(ts(), f"[ERROR] Chyba při spuštění bota: {e}")
-

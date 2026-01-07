@@ -33,6 +33,12 @@ def day_key(dt: datetime) -> str: return dt.strftime("%Y%m%d")
 def K_DAU(gid: int, d: str) -> str: return f"hll:dau:{gid}:{d}"
 def K_LOGCHAN(gid: int) -> str: return f"hll:cfg:logchan:{gid}"
 
+# Dashboard stats keys
+def K_HOURLY(gid: int, d: str) -> str: return f"stats:hourly:{gid}:{d}"
+def K_MSGLEN(gid: int) -> str: return f"stats:msglen:{gid}"
+def K_HEATMAP(gid: int) -> str: return f"stats:heatmap:{gid}"
+def K_TOTAL_MSGS(gid: int) -> str: return f"stats:total_msgs:{gid}"
+
 # ----------------- Helpers -----------------
 class TTLSet:
     __slots__ = ("_exp",)
@@ -98,14 +104,92 @@ class ActivityHLLOptCog(commands.Cog):
         self.hh_chans: Dict[int, SpaceSaving]   = defaultdict(lambda: SpaceSaving(CONFIG["TOP_K"]))
 
         # stats/log
-        self.stats = Counter()
-        self._errors_recent: Dict[int, deque] = defaultdict(lambda: deque(maxlen=5))
+        self.stats = {"enqueued": 0, "written": 0, "drop_cooldown": 0, "drop_queue": 0}
+        self.last_flush = asyncio.get_event_loop().time()
+        self._incidents: Dict[int, deque] = defaultdict(lambda: deque(maxlen=5))
+        self._errors_recent: Dict[int, deque] = defaultdict(lambda: deque(maxlen=3))
 
         # tasks
         self.worker_task = self.bot.loop.create_task(self._worker())
         self.log_task.start()
         self.housekeep_local.start()
         self.roll_day_task.start()
+
+    async def _collect_dashboard_stats(self, m: discord.Message):
+        """Collect message statistics for dashboard visualization."""
+        try:
+            now = datetime.now(timezone.utc)
+            today = day_key(now)
+            hour = now.hour
+            weekday = now.weekday()  # 0=Monday, 6=Sunday
+            gid = m.guild.id
+            cid = m.channel.id
+            uid = m.author.id
+            msg_len = len(m.content)
+            
+            # Use pipeline for atomic Redis operations
+            pipe = self.r.pipeline()
+            
+            # 1. Hourly message count
+            pipe.hincrby(K_HOURLY(gid, today), hour, 1)
+            pipe.expire(K_HOURLY(gid, today), 60 * 86400)  # 60 days TTL
+            
+            # 2. Message length distribution (using sorted set)
+            # Bucket message lengths into ranges for histogram
+            if msg_len == 0:
+                bucket = 0
+            elif msg_len <= 10:
+                bucket = 5  # represents 0-10 range
+            elif msg_len <= 50:
+                bucket = 30  # represents 11-50 range
+            elif msg_len <= 100:
+                bucket = 75  # represents 51-100 range
+            elif msg_len <= 200:
+                bucket = 150  # represents 101-200 range
+            else:
+                bucket = 250  # represents 200+ range
+            
+            pipe.zincrby(K_MSGLEN(gid), 1, bucket)
+            
+            # 3. Heatmap (weekday_hour format, e.g., "0_14" = Monday 2pm)
+            heatmap_key = f"{weekday}_{hour}"
+            pipe.hincrby(K_HEATMAP(gid), heatmap_key, 1)
+            pipe.expire(K_HEATMAP(gid), 60 * 86400)  # 60 days TTL
+            
+            # 4. Cumulative total messages
+            pipe.incr(K_TOTAL_MSGS(gid))
+            
+            # 5. NEW: Per-channel statistics
+            # Track daily messages per channel
+            channel_key = f"stats:channel:{gid}:{cid}:{today}"
+            pipe.incr(channel_key)
+            pipe.expire(channel_key, 60 * 86400)
+            
+            # Track total messages per channel (all-time)
+            channel_total_key = f"stats:channel_total:{gid}"
+            pipe.zincrby(channel_total_key, 1, f"{cid}")
+            
+            # 6. NEW: User leaderboards
+            # Total messages per user (for leaderboard)
+            leaderboard_key = f"leaderboard:messages:{gid}"
+            pipe.zincrby(leaderboard_key, 1, f"{uid}")
+            
+            # Average message length per user (for quality score)
+            user_len_key = f"leaderboard:msg_lengths:{gid}:{uid}"
+            pipe.lpush(user_len_key, msg_len)
+            pipe.ltrim(user_len_key, 0, 99)  # Keep last 100 messages
+            pipe.expire(user_len_key, 30 * 86400)
+            
+            # 7. NEW: Channel activity by hour (for channel peak analysis)
+            channel_hourly_key = f"stats:channel_hourly:{gid}:{cid}"
+            pipe.hincrby(channel_hourly_key, hour, 1)
+            pipe.expire(channel_hourly_key, 60 * 86400)
+            
+            # Execute pipeline
+            await pipe.execute()
+        except Exception as e:
+            # Don't let stats collection errors crash the bot
+            print(f"Dashboard stats collection error: {e}")
 
     # --------------- Lifecycle ---------------
     def cog_unload(self):
@@ -167,8 +251,11 @@ class ActivityHLLOptCog(commands.Cog):
             self._roll_day_reset()
         self.hh_users[m.guild.id].update(m.author.id, 1)
         self.hh_chans[m.guild.id].update(m.channel.id, 1)
+        
+        # Dashboard stats collection
+        await self._collect_dashboard_stats(m)
 
-    @commands.Cog.listener())
+    @commands.Cog.listener()
     async def on_interaction(self, inter: discord.Interaction):
         if inter.user and inter.guild:
             await self._enqueue(inter.guild.id, inter.user.id)

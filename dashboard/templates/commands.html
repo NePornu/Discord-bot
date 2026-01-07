@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header">
+    <h1 class="title">Přehled Příkazů</h1>
+    <p>Seznam všech dostupných příkazů pro uživatele a moderátory.</p>
+</div>
+
+<div class="card">
+    <div class="cmd-item">
+        <div class="cmd-name">/vyzva vyhodnotit</div>
+        <div class="cmd-desc">
+            Komplexní vyhodnocení aktivity v kanále.
+            <br><code>mode: days|fotosum|weekly</code>
+            <br><code>filtr: slovo|photo</code>
+        </div>
+    </div>
+
+    <div class="cmd-item">
+        <div class="cmd-name">/report preview</div>
+        <div class="cmd-desc">Zobrazí náhled měsíčního reportu (statistiky) jen pro tebe (Private).</div>
+    </div>
+    <div class="cmd-item">
+        <div class="cmd-name">/report send</div>
+        <div class="cmd-desc">Odešle měsíční report do nastaveného kanálu (Public).</div>
+    </div>
+
+    <div class="cmd-item">
+        <div class="cmd-name">/challenge setup</div>
+        <div class="cmd-desc">Nastaví emoji-roli výzvu (kanál, role, emoji kombinace).</div>
+    </div>
+    <div class="cmd-item">
+        <div class="cmd-name">/challenge show</div>
+        <div class="cmd-desc">Zobrazí aktuální konfiguraci emoji výzvy.</div>
+    </div>
+    <div class="cmd-item">
+        <div class="cmd-name">/challenge messages</div>
+        <div class="cmd-desc">Správa textů, které bot píše uživatelům po splnění výzvy.</div>
+    </div>
+
+    <div class="cmd-item">
+        <div class="cmd-name">/notify</div>
+        <div class="cmd-desc">Hromadná zpráva (DM) všem nebo roli s bezpečným časovým rozestupem.</div>
+    </div>
+
+    <div class="cmd-item">
+        <div class="cmd-name">/verification bypass</div>
+        <div class="cmd-desc">Ručně schválí uživatele (obejde vstupní test).</div>
+    </div>
+
+    <div class="cmd-item">
+        <div class="cmd-name">/calendar list</div>
+        <div class="cmd-desc">Vypíše seznam naplánovaných eventů z Google Kalendáře.</div>
+    </div>
+
+    <div class="cmd-item">
+        <div class="cmd-name">/ping</div>
+        <div class="cmd-desc">Zobrazí odezvu bota a náhodný citát se zvířátky.</div>
+    </div>
+
+    <div class="cmd-item">
+        <div class="cmd-name">/help</div>
+        <div class="cmd-desc">Zobrazí základní nápovědu.</div>
+    </div>
+</div>
+{% endblock %}

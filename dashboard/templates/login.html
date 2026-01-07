@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: center; min-height: 80vh;">
+    <div class="card" style="max-width: 500px; width: 100%;">
+        <div style="text-align: center; margin-bottom: 32px;">
+            <h1 class="title" style="font-size: 2rem;">📧 Email Login</h1>
+            <p style="color: var(--text-secondary);">Enter your NePornu email</p>
+        </div>
+
+        {% if error %}
+        <div style="
+            padding: 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            margin-bottom: 24px;
+            color: var(--danger);
+            text-align: center;
+        ">
+            ❌ {{ error }}
+        </div>
+        {% endif %}
+
+        {% if success %}
+        <div style="
+            padding: 16px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            margin-bottom: 24px;
+            color: var(--success);
+            text-align: center;
+        ">
+            ✅ {{ success }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/request-otp">
+            <div style="margin-bottom: 24px;">
+                <label style="
+                    display: block;
+                    margin-bottom: 8px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                ">Email Address</label>
+                <input type="email" name="email" placeholder="your-name@nepornu.cz" required autofocus style="
+                        width: 100%;
+                        padding: 14px 16px;
+                        background: var(--glass-bg);
+                        border: 1px solid var(--glass-border);
+                        border-radius: 10px;
+                        color: var(--text-primary);
+                        font-size: 1rem;
+                        transition: all 0.2s ease;
+                    "
+                    onfocus="this.style.borderColor='var(--accent)'; this.style.boxShadow='0 0 0 3px rgba(139,92,246,0.1)'"
+                    onblur="this.style.borderColor='var(--glass-border)'; this.style.boxShadow='none'" />
+                <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 8px;">
+                    Only @nepornu.cz emails are allowed
+                </p>
+            </div>
+
+            <button type="submit" style="
+                width: 100%;
+                padding: 14px;
+                background: var(--primary-gradient);
+                border: none;
+                border-radius: 10px;
+                color: white;
+                font-weight: 600;
+                font-size: 1rem;
+                cursor: pointer;
+                transition: all 0.3s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(139,92,246,0.4)'"
+                onmouseout="this.style.transform='none'; this.style.boxShadow='none'">
+                📨 Send Login Code
+            </button>
+        </form>
+
+        <div style="
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--glass-border);
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        ">
+            <p>🔒 Secured with email verification</p>
+            <p style="margin-top: 8px;">You'll receive a 6-digit code</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

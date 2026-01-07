@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Top Bar -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
+    <div>
+        <h1 class="title">Dashboard Overview</h1>
+        <p style="color: var(--text-secondary);">Real-time Discord server analytics</p>
+    </div>
+    <div class="live-indicator">
+        <span class="live-dot"></span>
+        <span>LIVE</span>
+    </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="grid">
+    <div class="card stat-card">
+        <div class="stat-label">Online Now</div>
+        <div class="stat-value" id="stat-online">{{ realtime_active }}</div>
+        <div class="stat-diff diff-positive">Real-time</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Total Members</div>
+        <div class="stat-value" id="stat-members">{{ total_members }}</div>
+        <div class="stat-diff diff-neutral">Server size</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Average DAU</div>
+        <div class="stat-value" id="stat-dau">{{ avg_dau }}</div>
+        <div class="stat-diff diff-neutral">Daily active</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Churn Rate</div>
+        <div class="stat-value" id="stat-churn">{{ churn_rate }}%</div>
+        <div class="stat-diff diff-negative">Attrition</div>
+    </div>
+</div>
+
+<!-- Main Charts Grid -->
+<div class="grid" style="grid-template-columns: 1fr 1fr; margin-top: 32px;">
+    <!-- DAU Chart -->
+    <div class="card">
+        <h3 style="margin-bottom: 16px;">📈 Daily Active Users</h3>
+        <div class="chart-container">
+            <canvas id="dauChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Monthly Growth -->
+    <div class="card">
+        <h3 style="margin-bottom: 16px;">👥 Member Growth</h3>
+        <div class="chart-container">
+            <canvas id="growthChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Hourly Activity -->
+    <div class="card">
+        <h3 style="margin-bottom: 16px;">⏰ Hourly Activity</h3>
+        <div class="chart-container">
+            <canvas id="hourlyChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Stickiness -->
+    <div class="card">
+        <h3 style="margin-bottom: 16px;">🎯 Engagement Ratio</h3>
+        <div class="chart-container">
+            <canvas id="stickinessChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Heatmap -->
+<div class="card" style="margin-top: 32px;">
+    <h3 style="margin-bottom: 20px;">🔥 Activity Heatmap</h3>
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+            <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <th style="padding: 12px; text-align: left;"></th>
+                    {% for h in range(24) %}
+                    <th style="padding: 8px; color: var(--text-secondary); font-weight: 600;">{{ h }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% set days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] %}
+                {% for row in heatmap_data %}
+                {% set day_idx = loop.index0 %}
+                <tr>
+                    <td style="font-weight: 700; padding: 8px; color: var(--text-primary);">{{ days[day_idx] }}</td>
+                    {% for val in row %}
+                    {% set max_val = heatmap_max if heatmap_max > 0 else 1 %}
+                    {% set alpha = (val / max_val) %}
+                    <td style="padding: 4px;">
+                        <div style="
+                            background: linear-gradient(135deg, rgba(139,92,246,{{ alpha }}) 0%, rgba(236,72,153,{{ alpha * 0.8 }}) 100%);
+                            height: 32px;
+                            width: 32px;
+                            border-radius: 6px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 0.75rem;
+                            font-weight: 600;
+                            transition: all 0.2s ease;
+                        " title="{{ days[day_idx] }} {{ loop.index0 }}:00 - {{ val }} messages">
+                            {% if val > 0 %}<span style="color: white;">{{ val }}</span>{% endif %}
+                        </div>
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script src="/static/js/charts.js"></script>
+<script>
+    // Chart data from backend
+    const chartData = {
+        dau: {
+            labels: {{ dau_labels | tojson }},
+    data: { { dau_data | tojson } }
+    },
+    growth: {
+        labels: { { labels | tojson } },
+        joins: { { joins_data | tojson } },
+        leaves: { { leaves_data | tojson } }
+    },
+    hourly: {
+        labels: { { hourly_labels | tojson } },
+        data: { { hourly_activity | tojson } }
+    },
+    stickiness: {
+        labels: { { retention_labels | tojson } },
+        dauMau: { { dau_mau_ratio | tojson } },
+        dauWau: { { dau_wau_ratio | tojson } }
+    }
+};
+
+    // Create charts
+    document.addEventListener('DOMContentLoaded', function () {
+        // DAU Chart
+        ChartUtils.createLineChart(
+            'dauChart',
+            chartData.dau.labels,
+            chartData.dau.data,
+            'Daily Active Users',
+            '#8b5cf6',
+            '#ec4899'
+        );
+
+        // Growth Chart (Stacked Bar)
+        const growthCtx = document.getElementById('growthChart').getContext('2d');
+        new Chart(growthCtx, {
+            type: 'bar',
+            data: {
+                labels: chartData.growth.labels,
+                datasets: [
+                    {
+                        label: 'Joins',
+                        data: chartData.growth.joins,
+                        backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                        borderRadius: 8
+                    },
+                    {
+                        label: 'Leaves',
+                        data: chartData.growth.leaves,
+                        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                        borderRadius: 8
+                    }
+                ]
+            },
+            options: {
+                ...ChartUtils.premiumChartOptions,
+                scales: {
+                    ...ChartUtils.premiumChartOptions.scales,
+                    x: { ...ChartUtils.premiumChartOptions.scales.x, stacked: true },
+                    y: { ...ChartUtils.premiumChartOptions.scales.y, stacked: true }
+                }
+            }
+        });
+
+        // Hourly Activity
+        ChartUtils.createBarChart(
+            'hourlyChart',
+            chartData.hourly.labels,
+            chartData.hourly.data,
+            'Messages per Hour',
+            '#f59e0b',
+            '#fbbf24'
+        );
+
+        // Stickiness (Multi-line)
+        ChartUtils.createMultiChart(
+            'stickinessChart',
+            chartData.stickiness.labels,
+            [
+                { label: 'DAU/MAU %', data: chartData.stickiness.dauMau },
+                { label: 'DAU/WAU %', data: chartData.stickiness.dauWau }
+            ]
+        );
+
+        // Animate stat counters
+        const stats = [
+            { id: 'stat-online', value: {{ realtime_active }} },
+        { id: 'stat-members', value: {{ total_members }} },
+        { id: 'stat-dau', value: {{ avg_dau }} }
+    ];
+
+    stats.forEach(stat => {
+        const el = document.getElementById(stat.id);
+        ChartUtils.animateValue(el, 0, stat.value, 1500);
+    });
+});
+</script>
+
+<!-- Auto-refresh live stats -->
+<script>
+    setInterval(async () => {
+        try {
+            const response = await fetch('/api/comparisons');
+            const data = await response.json();
+            // Could update live stats here
+        } catch (e) {
+            console.error('Failed to refresh stats:', e);
+        }
+    }, 30000); // Every 30 seconds
+</script>
+{% endblock %}

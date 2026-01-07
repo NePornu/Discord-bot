@@ -7,7 +7,7 @@ import json
 import random
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Dict, Optional
 
 import discord
 from discord import app_commands
@@ -91,31 +91,6 @@ class ChallengeConfig:
         )
 
 
-def _load_db() -> dict:
-    if not CONFIG_PATH.exists():
-        return {}
-    try:
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def _save_db(db: dict) -> None:
-    CONFIG_PATH.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _save_config(cfg: ChallengeConfig) -> None:
-    db = _load_db()
-    db[str(cfg.guild_id)] = cfg.to_json()
-    _save_db(db)
-
-
-def _load_config(guild_id: int) -> ChallengeConfig | None:
-    db = _load_db()
-    rec = db.get(str(guild_id))
-    return ChallengeConfig.from_json(rec) if rec else None
-
-
 def _parse_channel_any(s: str | discord.abc.GuildChannel | None, guild: discord.Guild) -> discord.TextChannel | None:
     """Podpora: <#123>, číslo, název, nebo rovnou objekt."""
     if s is None:
@@ -193,6 +168,44 @@ class ChallengeCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.cache: Dict[int, ChallengeConfig] = {}
+        self._load_cache()
+
+    def _load_cache(self):
+        """Načte celou konfiguraci do paměti při startu."""
+        if not CONFIG_PATH.exists():
+            return
+        try:
+            raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            for gid_str, data in raw.items():
+                self.cache[int(gid_str)] = ChallengeConfig.from_json(data)
+            print(f"📦 Challenge config loaded ({len(self.cache)} guilds).")
+        except Exception as e:
+            print(f"❌ Error loading challenge_config.json: {e}")
+
+    def _save_cache(self):
+        """Uloží aktuální stav paměti na disk."""
+        data = {str(gid): cfg.to_json() for gid, cfg in self.cache.items()}
+        try:
+            CONFIG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            print(f"❌ Error saving challenge_config.json: {e}")
+
+    def get_config(self, guild_id: int) -> ChallengeConfig | None:
+        """Vrátí config z cache (velmi rychlé)."""
+        return self.cache.get(guild_id)
+
+    def set_config(self, guild_id: int, cfg: ChallengeConfig):
+        """Uloží config do cache i na disk."""
+        self.cache[guild_id] = cfg
+        self._save_cache()
+    
+    def delete_config(self, guild_id: int):
+        if guild_id in self.cache:
+            del self.cache[guild_id]
+            self._save_cache()
+            return True
+        return False
 
     # ------------ Slash /challenge ------------
 
@@ -225,11 +238,11 @@ class ChallengeCog(commands.Cog):
             await itx.followup.send("❌ Zadej alespoň jedno emoji.", ephemeral=True)
             return
 
-        cfg = _load_config(itx.guild_id) or ChallengeConfig(guild_id=itx.guild_id)
+        cfg = self.get_config(itx.guild_id) or ChallengeConfig(guild_id=itx.guild_id)
         cfg.role_id = role.id
         cfg.channel_id = ch.id
         cfg.emojis = em_list
-        _save_config(cfg)
+        self.set_config(itx.guild_id, cfg)
 
         await itx.followup.send(
             f"✅ Uloženo.\n• Role: {role.mention}\n• Kanál: {ch.mention}\n• Emojis: {' '.join(em_list)}",
@@ -238,7 +251,7 @@ class ChallengeCog(commands.Cog):
 
     @challenge.command(name="show", description="Zobrazí aktuální konfiguraci.")
     async def slash_show(self, itx: discord.Interaction):
-        cfg = _load_config(itx.guild_id)
+        cfg = self.get_config(itx.guild_id)
         if not cfg or not cfg.role_id or not cfg.channel_id or not cfg.emojis:
             await itx.response.send_message("ℹ️ Konfigurace zatím není nastavená.", ephemeral=True)
             return
@@ -255,14 +268,14 @@ class ChallengeCog(commands.Cog):
     @app_commands.describe(action="add|list|clear", text="Text nové zprávy (pro 'add').")
     async def slash_messages(self, itx: discord.Interaction, action: str, text: str | None = None):
         action = action.lower().strip()
-        cfg = _load_config(itx.guild_id) or ChallengeConfig(guild_id=itx.guild_id)
+        cfg = self.get_config(itx.guild_id) or ChallengeConfig(guild_id=itx.guild_id)
 
         if action == "add":
             if not text:
                 await itx.response.send_message("❌ Zadej text zprávy.", ephemeral=True)
                 return
             cfg.success_messages.append(text)
-            _save_config(cfg)
+            self.set_config(itx.guild_id, cfg)
             await itx.response.send_message(f"✅ Přidána zpráva.\nCelkem: {len(cfg.success_messages)}", ephemeral=True)
             return
 
@@ -276,7 +289,7 @@ class ChallengeCog(commands.Cog):
 
         if action == "clear":
             cfg.success_messages.clear()
-            _save_config(cfg)
+            self.set_config(itx.guild_id, cfg)
             await itx.response.send_message("🗑️ Zprávy smazány.", ephemeral=True)
             return
 
@@ -295,14 +308,14 @@ class ChallengeCog(commands.Cog):
         reply_on_success: bool | None = None,
         require_all: bool | None = None,
     ):
-        cfg = _load_config(itx.guild_id) or ChallengeConfig(guild_id=itx.guild_id)
+        cfg = self.get_config(itx.guild_id) or ChallengeConfig(guild_id=itx.guild_id)
         if react_ok is not None:
             cfg.react_ok = react_ok
         if reply_on_success is not None:
             cfg.reply_on_success = reply_on_success
         if require_all is not None:
             cfg.require_all = require_all
-        _save_config(cfg)
+        self.set_config(itx.guild_id, cfg)
 
         await itx.response.send_message(
             "✅ Uloženo.\n"
@@ -314,10 +327,7 @@ class ChallengeCog(commands.Cog):
 
     @challenge.command(name="clear", description="Smaže konfiguraci pro tuto guildu.")
     async def slash_clear(self, itx: discord.Interaction):
-        db = _load_db()
-        if str(itx.guild_id) in db:
-            del db[str(itx.guild_id)]
-            _save_db(db)
+        if self.delete_config(itx.guild_id):
             await itx.response.send_message("🗑️ Konfigurace smazána.", ephemeral=True)
         else:
             await itx.response.send_message("ℹ️ Nebyla nalezena žádná konfigurace.", ephemeral=True)
@@ -343,7 +353,7 @@ class ChallengeCog(commands.Cog):
         sub = parts[0].lower()
 
         if sub == "show":
-            cfg = _load_config(ctx.guild.id)
+            cfg = self.get_config(ctx.guild.id)
             if not cfg or not cfg.role_id or not cfg.channel_id or not cfg.emojis:
                 await ctx.reply("ℹ️ Konfigurace zatím není nastavená.", mention_author=False)
                 return
@@ -358,10 +368,7 @@ class ChallengeCog(commands.Cog):
             return
 
         if sub == "clear":
-            db = _load_db()
-            if str(ctx.guild.id) in db:
-                del db[str(ctx.guild.id)]
-                _save_db(db)
+            if self.delete_config(ctx.guild.id):
                 await ctx.reply("🗑️ Konfigurace smazána.", mention_author=False)
             else:
                 await ctx.reply("ℹ️ Nebyla nalezena žádná konfigurace.", mention_author=False)
@@ -372,7 +379,7 @@ class ChallengeCog(commands.Cog):
                 await ctx.reply("Použij: *challenge messages add|list|clear …", mention_author=False)
                 return
             action = parts[1].lower()
-            cfg = _load_config(ctx.guild.id) or ChallengeConfig(guild_id=ctx.guild.id)
+            cfg = self.get_config(ctx.guild.id) or ChallengeConfig(guild_id=ctx.guild.id)
             if action == "add":
                 m = re.search(r'text:"([^"]+)"|text:\'([^\']+)\'|text:(.+)$', args, flags=re.I)
                 if not m:
@@ -380,7 +387,7 @@ class ChallengeCog(commands.Cog):
                     return
                 text = next(g for g in m.groups() if g)
                 cfg.success_messages.append(text)
-                _save_config(cfg)
+                self.set_config(ctx.guild.id, cfg)
                 await ctx.reply(f"✅ Přidáno. Celkem: {len(cfg.success_messages)}", mention_author=False)
             elif action == "list":
                 if not cfg.success_messages:
@@ -390,7 +397,7 @@ class ChallengeCog(commands.Cog):
                     await ctx.reply(bullet, mention_author=False)
             elif action == "clear":
                 cfg.success_messages.clear()
-                _save_config(cfg)
+                self.set_config(ctx.guild.id, cfg)
                 await ctx.reply("🗑️ Zprávy smazány.", mention_author=False)
             else:
                 await ctx.reply("Použij add|list|clear.", mention_author=False)
@@ -438,11 +445,11 @@ class ChallengeCog(commands.Cog):
             await ctx.reply("❌ Zadej alespoň jedno emoji.", mention_author=False)
             return
 
-        cfg = _load_config(ctx.guild.id) or ChallengeConfig(guild_id=ctx.guild.id)
+        cfg = self.get_config(ctx.guild.id) or ChallengeConfig(guild_id=ctx.guild.id)
         cfg.role_id = role_obj.id
         cfg.channel_id = ch_obj.id
         cfg.emojis = em_list
-        _save_config(cfg)
+        self.set_config(ctx.guild.id, cfg)
 
         await ctx.reply(
             f"✅ Uloženo.\n• Role: {role_obj.mention}\n• Kanál: {ch_obj.mention}\n• Emojis: {' '.join(em_list)}",
@@ -457,7 +464,8 @@ class ChallengeCog(commands.Cog):
         if message.author.bot or not message.guild or not message.content:
             return
 
-        cfg = _load_config(message.guild.id)
+        # Zde je optimalizace: čteme z RAM (self.get_config), ne z disku!
+        cfg = self.get_config(message.guild.id)
         if not cfg or not cfg.role_id or not cfg.channel_id or not cfg.emojis:
             return
         if message.channel.id != cfg.channel_id:
@@ -493,7 +501,7 @@ class ChallengeCog(commands.Cog):
                     pass
             return
 
-        # nesplněno – ignorujeme zprávy bez kombinace (žádná reakce ani odpověď)
+        # nesplněno – ignorujeme zprávy bez kombinace
 
     # ---------- úklid při unloadu ----------
     def cog_unload(self):
@@ -518,6 +526,7 @@ async def setup(bot: commands.Bot):
     if guild_id:
         guild_obj = discord.Object(id=int(guild_id))
         try:
+            # Force sync pro main guild (rychlejší vývoj)
             bot.tree.add_command(cog.challenge, guild=guild_obj)
         except app_commands.CommandAlreadyRegistered:
             pass

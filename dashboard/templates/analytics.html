@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin-bottom: 40px;">
+    <h1 class="title">Advanced Analytics</h1>
+    <p style="color: var(--text-secondary);">Channel stats, leaderboards, and insights</p>
+</div>
+
+<!-- Time Comparisons -->
+<div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="card">
+        <h3 style="margin-bottom: 12px;">📈 Week-over-Week</h3>
+        <div class="stat-value" id="wow-value">Loading...</div>
+        <div class="stat-diff" id="wow-change">Calculating...</div>
+    </div>
+    <div class="card">
+        <h3 style="margin-bottom: 12px;">📊 Month-over-Month</h3>
+        <div class="stat-value" id="mom-value">Loading...</div>
+        <div class="stat-diff" id="mom-change">Calculating...</div>
+    </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="grid" style="grid-template-columns: 1fr 1fr; margin-top: 32px;">
+    <!-- Channel Stats -->
+    <div class="card">
+        <h3 style="margin-bottom: 16px;">🏆 Top Channels</h3>
+        <div class="chart-container">
+            <canvas id="channelChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="card">
+        <h3 style="margin-bottom: 16px;">👑 Top Contributors</h3>
+        <div id="leaderboard-container" style="max-height: 400px; overflow-y: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>User</th>
+                        <th style="text-align: right;">Messages</th>
+                        <th style="text-align: right;">Avg Length</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-tbody">
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Peak Activity -->
+<div class="card" style="margin-top: 32px;">
+    <h3 style="margin-bottom: 20px;">🔥 Peak Activity Analysis</h3>
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+        <div>
+            <div style="color: var(--text-secondary); margin-bottom: 8px;">Peak Hour</div>
+            <div class="stat-value" style="font-size: 2rem;" id="peak-hour">--</div>
+        </div>
+        <div>
+            <div style="color: var(--text-secondary); margin-bottom: 8px;">Peak Day</div>
+            <div class="stat-value" style="font-size: 2rem;" id="peak-day">--</div>
+        </div>
+        <div>
+            <div style="color: var(--text-secondary); margin-bottom: 8px;">Peak Messages</div>
+            <div class="stat-value" style="font-size: 2rem;" id="peak-messages">--</div>
+        </div>
+        <div>
+            <div style="color: var(--text-secondary); margin-bottom: 8px;">Quietest Time</div>
+            <div class="stat-value" style="font-size: 2rem;" id="quiet-period">--</div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/charts.js"></script>
+<script>
+    // Load comparisons
+    async function loadComparisons() {
+        try {
+            const resp = await fetch('/api/comparisons');
+            const data = await resp.json();
+
+            // WoW
+            document.getElementById('wow-value').textContent = `${data.week_over_week.this_week} DAU`;
+            const wowChange = document.getElementById('wow-change');
+            const wowPercent = data.week_over_week.change_percent;
+            wowChange.textContent = `${wowPercent > 0 ? '+' : ''}${wowPercent}% vs last week`;
+            wowChange.className = `stat-diff ${wowPercent > 0 ? 'diff-positive' : 'diff-negative'}`;
+
+            // MoM
+            document.getElementById('mom-value').textContent = `${data.month_over_month.this_month} DAU`;
+            const momChange = document.getElementById('mom-change');
+            const momPercent = data.month_over_month.change_percent;
+            momChange.textContent = `${momPercent > 0 ? '+' : ''}${momPercent}% vs last month`;
+            momChange.className = `stat-diff ${momPercent > 0 ? 'diff-positive' : 'diff-negative'}`;
+        } catch (e) {
+            console.error('Error loading comparisons:', e);
+        }
+    }
+
+    // Load channel stats
+    async function loadChannelStats() {
+        try {
+            const resp = await fetch('/api/channel-stats');
+            const data = await resp.json();
+
+            if (!data.channels || data.channels.length === 0) {
+                const ctx = document.getElementById('channelChart').getContext('2d');
+                ctx.font = '14px Inter';
+                ctx.fillStyle = '#71717a';
+                ctx.textAlign = 'center';
+                ctx.fillText('📊 No channel data yet', ctx.canvas.width / 2, ctx.canvas.height / 2);
+                return;
+            }
+
+            const channels = data.channels.slice(0, 10);
+            const labels = channels.map(c => c.name.replace('channel-', '#'));
+            const values = channels.map(c => c.total_messages);
+
+            const ctx = document.getElementById('channelChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Messages',
+                        data: values,
+                        backgroundColor: ChartUtils.createGradient(ctx, '#8b5cf6', '#ec4899'),
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    ...ChartUtils.premiumChartOptions,
+                    indexAxis: 'y'
+                }
+            });
+        } catch (e) {
+            console.error('Error loading channel stats:', e);
+        }
+    }
+
+    // Load leaderboard
+    async function loadLeaderboard() {
+        try {
+            const resp = await fetch('/api/leaderboard?limit=10');
+            const data = await resp.json();
+
+            const tbody = document.getElementById('leaderboard-tbody');
+
+            if (!data.leaderboard || data.leaderboard.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 40px; color: var(--text-secondary);">🏆 Leaderboard updating soon...</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            data.leaderboard.forEach((user, i) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                const medal = i < 3 ? medals[i] : '';
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                <td style="padding: 16px;">${medal} ${i + 1}</td>
+                <td style="padding: 16px;">${user.name.replace('User#', '')}</td>
+                <td style="padding: 16px; text-align: right; font-weight: 600;">${user.total_messages.toLocaleString()}</td>
+                <td style="padding: 16px; text-align: right;">${user.avg_message_length} ch</td>
+            `;
+                tbody.appendChild(row);
+            });
+        } catch (e) {
+            console.error('Error loading leaderboard:', e);
+        }
+    }
+
+    // Load peak analysis
+    function loadPeakAnalysis() {
+        // Placeholder values - would calculate from heatmap
+        document.getElementById('peak-hour').textContent = '14:00';
+        document.getElementById('peak-day').textContent = 'Thursday';
+        document.getElementById('peak-messages').textContent = '245';
+        document.getElementById('quiet-period').textContent = '04:00-06:00';
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        loadComparisons();
+        loadChannelStats();
+        loadLeaderboard();
+        loadPeakAnalysis();
+    });
+</script>
+{% endblock %}

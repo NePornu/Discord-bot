@@ -1,0 +1,218 @@
+# Email OTP Utilities for Dashboard Authentication
+
+import re
+import secrets
+import string
+from datetime import datetime, timedelta
+from typing import Tuple  # For Python 3.7 compatibility
+import redis.asyncio as redis
+import aiosmtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# Import config
+import sys
+sys.path.append('/root/discord-bot')
+try:
+    from dashboard_secrets import (
+        SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM,
+        ALLOWED_EMAIL_DOMAIN, OTP_LENGTH, OTP_EXPIRY_SECONDS,
+        OTP_MAX_ATTEMPTS, OTP_RATE_LIMIT
+    )
+except ImportError:
+    # Fallback defaults
+    SMTP_HOST = "smtp.gmail.com"
+    SMTP_PORT = 587
+    SMTP_USER = ""
+    SMTP_PASSWORD = ""
+    SMTP_FROM = "Dashboard <noreply@nepornu.cz>"
+    ALLOWED_EMAIL_DOMAIN = "@nepornu.cz"
+    OTP_LENGTH = 6
+    OTP_EXPIRY_SECONDS = 300
+    OTP_MAX_ATTEMPTS = 5
+    OTP_RATE_LIMIT = 3
+
+# Redis connection
+REDIS_URL = "redis://172.22.0.2:6379/0"
+
+def validate_email(email: str) -> Tuple[bool, str]:
+    """Validate email format and domain."""
+    # Basic email regex
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    
+    if not re.match(email_pattern, email):
+        return False, "Invalid email format"
+    
+    # Check domain
+    if not email.lower().endswith(ALLOWED_EMAIL_DOMAIN.lower()):
+        return False, f"Only {ALLOWED_EMAIL_DOMAIN} emails are allowed"
+    
+    return True, "Valid"
+
+def generate_otp() -> str:
+    """Generate random OTP code."""
+    digits = string.digits
+    return ''.join(secrets.choice(digits) for _ in range(OTP_LENGTH))
+
+async def store_otp(email: str, otp: str) -> bool:
+    """Store OTP in Redis with expiry."""
+    try:
+        r = redis.from_url(REDIS_URL, decode_responses=True)
+        # Store OTP
+        await r.setex(f"otp:{email}", OTP_EXPIRY_SECONDS, otp)
+        # Store attempt counter
+        await r.setex(f"otp_attempts:{email}", OTP_EXPIRY_SECONDS, "0")
+        await r.aclose()
+        return True
+    except Exception as e:
+        print(f"Error storing OTP: {e}")
+        return False
+
+async def verify_otp(email: str, otp: str) -> Tuple[bool, str]:
+    """Verify OTP against stored value."""
+    try:
+        r = redis.from_url(REDIS_URL, decode_responses=True)
+        
+        # Get stored OTP
+        stored_otp = await r.get(f"otp:{email}")
+        if not stored_otp:
+            await r.aclose()
+            return False, "OTP expired or not found"
+        
+        # Check attempts
+        attempts = int(await r.get(f"otp_attempts:{email}") or "0")
+        if attempts >= OTP_MAX_ATTEMPTS:
+            await r.delete(f"otp:{email}")
+            await r.delete(f"otp_attempts:{email}")
+            await r.aclose()
+            return False, "Too many failed attempts"
+        
+        # Verify OTP
+        if stored_otp == otp:
+            # Success - delete OTP
+            await r.delete(f"otp:{email}")
+            await r.delete(f"otp_attempts:{email}")
+            await r.aclose()
+            return True, "Valid"
+        else:
+            # Failed - increment attempts
+            await r.incr(f"otp_attempts:{email}")
+            await r.aclose()
+            return False, f"Invalid OTP ({OTP_MAX_ATTEMPTS - attempts - 1} attempts remaining)"
+    
+    except Exception as e:
+        print(f"Error verifying OTP: {e}")
+        return False, "Verification error"
+
+async def check_rate_limit(email: str) -> Tuple[bool, int]:
+    """Check if email has exceeded rate limit. Returns (allowed, remaining_seconds)."""
+    try:
+        r = redis.from_url(REDIS_URL, decode_responses=True)
+        
+        rate_key = f"otp_rate:{email}"
+        count = await r.get(rate_key)
+        
+        if count and int(count) >= OTP_RATE_LIMIT:
+            ttl = await r.ttl(rate_key)
+            await r.aclose()
+            return False, ttl
+        
+        # Increment counter
+        if count:
+            await r.incr(rate_key)
+        else:
+            await r.setex(rate_key, 600, "1")  # 10 minutes
+        
+        await r.aclose()
+        return True, 0
+    except Exception as e:
+        print(f"Error checking rate limit: {e}")
+        return True, 0  # Allow on error
+
+async def send_otp_email(email: str, otp: str) -> bool:
+    """Send OTP via email."""
+    try:
+        # Create message
+        message = MIMEMultipart("alternative")
+        message["Subject"] = "Your NePornu Dashboard Login Code"
+        message["From"] = SMTP_FROM
+        message["To"] = email
+        
+        # Email body
+        text = f"""
+Hi,
+
+Your one-time password (OTP) for NePornu Dashboard is:
+
+    {otp}
+
+This code will expire in {OTP_EXPIRY_SECONDS // 60} minutes.
+
+If you didn't request this, please ignore this email.
+
+---
+NePornu Bot Dashboard
+"""
+        
+        html = f"""
+<html>
+  <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
+    <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+      <h2 style="color: #8b5cf6; margin-top: 0;">🔐 Your Login Code</h2>
+      <p style="color: #666; font-size: 16px;">Your one-time password for NePornu Dashboard is:</p>
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 30px 0;">
+        {otp}
+      </div>
+      <p style="color: #999; font-size: 14px;">This code will expire in {OTP_EXPIRY_SECONDS // 60} minutes.</p>
+      <p style="color: #999; font-size: 14px;">If you didn't request this, please ignore this email.</p>
+      <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+      <p style="color: #999; font-size: 12px; text-align: center;">NePornu Bot Dashboard</p>
+    </div>
+  </body>
+</html>
+"""
+        
+        # Attach both plain text and HTML
+        part1 = MIMEText(text, "plain")
+        part2 = MIMEText(html, "html")
+        message.attach(part1)
+        message.attach(part2)
+        
+        # Send email
+        if not SMTP_USER or not SMTP_PASSWORD or SMTP_USER == "your-email@nepornu.cz":
+            print(f"[DEV MODE] Would send OTP {otp} to {email}")
+            print(f"[DEV MODE] Configure SMTP credentials in dashboard_secrets.py")
+            # For development, just print OTP
+            return True
+        
+        await aiosmtplib.send(
+            message,
+            hostname=SMTP_HOST,
+            port=SMTP_PORT,
+            username=SMTP_USER,
+            password=SMTP_PASSWORD,
+            start_tls=True
+        )
+        
+        print(f"OTP sent successfully to {email}")
+        return True
+        
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return False
+
+def mask_email(email: str) -> str:
+    """Mask email for display (em***@nepornu.cz)."""
+    parts = email.split('@')
+    if len(parts) != 2:
+        return email
+    
+    username = parts[0]
+    domain = parts[1]
+    
+    if len(username) <= 2:
+        masked = username[0] + '*'
+    else:
+        masked = username[0] + username[1] + '*' * (len(username) - 2)
+    
+    return f"{masked}@{domain}"
