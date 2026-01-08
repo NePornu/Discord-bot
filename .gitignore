@@ -1,30 +1,36 @@
+# Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-
-venv/
+*$py.class
+*.so
+.Python
 .venv/
+venv/
+ENV/
 env/
 
-*.swp
-*.swo
-.idea/
-.vscode/
-
-*.save
-*.save.*
-*~
-*.log
-
+# Sensitive files
+bot_token.py
 config.py
 verification_config.py
-bot_token.py
+dashboard_secrets.py
 
-*.db
+# Logs
+*.log
 
+# Data files
+bot_data/
 data/
 
-.gitignore.save.*
-bot_data/
+# Editor backup files
+*.save
+*.swp
+*.swo
+*~
 
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tasks
+tasks/
