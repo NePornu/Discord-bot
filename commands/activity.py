@@ -21,7 +21,7 @@ from collections import defaultdict
 # activity:state:{guild_id}:{user_id}:chat_last   (Timestamp of last message)
 # activity:state:{guild_id}:{user_id}:voice_start (Timestamp of join voice)
 
-SESSION_TIMEOUT = 300  # 5 minutes in seconds
+SESSION_TIMEOUT = 900  # 15 minutes in seconds
 REDIS_URL = "redis://redis-hll:6379/0"
 
 class ActivityMonitor(commands.Cog):
@@ -39,20 +39,9 @@ class ActivityMonitor(commands.Cog):
     def _k_state(self, gid: int, uid: int, key: str) -> str:
         return f"activity:state:{gid}:{uid}:{key}"
 
-    # --- LISTENER: CHAT ---
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild:
-            return
-
-        gid = message.guild.id
-        uid = message.author.id
+    async def _update_session(self, gid: int, uid: int):
+        """Standardized logic to update/start chat session"""
         now = time.time()
-
-        # Update message count (always)
-        await self.r.incr(self._k_stats(gid, uid, "messages"))
-
-        # Session Logic
         k_start = self._k_state(gid, uid, "chat_start")
         k_last = self._k_state(gid, uid, "chat_last")
 
@@ -74,16 +63,46 @@ class ActivityMonitor(commands.Cog):
                     # Start NEW session
                     pipe.set(k_start, now)
             else:
-                # First message ever (or after redis flush)
+                # First activity ever
                 pipe.set(k_start, now)
             
             # Always update last seen
             pipe.set(k_last, now)
-            # Expire state keys after 24h to keep redis clean if user leaves
+            # Expire state keys after 24h
             pipe.expire(k_start, 86400)
             pipe.expire(k_last, 86400)
             
             await pipe.execute()
+
+    # --- LISTENER: CHAT ---
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot or not message.guild:
+            return
+
+        # Update message count (always)
+        await self.r.incr(self._k_stats(message.guild.id, message.author.id, "messages"))
+
+        # Update Session
+        await self._update_session(message.guild.id, message.author.id)
+
+    # --- LISTENER: REACTION ---
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.Union[discord.Member, discord.User]):
+        if user.bot or not reaction.message.guild:
+            return
+        
+        # Adding a reaction counts as activity -> extends session
+        await self._update_session(reaction.message.guild.id, user.id)
+
+    # --- LISTENER: INTERACTION ---
+    @commands.Cog.listener()
+    async def on_interaction(self, itx: discord.Interaction):
+        if itx.user.bot or not itx.guild:
+            return
+            
+        # Clicking button / using command -> extends session
+        await self._update_session(itx.guild.id, itx.user.id)
 
     # --- LISTENER: VOICE ---
     @commands.Cog.listener()
@@ -126,7 +145,7 @@ class ActivityMonitor(commands.Cog):
         """Calculate pending time in current open sessions"""
         pending = 0.0
         
-        # Chat
+        # Chat / Activity
         k_start = self._k_state(gid, uid, "chat_start")
         k_last = self._k_state(gid, uid, "chat_last")
         start = await self.r.get(k_start)
