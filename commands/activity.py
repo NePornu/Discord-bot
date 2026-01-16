@@ -22,6 +22,12 @@ import re
 # activity:state:{guild_id}:{user_id}:voice_start
 
 SESSION_TIMEOUT = 900  # 15 minutes
+MIN_SESSION_TIME = 60 # Minimum time for a session (even single message)
+# Lead-In Constants for Content-Aware Tracking
+LEAD_IN_BASE = 180.0  # 3 minutes base per session start
+LEAD_IN_CHAR = 1.0    # 1.0s per character (every message)
+LEAD_IN_REPLY = 60.0  # 1 minute bonus for replies (new session context)
+
 REDIS_URL = "redis://redis-hll:6379/0"
 
 ACTION_WEIGHTS = {
@@ -55,9 +61,27 @@ class ActivityMonitor(commands.Cog):
     def _k_state(self, gid: int, uid: int, key: str) -> str:
         return f"activity:state:{gid}:{uid}:{key}"
 
-    async def _update_session(self, gid: int, uid: int):
+    def _calc_lead_in(self, length: int, is_reply: bool) -> float:
+        """Calculate Lead-In time for NEW SESSION start."""
+        bonus = LEAD_IN_REPLY if is_reply else 0
+        # Base + Bonus. Character time is added SEPARATELY now for consistency.
+        return LEAD_IN_BASE + bonus
+
+    async def _update_session(self, gid: int, uid: int, message: discord.Message = None):
+        """
+        Update session state.
+        1. Always add CHAR TIME for the message.
+        2. If New Session -> Add LEAD_IN_BASE (+ Reply Bonus).
+        3. If Continue -> Update timestamp (natural gap adds up later).
+        """
         now = time.time()
+        day_now = self._get_today()
         
+        # 1. Always add Character Time
+        if message:
+            char_time = len(message.content) * LEAD_IN_CHAR
+            await self.r.incrbyfloat(self._k_day_stats(day_now, gid, uid, "chat_time"), char_time)
+
         k_start = self._k_state(gid, uid, "chat_start")
         k_last = self._k_state(gid, uid, "chat_last")
 
@@ -66,20 +90,37 @@ class ActivityMonitor(commands.Cog):
         async with self.r.pipeline() as pipe:
             if last_seen:
                 last_seen_f = float(last_seen)
+                
                 if now - last_seen_f > SESSION_TIMEOUT:
                     # Time out -> Close previous
                     start_str = await self.r.get(k_start)
                     if start_str:
                         start_f = float(start_str)
-                        duration = last_seen_f - start_f
-                        if duration > 0:
-                            # Attribute time to the day of the LAST message (simplification)
-                            day = self._timestamp_to_day(last_seen_f)
-                            pipe.incrbyfloat(self._k_day_stats(day, gid, uid, "chat_time"), duration)
+                        raw_duration = last_seen_f - start_f
+                        # Max with 0, since Lead-In covers the base time now.
+                        duration = max(raw_duration, 0)
+                        
+                        day_prev = self._timestamp_to_day(last_seen_f)
+                        pipe.incrbyfloat(self._k_day_stats(day_prev, gid, uid, "chat_time"), duration)
                     
+                    # Start NEW session
                     pipe.set(k_start, now)
+                    
+                    # Add Lead-In (Base + Reply Bonus)
+                    if message:
+                        is_reply = (message.reference is not None)
+                        lead_in = self._calc_lead_in(len(message.content), is_reply)
+                        pipe.incrbyfloat(self._k_day_stats(day_now, gid, uid, "chat_time"), lead_in)
+                
+                # Else: Continue session. Just update last_seen.
+                
             else:
+                # First ever
                 pipe.set(k_start, now)
+                if message:
+                    is_reply = (message.reference is not None)
+                    lead_in = self._calc_lead_in(len(message.content), is_reply)
+                    pipe.incrbyfloat(self._k_day_stats(day_now, gid, uid, "chat_time"), lead_in)
             
             pipe.set(k_last, now)
             pipe.expire(k_start, 86400)
@@ -93,7 +134,7 @@ class ActivityMonitor(commands.Cog):
         # Increment daily message count
         day = self._get_today()
         await self.r.incr(self._k_day_stats(day, message.guild.id, message.author.id, "messages"))
-        await self._update_session(message.guild.id, message.author.id)
+        await self._update_session(message.guild.id, message.author.id, message)
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.Union[discord.Member, discord.User]):
@@ -208,7 +249,7 @@ class ActivityMonitor(commands.Cog):
         # Fetch Data
         data = await self.get_aggregated_stats(gid, uid, d_after, d_before)
         
-        # Pending Session (Only add if looking at "Today" or "Total")
+        # Pending Session
         today = date.today()
         include_pending = True
         if d_before and d_before < today: include_pending = False
@@ -222,6 +263,7 @@ class ActivityMonitor(commands.Cog):
             cs = await self.r.get(k_cs)
             cl = await self.r.get(k_cl)
             if cs and cl and (now - float(cl) < SESSION_TIMEOUT):
+                # Only add the duration between start and last, as char_time is added instantly
                 data["chat_time"] += (float(cl) - float(cs))
             # Voice
             k_vs = self._k_state(gid, uid, "voice_start")
@@ -276,7 +318,6 @@ class ActivityMonitor(commands.Cog):
         await itx.response.defer()
         gid = itx.guild.id
         
-        # Parse dates
         d_after = None
         d_before = None
         date_info = "Celková historie"
@@ -363,11 +404,11 @@ class ActivityMonitor(commands.Cog):
         limit_date = datetime.now() - timedelta(days=days)
         if limit_date < discord_epoch: limit_date = discord_epoch
         
-        await itx.followup.send(f"⏳ Začínám Backfill od {limit_date.date()}... (Režim: Denní Buckets)")
+        await itx.followup.send(f"⏳ Začínám Backfill od {limit_date.date()}... (Režim: 3min Base + Chars)")
         
         # A. CHAT
         total_msgs = 0
-        user_msgs = defaultdict(list)
+        user_msgs = defaultdict(list) # {uid: [(ts, len, is_reply), ...]}
         channels = [c for c in itx.guild.text_channels if c.permissions_for(itx.guild.me).read_message_history]
         
         for ch in channels:
@@ -375,38 +416,64 @@ class ActivityMonitor(commands.Cog):
                 async for msg in ch.history(limit=None, after=limit_date):
                     if msg.author.bot: continue
                     ts = msg.created_at.timestamp()
-                    user_msgs[msg.author.id].append(ts)
+                    length = len(msg.content)
+                    is_reply = (msg.reference is not None)
+                    user_msgs[msg.author.id].append((ts, length, is_reply))
                     total_msgs += 1
             except: pass
             
         async with self.r.pipeline() as pipe:
-            for uid, timestamps in user_msgs.items():
-                timestamps.sort()
+            for uid, msgs in user_msgs.items():
+                if not msgs: continue
+                msgs.sort(key=lambda x: x[0])
                 
-                if not timestamps: continue
+                curr_start_ts = msgs[0][0]
+                last_seen_ts = msgs[0][0]
                 
-                curr_start = timestamps[0]
-                last_seen = timestamps[0]
+                # First Message: Lead-In (Base + Reply) + Chars
+                # Note: Chars are added for EVERY message now.
                 
-                # Message Counts
-                for t in timestamps:
+                # 1. Add Lead-In for the very first session
+                first_li = self._calc_lead_in(msgs[0][1], msgs[0][2]) # Base + Reply only?
+                # _calc_lead_in was updated to be Base + Reply in this snippet.
+                day0 = self._timestamp_to_day(curr_start_ts)
+                pipe.incrbyfloat(self._k_day_stats(day0, gid, uid, "chat_time"), first_li)
+                
+                # Loop all messages
+                for i in range(len(msgs)):
+                    (t, length, is_reply) = msgs[i]
                     day = self._timestamp_to_day(t)
+                    
+                    # A. Always add Message Count
                     pipe.incr(self._k_day_stats(day, gid, uid, "messages"))
-                
-                # Session Time
-                for t in timestamps[1:]:
-                    if t - last_seen <= SESSION_TIMEOUT:
-                        last_seen = t
-                    else:
-                        dur = last_seen - curr_start
-                        day = self._timestamp_to_day(last_seen)
-                        pipe.incrbyfloat(self._k_day_stats(day, gid, uid, "chat_time"), dur)
-                        curr_start = t
-                        last_seen = t
-                # Final
-                dur = last_seen - curr_start
-                day = self._timestamp_to_day(last_seen)
-                pipe.incrbyfloat(self._k_day_stats(day, gid, uid, "chat_time"), dur)
+                    
+                    # B. Always add Character Time
+                    char_t = length * LEAD_IN_CHAR
+                    pipe.incrbyfloat(self._k_day_stats(day, gid, uid, "chat_time"), char_t)
+                    
+                    # C. Session Logic
+                    if i > 0:
+                        if t - last_seen_ts <= SESSION_TIMEOUT:
+                            # Continue Session
+                            last_seen_ts = t
+                        else:
+                            # End Previous Session
+                            dur = last_seen_ts - curr_start_ts
+                            day_prev = self._timestamp_to_day(last_seen_ts)
+                            pipe.incrbyfloat(self._k_day_stats(day_prev, gid, uid, "chat_time"), dur)
+                            
+                            # Start NEW Session
+                            curr_start_ts = t
+                            last_seen_ts = t
+                            
+                            # Add Lead-In for New Session
+                            li = self._calc_lead_in(length, is_reply)
+                            pipe.incrbyfloat(self._k_day_stats(day, gid, uid, "chat_time"), li)
+                            
+                # Final Session End
+                dur = last_seen_ts - curr_start_ts
+                day_end = self._timestamp_to_day(last_seen_ts)
+                pipe.incrbyfloat(self._k_day_stats(day_end, gid, uid, "chat_time"), dur)
             
             await pipe.execute()
 
@@ -457,7 +524,7 @@ class ActivityMonitor(commands.Cog):
 
         await itx.followup.send(f"✅ **Hotovo!**\n"
                                 f"Zpracováno: {total_msgs} zpráv, {audit_ops} audit akcí, {verifs} verifikací.\n"
-                                f"Data jsou nyní rozdělena po dnech.\n"
+                                f"Režim: 3 min base + 1s/znak.\n"
                                 f"Zkus: `/activity stats after:01-01-2025`.")
 
 async def setup(bot: commands.Bot):
