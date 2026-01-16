@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
+    <div>
+        <h1 class="title">Moderator Activity</h1>
+        <p style="color: var(--text-secondary);">Tracking active time and weighted actions</p>
+    </div>
+</div>
+
+<!-- Grid for Summary & Chart -->
+<div class="grid" style="grid-template-columns: 3fr 1fr; gap: 24px;">
+
+    <!-- Timeline Chart -->
+    <div class="card">
+        <h3 style="margin-bottom: 16px;">📈 Team Activity (Last 30 Days)</h3>
+        <div class="chart-container" style="height: 300px;">
+            <canvas id="activityTrendChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="card" style="display: flex; flex-direction: column; justify-content: center; gap: 24px;">
+        <div class="stat-group">
+            <div class="stat-label">Total Time (30d)</div>
+            <div class="stat-value" style="color: #a78bfa;">{{ total_hours_30d }}h</div>
+        </div>
+        <div class="stat-group">
+            <div class="stat-label">Active Staff</div>
+            <div class="stat-value">{{ active_staff_count }}</div>
+        </div>
+        <div class="stat-group">
+            <div class="stat-label">Top Metric</div>
+            <div class="stat-value" style="font-size: 1.5rem;">{{ top_action }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Leaderboard Section -->
+<div class="card" style="margin-top: 32px;">
+    <h3 style="margin-bottom: 20px;">🏆 Leaderboard (Last 30 Days)</h3>
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                    <th style="padding: 12px; width: 50px;">#</th>
+                    <th style="padding: 12px;">User</th>
+                    <th style="padding: 12px;">Weighted Time</th>
+                    <th style="padding: 12px;">Chat</th>
+                    <th style="padding: 12px;">Voice</th>
+                    <th style="padding: 12px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in leaderboard %}
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s;">
+                    <td
+                        style="padding: 12px; font-weight: bold; color: {% if loop.index <= 3 %}#ffd700{% else %}var(--text-secondary){% endif %};">
+                        {{ loop.index }}</td>
+                    <td style="padding: 12px; display: flex; align-items: center; gap: 12px;">
+                        <div
+                            style="width: 32px; height: 32px; background: var(--bg-secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                            <span style="font-size: 12px;">{{ user.name[0] }}</span>
+                        </div>
+                        <span style="font-weight: 600;">{{ user.name }}</span>
+                    </td>
+                    <td style="padding: 12px; font-weight: bold; color: #a78bfa;">{{ user.weighted_h }}h</td>
+                    <td style="padding: 12px; color: var(--text-secondary);">{{ user.chat_h }}h</td>
+                    <td style="padding: 12px; color: var(--text-secondary);">{{ user.voice_h }}h</td>
+                    <td style="padding: 12px; color: var(--text-secondary);">
+                        <span title="Bans/Kicks">{{ user.actions }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script src="/static/js/charts.js"></script>
+<script>
+    // Data passed from backend
+    const labels = {{ daily_labels | tojson }};
+    const data = {{ daily_hours | tojson }};
+
+    document.addEventListener('DOMContentLoaded', function () {
+        ChartUtils.createLineChart(
+            'activityTrendChart',
+            labels,
+            data,
+            'Total Hours Worked',
+            '#a78bfa',
+            '#c4b5fd'
+        );
+    });
+</script>
+{% endblock %}

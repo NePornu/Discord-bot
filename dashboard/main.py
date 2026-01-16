@@ -321,6 +321,107 @@ async def analytics_page(request: Request, _=Depends(require_auth)):
     """New advanced analytics page with channel stats and leaderboards."""
     return templates.TemplateResponse("analytics.html", {"request": request})
 
+@app.get("/activity", response_class=HTMLResponse)
+async def activity_page(request: Request, _=Depends(require_auth)):
+    """Moderator Activity Page with manual Redis aggregation."""
+    
+    # Needs 30 days of data
+    today = datetime.now().date()
+    days_map = {} # YYYY-MM-DD -> total_weighted_seconds
+    user_map = {} # uid -> {weighted, chat, voice, actions}
+    
+    top_action = "N/A"
+    total_sec_30d = 0
+    
+    # 10.0 fetch logic - using raw redis connection for speed
+    try:
+        r = redis.from_url("redis://172.22.0.2:6379/0", decode_responses=True)
+        # Scan daily keys: activity:day:*:*:*:*
+        # Pattern: activity:day:{YYYY-MM-DD}:{GID}:{UID}:{METRIC}
+        # Hardcoding GID for now as in index
+        gid = 615171377783242769
+        
+        # Weights (Hardcoded to match bot - ideally shared config)
+        weights = {
+            "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
+            "verifications": 120, "msg_deleted": 60, "role_updates": 30,
+            "chat_time": 1, "voice_time": 1, "messages": 0
+        }
+        
+        async for key in r.scan_iter(f"activity:day:*:{gid}:*:*"):
+            parts = key.split(":") 
+            # activity:day:2025-01-16:615:123:bans
+            if len(parts) != 6: continue
+            
+            day_str = parts[2]
+            uid = int(parts[4])
+            metric = parts[5]
+            
+            try:
+                d = datetime.strptime(day_str, "%Y-%m-%d").date()
+            except: continue
+            
+            # Filter 30 days
+            if (today - d).days > 30: continue
+            
+            val = float(await r.get(key) or 0)
+            w = weights.get(metric, 1)
+            weighted_val = val * w
+            
+            # Add to Daily Map
+            if day_str not in days_map: days_map[day_str] = 0
+            days_map[day_str] += (weighted_val / 3600) # Hours
+            
+            # Add to User Map
+            if uid not in user_map: 
+                user_map[uid] = {"weighted": 0, "chat": 0, "voice": 0, "actions": 0, "name": f"User {uid}"}
+            
+            user_map[uid]["weighted"] += weighted_val
+            
+            if metric == "chat_time": user_map[uid]["chat"] += val
+            elif metric == "voice_time": user_map[uid]["voice"] += val
+            elif metric in ["bans", "kicks", "timeouts", "verifications"]: 
+                user_map[uid]["actions"] += val # Count
+            
+            total_sec_30d += weighted_val
+
+        await r.aclose()
+        
+    except Exception as e:
+        print(f"Error fetching activity: {e}")
+        
+    # Format for Charts
+    sorted_days = sorted(days_map.keys())
+    daily_labels = [d[5:] for d in sorted_days] # MM-DD
+    daily_hours = [round(days_map[d], 1) for d in sorted_days]
+    
+    # Format Leaderboard
+    leaderboard = []
+    for uid, data in user_map.items():
+        leaderboard.append({
+            "name": data["name"], # Resolving names is hard without bot instance access here
+            "weighted_h": round(data["weighted"] / 3600, 1),
+            "chat_h": round(data["chat"] / 3600, 1),
+            "voice_h": round(data["voice"] / 3600, 1),
+            "actions": int(data["actions"])
+        })
+    
+    # Sort by weighted
+    leaderboard.sort(key=lambda x: x["weighted_h"], reverse=True)
+    
+    return templates.TemplateResponse(
+        "activity.html", 
+        {
+            "request": request,
+            "daily_labels": daily_labels,
+            "daily_hours": daily_hours,
+            "leaderboard": leaderboard[:20],
+            "total_hours_30d": round(total_sec_30d / 3600, 1),
+            "active_staff_count": len(leaderboard),
+            "top_action": "Chatting" # Placeholder logic
+        }
+    )
+
 
 @app.get("/api/logs")
 async def get_live_logs(request: Request):

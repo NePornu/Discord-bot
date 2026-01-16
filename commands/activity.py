@@ -527,5 +527,79 @@ class ActivityMonitor(commands.Cog):
                                 f"Režim: 3 min base + 1s/znak.\n"
                                 f"Zkus: `/activity stats after:01-01-2025`.")
 
+    @act_group.command(name="report", description="Zobrazí report aktivity týmu (7 a 30 dní).")
+    @app_commands.checks.has_permissions(administrator=True) # Admin only for full report
+    async def report(self, itx: discord.Interaction):
+        await itx.response.defer()
+        gid = itx.guild.id
+        today = date.today()
+        
+        # Ranges
+        d_week = today - timedelta(days=7)
+        d_month = today - timedelta(days=30)
+        
+        # We need efficient fetching for ALL users.
+        # Scanning all keys is the only way with current Redis structure.
+        
+        scores_week = defaultdict(float)
+        scores_month = defaultdict(float)
+        
+        # Scan once, bucket into week/month
+        pattern = f"activity:day:*:{gid}:*:*"
+        async for key in self.r.scan_iter(pattern):
+            parts = key.split(":")
+            if len(parts) != 6: continue
+            
+            day_str = parts[2]
+            uid = int(parts[4])
+            metric = parts[5]
+            
+            try:
+                d = datetime.strptime(day_str, "%Y-%m-%d").date()
+            except: continue
+            
+            val = float(await self.r.get(key) or 0)
+            
+            w = 1.0
+            if metric in ACTION_WEIGHTS: w = ACTION_WEIGHTS[metric]
+            elif metric == "messages": w = 0
+            
+            weighted_val = val * w
+            
+            # Week
+            if d >= d_week:
+                scores_week[uid] += weighted_val
+            
+            # Month
+            if d >= d_month:
+                scores_month[uid] += weighted_val
+
+        # Sort
+        top_week = sorted(scores_week.items(), key=lambda x: x[1], reverse=True)
+        top_month = sorted(scores_month.items(), key=lambda x: x[1], reverse=True)
+        
+        # Format Helper
+        def fmt_list(data_list):
+            lines = []
+            for i, (uid, sec) in enumerate(data_list, 1):
+                # We can't easily get names for ALL without fetching members, which might be slow.
+                # Use mention to be safe/fast.
+                lines.append(f"**{i}.** <@{uid}> — `{self.fmt_time(sec)}`")
+            return "\n".join(lines) if lines else "Žádná data."
+
+        # Since lists can be long, we might need to limit them or handle display carefully.
+        # User asked for "all", but Discord limits. Let's do TOP 25 per category.
+        limit = 25
+        
+        desc_week = fmt_list(top_week[:limit])
+        desc_month = fmt_list(top_month[:limit])
+        
+        e = discord.Embed(title="📊 Report Aktivity Týmu", color=discord.Color.purple())
+        e.add_field(name="📅 Posledních 7 dní", value=desc_week, inline=True)
+        e.add_field(name="📅 Posledních 30 dní", value=desc_month, inline=True)
+        e.set_footer(text=f"Zobrazeno TOP {limit}. Vygenerováno: {today}")
+        
+        await itx.followup.send(embed=e)
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(ActivityMonitor(bot))
