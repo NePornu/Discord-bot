@@ -1,27 +1,21 @@
-# Dashboard Security Configuration
-# KEEP THIS FILE SECRET - DO NOT COMMIT TO GIT
+# Dashboard Secrets & Configuration
 
-# Session Secret (for cookie signing)
-SECRET_KEY = "O5x8vQgZKzB_7wmFfEh3YPRqN2jLdA9uT6iC1sXkMpH"
-
-# BACKUP: Emergency access token (for /emergency-login route)
-EMERGENCY_TOKEN = "hR4wJ8nK2pY6xV9mQ3sT7dF1gL5cB0zA"
-
-# Email OTP Configuration
-ALLOWED_EMAIL_DOMAIN = "@nepornu.cz"
-
-# SMTP Configuration (for sending OTP emails)
-SMTP_HOST = "smtp.gmail.com"  # or your SMTP server
-SMTP_PORT = 587
-SMTP_USER = "your-email@nepornu.cz"  # UPDATE THIS
-SMTP_PASSWORD = "your-app-password"   # UPDATE THIS (Gmail App Password)
-SMTP_FROM = "NePornu Dashboard <noreply@nepornu.cz>"
-
-# Session expiration (hours)
+# Flask Session Security
+import secrets
+SECRET_KEY = secrets.token_urlsafe(32)
+ACCESS_TOKEN = secrets.token_urlsafe(32)
 SESSION_EXPIRY_HOURS = 24
 
-# OTP Settings
+# SMTP Configuration (Gmail/Google Workspace)
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 587
+SMTP_USER = "marcipan@nepornu.cz"
+SMTP_PASSWORD = "bqys izzp mfjl ckdd"  # App Password
+SMTP_FROM = "NePornu Dashboard <marcipan@nepornu.cz>"
+
+# OTP Rules
+ALLOWED_EMAIL_DOMAIN = "@nepornu.cz"
 OTP_LENGTH = 6
-OTP_EXPIRY_SECONDS = 300  # 5 minutes
+OTP_EXPIRY_SECONDS = 300
 OTP_MAX_ATTEMPTS = 5
-OTP_RATE_LIMIT = 3  # Max OTP requests per 10 minutes
+OTP_RATE_LIMIT = 3
