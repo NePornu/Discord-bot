@@ -6,6 +6,37 @@
         <h1 class="title">Moderator Activity</h1>
         <p style="color: var(--text-secondary);">Tracking active time and weighted actions</p>
     </div>
+
+    <form method="GET" action="/activity"
+        style="display: flex; gap: 12px; align-items: center; background: var(--bg-card); padding: 8px 16px; border-radius: 12px; border: 1px solid var(--glass-border);">
+        <div>
+            <label
+                style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Role</label>
+            <select name="role_id"
+                style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px; min-width: 120px;">
+                <option value="all" {% if selected_role=='all' %}selected{% endif %}>All Roles</option>
+                {% for rid, rname in roles %}
+                <option value="{{ rid }}" {% if selected_role==rid %}selected{% endif %}>{{ rname }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Start
+                Date</label>
+            <input type="date" name="start_date" value="{{ start_date }}"
+                style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px;">
+        </div>
+        <div>
+            <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">End
+                Date</label>
+            <input type="date" name="end_date" value="{{ end_date }}"
+                style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px;">
+        </div>
+        <button type="submit"
+            style="height: 32px; padding: 0 16px; background: var(--primary-gradient); border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer; margin-top: 16px;">
+            Filter
+        </button>
+    </form>
 </div>
 
 <!-- Grid for Summary & Chart -->
@@ -57,12 +88,20 @@
                     <td
                         style="padding: 12px; font-weight: bold; color: {% if loop.index <= 3 %}#ffd700{% else %}var(--text-secondary){% endif %};">
                         {{ loop.index }}</td>
-                    <td style="padding: 12px; display: flex; align-items: center; gap: 12px;">
-                        <div
-                            style="width: 32px; height: 32px; background: var(--bg-secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                            <span style="font-size: 12px;">{{ user.name[0] }}</span>
-                        </div>
-                        <span style="font-weight: 600;">{{ user.name }}</span>
+                    <td style="padding: 12px;">
+                        <a href="/activity/user/{{ user.uid }}"
+                            style="display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit;">
+                            <div
+                                style="width: 32px; height: 32px; background: var(--bg-secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                {% if user.avatar %}
+                                <img src="{{ user.avatar }}" alt=""
+                                    style="width: 100%; height: 100%; object-fit: cover;">
+                                {% else %}
+                                <span style="font-size: 12px;">{{ user.name[0] }}</span>
+                                {% endif %}
+                            </div>
+                            <span style="font-weight: 600;">{{ user.name }}</span>
+                        </a>
                     </td>
                     <td style="padding: 12px; font-weight: bold; color: #a78bfa;">{{ user.weighted_h }}h</td>
                     <td style="padding: 12px; color: var(--text-secondary);">{{ user.chat_h }}h</td>

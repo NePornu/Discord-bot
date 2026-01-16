@@ -73,9 +73,17 @@ async def verify_otp(email: str, otp: str) -> Tuple[bool, str]:
     try:
         r = redis.from_url(REDIS_URL, decode_responses=True)
         
+        # DEBUG LOGGING
+        print(f"[DEBUG] Verifying OTP for email: '{email}'")
+        key = f"otp:{email}"
+        print(f"[DEBUG] Looking up Redis key: '{key}'")
+        
         # Get stored OTP
-        stored_otp = await r.get(f"otp:{email}")
+        stored_otp = await r.get(key)
+        print(f"[DEBUG] Stored OTP: '{stored_otp}' vs Input OTP: '{otp}'")
+        
         if not stored_otp:
+            print("[DEBUG] OTP key not found or expired.")
             await r.aclose()
             return False, "OTP expired or not found"
         

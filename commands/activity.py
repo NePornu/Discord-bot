@@ -127,6 +127,26 @@ class ActivityMonitor(commands.Cog):
             pipe.expire(k_last, 86400)
             await pipe.execute()
 
+    async def _update_user_info(self, user: discord.Union[discord.Member, discord.User]):
+        """Cache user info in Redis for Dashboard."""
+        if user.bot: return
+        key = f"user:info:{user.id}"
+        
+        # Avoid writing if not needed? No, easy enough to overwrite.
+        # Prefer display_name (nickname) but fallback to name
+        name = user.display_name
+        avatar = user.display_avatar.url
+        
+        # Cache Roles (comma separated IDs)
+        roles = ""
+        if isinstance(user, discord.Member):
+            roles = ",".join(str(r.id) for r in user.roles)
+        
+        async with self.r.pipeline() as pipe:
+            pipe.hset(key, mapping={"name": name, "avatar": avatar, "roles": roles})
+            pipe.expire(key, 604800) # 7 days TTL (refresh on activity)
+            await pipe.execute()
+
     # --- LISTENERS ---
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -135,20 +155,30 @@ class ActivityMonitor(commands.Cog):
         day = self._get_today()
         await self.r.incr(self._k_day_stats(day, message.guild.id, message.author.id, "messages"))
         await self._update_session(message.guild.id, message.author.id, message)
+        await self._update_user_info(message.author)
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.Union[discord.Member, discord.User]):
         if user.bot or not reaction.message.guild: return
         await self._update_session(reaction.message.guild.id, user.id)
+        # Note: on_reaction_add user might be PartialMember causing issues if properties accessed?
+        # Usually it's Member.
+        if hasattr(user, "display_name"):
+            await self._update_user_info(user)
 
     @commands.Cog.listener()
     async def on_interaction(self, itx: discord.Interaction):
         if itx.user.bot or not itx.guild: return
         await self._update_session(itx.guild.id, itx.user.id)
+        await self._update_user_info(itx.user)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         if member.bot: return
+        
+        # Sync info on voice change
+        await self._update_user_info(member)
+        
         gid = member.guild.id
         uid = member.id
         now = time.time()
@@ -185,8 +215,6 @@ class ActivityMonitor(commands.Cog):
         # We can iterate specifically if the range is small, but SCAN is safer for sparse data.
         # Actually, if we have huge history, scanning "activity:day:*" might be slow.
         # BUT, since we store GID/UID in the key, we can scan `activity:day:*:GID:UID:*`
-        pattern = f"activity:day:*:*:{gid}:{uid}:*" # Wait, format is activity:day:{day}:{gid}:{uid}:{metric}
-        # Correct scan pattern for specific user:
         pattern = f"activity:day:*:{gid}:{uid}:*"
         
         async for key in self.r.scan_iter(pattern):
@@ -213,6 +241,30 @@ class ActivityMonitor(commands.Cog):
     # --- COMMANDS ---
     act_group = app_commands.Group(name="activity", description="Sledování aktivity moderátorů")
 
+    @act_group.command(name="sync_names", description="ADMIN: Synchronizuje jména a ROLE členů do databáze.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def sync_names(self, itx: discord.Interaction):
+        await itx.response.defer()
+        
+        # 1. Sync Roles
+        roles_key = f"guild:roles:{itx.guild.id}"
+        role_map = {str(r.id): r.name for r in itx.guild.roles if r.name != "@everyone"}
+        
+        async with self.r.pipeline() as pipe:
+            pipe.delete(roles_key)
+            if role_map:
+                pipe.hset(roles_key, mapping=role_map)
+            await pipe.execute()
+            
+        # 2. Sync Members
+        count = 0
+        for member in itx.guild.members:
+            if not member.bot:
+                await self._update_user_info(member)
+                count += 1
+                
+        await itx.followup.send(f"✅ Synchronizováno **{count}** členů a **{len(role_map)}** rolí.")
+
     @act_group.command(name="stats", description="Zobrazí statistiky (lze filtrovat datem).")
     @app_commands.describe(
         user="Uživatel (default: ty)",
@@ -224,6 +276,9 @@ class ActivityMonitor(commands.Cog):
         if not user: user = itx.user
         gid = itx.guild.id
         uid = user.id
+        
+        # Update info while we are here
+        await self._update_user_info(user)
         
         # Parse dates
         d_after = None
@@ -420,6 +475,16 @@ class ActivityMonitor(commands.Cog):
                     is_reply = (msg.reference is not None)
                     user_msgs[msg.author.id].append((ts, length, is_reply))
                     total_msgs += 1
+                    
+                    # Update cache for this user
+                    # Note: We can't await inside this loop efficiently if it's too frequent.
+                    # But since we have msg.author, we CAN call _update_user_info
+                    # Just do it once per user to avoid spam?
+                    # Actually, doing it here ensures we get historical names if they match current?
+                    # No, msg.author reflects CURRENT member state if they are in guild.
+                    if isinstance(msg.author, discord.Member):
+                         await self._update_user_info(msg.author)
+
             except: pass
             
         async with self.r.pipeline() as pipe:
@@ -496,6 +561,9 @@ class ActivityMonitor(commands.Cog):
                         day = self._timestamp_to_day(entry.created_at.timestamp())
                         await self.r.incr(self._k_day_stats(day, gid, entry.user.id, metric))
                         audit_ops += 1
+                        # Update info
+                        if isinstance(entry.user, discord.Member):
+                             await self._update_user_info(entry.user)
         except Exception as e:
             print(f"Audit error: {e}")
 

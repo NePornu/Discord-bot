@@ -9,7 +9,9 @@ echo "Stopped. Waiting 2s..."
 sleep 2
 
 # Start Bot via Docker
-# Assuming image 'discord-bot' was just built
+# Rebuild image to include changes
+docker build -t discord-bot .
+
 docker run -d --name discord-bot --network botnet --restart unless-stopped discord-bot
 echo "Bot container started."
 

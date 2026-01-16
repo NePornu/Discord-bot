@@ -171,9 +171,27 @@
 
         // Auto-submit if all 6 digits entered
         if (otp.length === 6) {
+            // Prevent multiple submissions
+            if (otpForm.dataset.submitting === "true") return;
+            otpForm.dataset.submitting = "true";
+
+            document.getElementById('verifyBtn').disabled = true;
+            document.getElementById('verifyBtn').innerHTML = '⏳ Verifying...';
+
             setTimeout(() => otpForm.submit(), 100);
         }
     }
+
+    // Handle manual submit
+    otpForm.addEventListener('submit', (e) => {
+        if (otpForm.dataset.submitting === "true") {
+            e.preventDefault();
+            return;
+        }
+        otpForm.dataset.submitting = "true";
+        document.getElementById('verifyBtn').disabled = true;
+        document.getElementById('verifyBtn').innerHTML = '⏳ Verifying...';
+    });
 
     // Countdown timer
     let timeLeft = 300; // 5 minutes

@@ -7,6 +7,7 @@ import uvicorn
 from pathlib import Path
 import redis.asyncio as redis
 from datetime import datetime, timedelta
+from collections import defaultdict
 import secrets
 import sys
 sys.path.append('/root/discord-bot')
@@ -72,6 +73,9 @@ async def request_otp(request: Request, email: str = Form(...)):
     """Request OTP for email."""
     from .otp_utils import validate_email, generate_otp, store_otp, send_otp_email, check_rate_limit, mask_email
     
+    # Normalize input
+    email = email.strip().lower()
+    
     # Validate email
     is_valid, message = validate_email(email)
     if not is_valid:
@@ -116,7 +120,15 @@ async def request_otp(request: Request, email: str = Form(...)):
 @app.post("/verify-otp")
 async def verify_otp_route(request: Request, email: str = Form(...), otp: str = Form(...)):
     """Verify OTP and create session."""
+    # Check if already authenticated (handle double-submission)
+    if request.session.get("authenticated") and request.session.get("email") == email.strip().lower():
+        return RedirectResponse(url="/", status_code=302)
+
     from .otp_utils import verify_otp, mask_email
+    
+    # Normalize input
+    email = email.strip().lower()
+    otp = otp.strip()
     
     # Verify OTP
     is_valid, message = await verify_otp(email, otp)
@@ -138,6 +150,9 @@ async def verify_otp_route(request: Request, email: str = Form(...), otp: str = 
 async def resend_otp(request: Request, email: str = Form(...)):
     """Resend OTP to email."""
     from .otp_utils import generate_otp, store_otp, send_otp_email, check_rate_limit, mask_email
+    
+    # Normalize input
+    email = email.strip().lower()
     
     # Check rate limit
     allowed, remaining = await check_rate_limit(email)
@@ -322,26 +337,40 @@ async def analytics_page(request: Request, _=Depends(require_auth)):
     return templates.TemplateResponse("analytics.html", {"request": request})
 
 @app.get("/activity", response_class=HTMLResponse)
-async def activity_page(request: Request, _=Depends(require_auth)):
+async def activity_page(request: Request, start_date: str = None, end_date: str = None, role_id: str = None, _=Depends(require_auth)):
     """Moderator Activity Page with manual Redis aggregation."""
     
-    # Needs 30 days of data
+    # Parse dates
     today = datetime.now().date()
-    days_map = {} # YYYY-MM-DD -> total_weighted_seconds
-    user_map = {} # uid -> {weighted, chat, voice, actions}
+    try:
+        if start_date:
+            d_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        else:
+            d_start = today - timedelta(days=30)
+            
+        if end_date:
+            d_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        else:
+            d_end = today
+    except ValueError:
+        d_start = today - timedelta(days=30)
+        d_end = today
+
+    days_map = {} 
+    user_map = {} 
     
     top_action = "N/A"
     total_sec_30d = 0
+    available_roles = {}
     
-    # 10.0 fetch logic - using raw redis connection for speed
     try:
         r = redis.from_url("redis://172.22.0.2:6379/0", decode_responses=True)
-        # Scan daily keys: activity:day:*:*:*:*
-        # Pattern: activity:day:{YYYY-MM-DD}:{GID}:{UID}:{METRIC}
-        # Hardcoding GID for now as in index
         gid = 615171377783242769
         
-        # Weights (Hardcoded to match bot - ideally shared config)
+        # 1. Fetch Available Roles
+        available_roles = await r.hgetall(f"guild:roles:{gid}")
+        
+        # 2. Scan Activity
         weights = {
             "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
             "verifications": 120, "msg_deleted": 60, "role_updates": 30,
@@ -350,7 +379,6 @@ async def activity_page(request: Request, _=Depends(require_auth)):
         
         async for key in r.scan_iter(f"activity:day:*:{gid}:*:*"):
             parts = key.split(":") 
-            # activity:day:2025-01-16:615:123:bans
             if len(parts) != 6: continue
             
             day_str = parts[2]
@@ -361,29 +389,46 @@ async def activity_page(request: Request, _=Depends(require_auth)):
                 d = datetime.strptime(day_str, "%Y-%m-%d").date()
             except: continue
             
-            # Filter 30 days
-            if (today - d).days > 30: continue
+            if d < d_start or d > d_end: continue
             
             val = float(await r.get(key) or 0)
             w = weights.get(metric, 1)
             weighted_val = val * w
             
-            # Add to Daily Map
+            # Daily Map
             if day_str not in days_map: days_map[day_str] = 0
-            days_map[day_str] += (weighted_val / 3600) # Hours
+            days_map[day_str] += (weighted_val / 3600)
             
-            # Add to User Map
+            # User Map
             if uid not in user_map: 
-                user_map[uid] = {"weighted": 0, "chat": 0, "voice": 0, "actions": 0, "name": f"User {uid}"}
+                user_map[uid] = {"weighted": 0, "chat": 0, "voice": 0, "actions": 0, "name": f"User {uid}", "avatar": "", "roles": ""}
             
             user_map[uid]["weighted"] += weighted_val
             
             if metric == "chat_time": user_map[uid]["chat"] += val
             elif metric == "voice_time": user_map[uid]["voice"] += val
             elif metric in ["bans", "kicks", "timeouts", "verifications"]: 
-                user_map[uid]["actions"] += val # Count
+                user_map[uid]["actions"] += val 
             
             total_sec_30d += weighted_val
+
+        # 3. Resolve Usernames & Roles
+        try:
+            p = r.pipeline()
+            uids = list(user_map.keys())
+            for uid in uids:
+                p.hgetall(f"user:info:{uid}")
+            
+            results = await p.execute()
+            
+            for i, uid in enumerate(uids):
+                info = results[i]
+                if info and "name" in info:
+                    user_map[uid]["name"] = info["name"]
+                    user_map[uid]["avatar"] = info.get("avatar", "")
+                    user_map[uid]["roles"] = info.get("roles", "") # Comma separated IDs
+        except Exception as e:
+            print(f"Error resolving names: {e}")
 
         await r.aclose()
         
@@ -392,22 +437,32 @@ async def activity_page(request: Request, _=Depends(require_auth)):
         
     # Format for Charts
     sorted_days = sorted(days_map.keys())
-    daily_labels = [d[5:] for d in sorted_days] # MM-DD
+    daily_labels = [d[5:] for d in sorted_days]
     daily_hours = [round(days_map[d], 1) for d in sorted_days]
     
-    # Format Leaderboard
+    # Format Leaderboard & Filter by Role
     leaderboard = []
     for uid, data in user_map.items():
+        # Role Filter
+        if role_id and role_id != "all":
+            user_roles = data["roles"].split(",")
+            if str(role_id) not in user_roles:
+                continue
+        
         leaderboard.append({
-            "name": data["name"], # Resolving names is hard without bot instance access here
+            "uid": uid,
+            "name": data["name"],
+            "avatar": data.get("avatar", ""),
             "weighted_h": round(data["weighted"] / 3600, 1),
             "chat_h": round(data["chat"] / 3600, 1),
             "voice_h": round(data["voice"] / 3600, 1),
             "actions": int(data["actions"])
         })
     
-    # Sort by weighted
     leaderboard.sort(key=lambda x: x["weighted_h"], reverse=True)
+    
+    # Sort roles for dropdown
+    sorted_roles = sorted(available_roles.items(), key=lambda x: x[1])
     
     return templates.TemplateResponse(
         "activity.html", 
@@ -415,10 +470,141 @@ async def activity_page(request: Request, _=Depends(require_auth)):
             "request": request,
             "daily_labels": daily_labels,
             "daily_hours": daily_hours,
-            "leaderboard": leaderboard[:20],
+            "leaderboard": leaderboard[:100], 
             "total_hours_30d": round(total_sec_30d / 3600, 1),
             "active_staff_count": len(leaderboard),
-            "top_action": "Chatting" # Placeholder logic
+            "top_action": "Chatting",
+            "start_date": d_start.strftime("%Y-%m-%d"),
+            "end_date": d_end.strftime("%Y-%m-%d"),
+            "roles": sorted_roles,
+            "selected_role": role_id or "all"
+        }
+    )
+
+@app.get("/activity/user/{uid}", response_class=HTMLResponse)
+async def user_activity_page(request: Request, uid: int, start_date: str = None, end_date: str = None, _=Depends(require_auth)):
+    """Detailed activity page for a specific user."""
+    
+    # Defaults to 30 days for the chart
+    today = datetime.now().date()
+    try:
+        if start_date:
+            d_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        else:
+            d_start = today - timedelta(days=30)
+            
+        if end_date:
+            d_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        else:
+            d_end = today
+    except ValueError:
+        d_start = today - timedelta(days=30)
+        d_end = today
+
+    user_info = {"name": f"User {uid}", "avatar": "", "roles": []}
+    daily_stats = {} # YYYY-MM-DD -> weighted seconds
+    
+    stats_summary = defaultdict(float) # metric -> count/seconds
+    
+    try:
+        r = redis.from_url("redis://172.22.0.2:6379/0", decode_responses=True)
+        gid = 615171377783242769
+        
+        # 1. Get User Info
+        info = await r.hgetall(f"user:info:{uid}")
+        if info:
+            user_info["name"] = info.get("name", f"User {uid}")
+            user_info["avatar"] = info.get("avatar", "")
+            if "roles" in info and info["roles"]:
+                # Fetch role names
+                role_ids = info["roles"].split(",")
+                all_roles = await r.hgetall(f"guild:roles:{gid}")
+                user_info["roles"] = [all_roles.get(rid, f"Role {rid}") for rid in role_ids if rid in all_roles]
+
+        # 2. Get Activity Data for User
+        weights = {
+            "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
+            "verifications": 120, "msg_deleted": 60, "role_updates": 30,
+            "chat_time": 1, "voice_time": 1, "messages": 0
+        }
+        
+        # Scan pattern for this user: activity:day:*:GID:UID:METRIC
+        pattern = f"activity:day:*:{gid}:{uid}:*"
+        
+        async for key in r.scan_iter(pattern):
+            parts = key.split(":") 
+            if len(parts) != 6: continue
+            
+            day_str = parts[2]
+            metric = parts[5]
+            
+            try:
+                d = datetime.strptime(day_str, "%Y-%m-%d").date()
+            except: continue
+            
+            if d < d_start or d > d_end: continue
+            
+            val = float(await r.get(key) or 0)
+            
+            # Add to Summary
+            stats_summary[metric] += val
+            
+            # Add to Daily Chart (Weighted)
+            w = weights.get(metric, 1)
+            if metric == "messages": w = 0
+            
+            if day_str not in daily_stats: daily_stats[day_str] = 0
+            daily_stats[day_str] += (val * w)
+
+        await r.aclose()
+    except Exception as e:
+        print(f"Error fetching user activity: {e}")
+
+    # Format Chart
+    sorted_days = sorted(daily_stats.keys())
+    daily_labels = [d[5:] for d in sorted_days]
+    daily_values = [round(daily_stats[d] / 3600, 1) for d in sorted_days]
+    
+    # Calculate Totals
+    chat_h = round(stats_summary["chat_time"] / 3600, 1)
+    voice_h = round(stats_summary["voice_time"] / 3600, 1)
+    
+    total_weighted = 0
+    for m, val in stats_summary.items():
+        w = weights.get(m, 1)
+        if m == "messages": w = 0
+        total_weighted += (val * w)
+        
+    total_h = round(total_weighted / 3600, 1)
+    
+    action_breakdown = {
+        "Bans": int(stats_summary["bans"]),
+        "Kicks": int(stats_summary["kicks"]),
+        "Timeouts": int(stats_summary["timeouts"]),
+        "Unbans": int(stats_summary["unbans"]),
+        "Verifications": int(stats_summary["verifications"]),
+        "Deleted Msgs": int(stats_summary["msg_deleted"]),
+        "Role Updates": int(stats_summary["role_updates"])
+    }
+    
+    total_actions = sum(action_breakdown.values())
+
+    return templates.TemplateResponse(
+        "user_activity.html",
+        {
+            "request": request,
+            "user_info": user_info,
+            "user_roles": user_info["roles"],
+            "daily_labels": daily_labels,
+            "daily_values": daily_values,
+            "total_time_h": total_h,
+            "chat_time_h": chat_h,
+            "voice_time_h": voice_h,
+            "user_stats": stats_summary,
+            "action_breakdown": action_breakdown,
+            "total_actions": total_actions,
+            "start_date": d_start.strftime("%Y-%m-%d"),
+            "end_date": d_end.strftime("%Y-%m-%d")
         }
     )
 
