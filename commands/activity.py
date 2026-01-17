@@ -199,6 +199,45 @@ class ActivityMonitor(commands.Cog):
                     await self.r.incrbyfloat(self._k_day_stats(day, gid, uid, "voice_time"), duration)
                 await self.r.delete(k_voice)
 
+    @commands.Cog.listener()
+    async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry):
+        if not entry.guild or not entry.user or entry.user.bot: return
+        
+        gid = entry.guild.id
+        uid = entry.user.id
+        day = self._get_today()
+        
+        metric = None
+        
+        if entry.action == discord.AuditLogAction.ban:
+            metric = "bans"
+        elif entry.action == discord.AuditLogAction.kick:
+            metric = "kicks"
+        elif entry.action == discord.AuditLogAction.unban:
+            metric = "unbans"
+        elif entry.action == discord.AuditLogAction.member_update:
+            # Check for Timeout
+            # AuditLogDiff has 'timed_out_until'
+            if hasattr(entry.after, "timed_out_until"):
+                # If set to None -> Remove timeout (ignore or count as unban?)
+                # If set to value -> Timeout applied
+                if entry.after.timed_out_until:
+                    metric = "timeouts"
+            
+            # Check for Role Update (if valid)
+            # Actually role_update is separate action usually, but sometimes appears here?
+            # discord.AuditLogAction.member_role_update is separate.
+            
+        elif entry.action == discord.AuditLogAction.member_role_update:
+            metric = "role_updates"
+            
+        elif entry.action == discord.AuditLogAction.message_delete:
+            metric = "msg_deleted"
+            
+        if metric:
+            await self.r.incr(self._k_day_stats(day, gid, uid, metric))
+            await self._update_user_info(entry.user)
+
     # --- HELPERS ---
     def fmt_time(self, seconds: float) -> str:
         if seconds < 60: return f"{int(seconds)}s"
@@ -554,7 +593,8 @@ class ActivityMonitor(commands.Cog):
                     elif entry.action == discord.AuditLogAction.message_delete: metric = "msg_deleted"
                     elif entry.action == discord.AuditLogAction.member_role_update: metric = "role_updates"
                     elif entry.action == discord.AuditLogAction.member_update:
-                        if hasattr(entry.after, "communication_disabled_until") and entry.after.communication_disabled_until:
+                        # Check for Timeout (timed_out_until)
+                        if hasattr(entry.after, "timed_out_until") and entry.after.timed_out_until:
                             metric = "timeouts"
                             
                     if metric:
