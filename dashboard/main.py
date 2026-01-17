@@ -9,15 +9,24 @@ import redis.asyncio as redis
 from datetime import datetime, timedelta
 from collections import defaultdict
 import secrets
+import httpx
 import sys
 sys.path.append('/root/discord-bot')
 try:
-    from dashboard_secrets import SECRET_KEY, ACCESS_TOKEN, SESSION_EXPIRY_HOURS
+    from dashboard_secrets import (
+        SECRET_KEY, ACCESS_TOKEN, SESSION_EXPIRY_HOURS,
+        DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_REDIRECT_URI,
+        ADMIN_USER_IDS
+    )
 except ImportError:
     SECRET_KEY = secrets.token_urlsafe(32)
     ACCESS_TOKEN = secrets.token_urlsafe(32)
     SESSION_EXPIRY_HOURS = 24
-    print(f"WARNING: Using generated secrets. ACCESS_TOKEN={ACCESS_TOKEN}")
+    DISCORD_CLIENT_ID = ""
+    DISCORD_CLIENT_SECRET = ""
+    DISCORD_REDIRECT_URI = "http://localhost:8092/auth/callback"
+    ADMIN_USER_IDS = []
+    print(f"WARNING: Using generated secrets.")
 
 from .utils import (
     load_member_stats, 
@@ -30,16 +39,17 @@ from .utils import (
     get_redis_dashboard_stats
 )
 
-app = FastAPI(title="NePornu Bot Dashboard", docs_url=None, redoc_url=None)
+app = FastAPI(title="Bot Dashboard", docs_url=None, redoc_url=None)
 
-# Add session middleware for authentication
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=SESSION_EXPIRY_HOURS * 3600)
+# Add session middleware for authentication (same_site=lax for OAuth redirects)
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=SESSION_EXPIRY_HOURS * 3600, same_site="lax", https_only=False)
 
 # Authentication dependency (runs AFTER middleware)
 async def require_auth(request: Request):
     """Check if user is authenticated."""
-    # Allow login/static without redirect
-    if request.url.path.startswith("/static") or request.url.path in ["/login", "/auth", "/logout"]:
+    # Allow login/auth routes without redirect
+    allowed_paths = ["/login", "/auth/callback", "/logout", "/request-otp", "/verify-otp", "/resend-otp"]
+    if request.url.path.startswith("/static") or request.url.path in allowed_paths:
         return
     
     # Check authentication
@@ -54,6 +64,12 @@ async def require_auth(request: Request):
             request.session.clear()
             raise HTTPException(status_code=401, detail="Session expired")
 
+async def require_admin(request: Request):
+    """Check if user is admin (for protected routes)."""
+    await require_auth(request)
+    if request.session.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Přístup pouze pro administrátory")
+
 # Nastavení cest
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -62,117 +78,129 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
-# Login routes
-@app.get("/login", response_class=HTMLResponse)
+# Discord OAuth2 routes
+DISCORD_API_BASE = "https://discord.com/api/v10"
+DISCORD_AUTH_URL = "https://discord.com/api/oauth2/authorize"
+DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token"
+
+@app.get("/login")
 async def login_page(request: Request):
-    """Display email login page."""
-    return templates.TemplateResponse("login.html", {"request": request})
+    """Redirect to Discord OAuth."""
+    if not DISCORD_CLIENT_ID or DISCORD_CLIENT_ID == "YOUR_CLIENT_ID_HERE":
+        return templates.TemplateResponse("login.html", {
+            "request": request, 
+            "error": "Discord OAuth not configured. Contact administrator."
+        })
+    
+    # Build OAuth URL
+    params = {
+        "client_id": DISCORD_CLIENT_ID,
+        "redirect_uri": DISCORD_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "identify guilds"
+    }
+    auth_url = f"{DISCORD_AUTH_URL}?" + "&".join(f"{k}={v}" for k, v in params.items())
+    return RedirectResponse(url=auth_url)
 
-@app.post("/request-otp")
-async def request_otp(request: Request, email: str = Form(...)):
-    """Request OTP for email."""
-    from .otp_utils import validate_email, generate_otp, store_otp, send_otp_email, check_rate_limit, mask_email
+@app.get("/auth/callback")
+async def auth_callback(request: Request, code: str = None, error: str = None):
+    """Handle Discord OAuth callback with HTML redirect for cookie persistence."""
+    if error:
+        return templates.TemplateResponse("login.html", {"request": request, "error": f"Discord error: {error}"})
     
-    # Normalize input
-    email = email.strip().lower()
+    if not code:
+        return RedirectResponse(url="/login")
     
-    # Validate email
-    is_valid, message = validate_email(email)
-    if not is_valid:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": message}
-        )
-    
-    # Check rate limit
-    allowed, remaining = await check_rate_limit(email)
-    if not allowed:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": f"Rate limit exceeded. Try again in {remaining} seconds."}
-        )
-    
-    # Generate and store OTP
-    otp = generate_otp()
-    stored = await store_otp(email, otp)
-    
-    if not stored:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Error generating OTP. Please try again."}
-        )
-    
-    # Send OTP via email
-    sent = await send_otp_email(email, otp)
-    
-    if not sent:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Error sending email. Please try again."}
-        )
-    
-    # Redirect to verify page
-    return templates.TemplateResponse(
-        "verify.html",
-        {"request": request, "email": email, "masked_email": mask_email(email)}
-    )
+    try:
+        async with httpx.AsyncClient() as client:
+            # Exchange code for token
+            token_resp = await client.post(DISCORD_TOKEN_URL, data={
+                "client_id": DISCORD_CLIENT_ID,
+                "client_secret": DISCORD_CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": DISCORD_REDIRECT_URI
+            })
+            
+            if token_resp.status_code != 200:
+                print(f"Token error: {token_resp.text}")
+                return templates.TemplateResponse("login.html", {"request": request, "error": "Failed to authenticate with Discord"})
+            
+            token_data = token_resp.json()
+            access_token = token_data["access_token"]
+            
+            # Fetch user info
+            headers = {"Authorization": f"Bearer {access_token}"}
+            user_resp = await client.get(f"{DISCORD_API_BASE}/users/@me", headers=headers)
+            user_data = user_resp.json()
+            
+            # Fetch user guilds
+            guilds_resp = await client.get(f"{DISCORD_API_BASE}/users/@me/guilds", headers=headers)
+            guilds_data = guilds_resp.json() if guilds_resp.status_code == 200 else []
+        
+        # Determine role
+        user_id = int(user_data["id"])
+        is_admin = user_id in ADMIN_USER_IDS
+        
+        # Store in session - MINIMAL DATA ONLY to prevent cookie overflow
+        request.session["authenticated"] = True
+        request.session["login_time"] = datetime.now().isoformat()
+        
+        # Only store essential user info
+        request.session["discord_user"] = {
+            "id": user_data["id"],
+            "username": user_data.get("global_name") or user_data["username"],
+            # Avatars are just strings but let's keep it small
+            "avatar": user_data.get("avatar")
+        }
+        
+        # DO NOT STORE GUILDS IN COOKIE - IT IS TOO LARGE
+        # We will fetch them/store in Redis later if needed
+        # request.session["guilds"] = [{"id": g["id"], "name": g["name"], "icon": g.get("icon")} for g in guilds_data]
+        
+        request.session["role"] = "admin" if is_admin else "guest"
+        
+        # Save session intentionally
+        
+        # Return HTML with meta refresh to ensure cookie is set
+        html_content = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta http-equiv="refresh" content="1;url=/" />
+            <title>Redirecting...</title>
+            <style>
+                body { background: #0a0a0f; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .loader { border: 4px solid #333; border-top: 4px solid #5865F2; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                .container { text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="loader" style="margin: 0 auto 20px;"></div>
+                <h2>Přihlášení úspěšné!</h2>
+                <p>Přesměrování na dashboard...</p>
+                <script>setTimeout(function(){ window.location.href = "/"; }, 1000);</script>
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        print(f"OAuth error: {e}")
+        return templates.TemplateResponse("login.html", {"request": request, "error": "Authentication failed. Try again."})
 
-@app.post("/verify-otp")
-async def verify_otp_route(request: Request, email: str = Form(...), otp: str = Form(...)):
-    """Verify OTP and create session."""
-    # Check if already authenticated (handle double-submission)
-    if request.session.get("authenticated") and request.session.get("email") == email.strip().lower():
-        return RedirectResponse(url="/", status_code=302)
-
-    from .otp_utils import verify_otp, mask_email
-    
-    # Normalize input
-    email = email.strip().lower()
-    otp = otp.strip()
-    
-    # Verify OTP
-    is_valid, message = await verify_otp(email, otp)
-    
-    if not is_valid:
-        return templates.TemplateResponse(
-            "verify.html",
-            {"request": request, "email": email, "masked_email": mask_email(email), "error": message}
-        )
-    
-    # OTP valid - create session
-    request.session["authenticated"] = True
-    request.session["login_time"] = datetime.now().isoformat()
-    request.session["email"] = email
-    
-    return RedirectResponse(url="/", status_code=302)
-
-@app.post("/resend-otp")
-async def resend_otp(request: Request, email: str = Form(...)):
-    """Resend OTP to email."""
-    from .otp_utils import generate_otp, store_otp, send_otp_email, check_rate_limit, mask_email
-    
-    # Normalize input
-    email = email.strip().lower()
-    
-    # Check rate limit
-    allowed, remaining = await check_rate_limit(email)
-    if not allowed:
-        return templates.TemplateResponse(
-            "verify.html",
-            {"request": request, "email": email, "masked_email": mask_email(email), 
-             "error": f"Rate limit exceeded. Wait {remaining}s."}
-        )
-    
-    # Generate and send new OTP
-    otp = generate_otp()
-    await store_otp(email, otp)
-    await send_otp_email(email, otp)
-    
-    return templates.TemplateResponse(
-        "verify.html",
-        {"request": request, "email": email, "masked_email": mask_email(email),
-         "success": "New code sent!"}
-    )
+@app.get("/debug/session")
+async def debug_session(request: Request):
+    """Debug session content."""
+    return {
+        "session_keys": list(request.session.keys()),
+        "auth": request.session.get("authenticated"),
+        "role": request.session.get("role"),
+        "user_id": request.session.get("discord_user", {}).get("id")
+    }
 
 @app.get("/logout")
 async def logout(request: Request):
@@ -278,54 +306,7 @@ async def index(request: Request, _=Depends(require_auth)):
         }
     )
 
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
-    configs = get_challenge_config()
-    target_gid = list(configs.keys())[0] if configs else ""
-    current_cfg = configs.get(target_gid, {})
-    
-    return templates.TemplateResponse(
-        "settings.html", 
-        {
-            "request": request,
-            "config_json": configs,
-            "target_gid": target_gid,
-            "current_cfg": current_cfg
-        }
-    )
-
-@app.post("/settings", response_class=HTMLResponse)
-async def settings_save(
-    request: Request,
-    guild_id: str = Form(...),
-    role_id: str = Form(...),
-    channel_id: str = Form(...),
-    emojis: str = Form(...),
-):
-    configs = get_challenge_config()
-    if guild_id not in configs: configs[guild_id] = {}
-        
-    cfg = configs[guild_id]
-    cfg["guild_id"] = int(guild_id)
-    cfg["role_id"] = int(role_id) if role_id.isdigit() else None
-    cfg["channel_id"] = int(channel_id) if channel_id.isdigit() else None
-    
-    raw_emojis = emojis.replace(",", " ").split()
-    cfg["emojis"] = [e.strip() for e in raw_emojis if e.strip()]
-    
-    configs[guild_id] = cfg
-    save_challenge_config(configs)
-    
-    return templates.TemplateResponse(
-        "settings.html",
-        {
-            "request": request,
-            "target_gid": guild_id,
-            "current_cfg": cfg,
-            "message": "✅ Nastavení uloženo (Bot restart nutný!)",
-            "config_json": configs
-        }
-    )
+# Challenge config routes moved - /settings is now for action weights
 
 @app.get("/commands", response_class=HTMLResponse)
 async def commands_page(request: Request, _=Depends(require_auth)):
@@ -339,6 +320,14 @@ async def analytics_page(request: Request, _=Depends(require_auth)):
 @app.get("/activity", response_class=HTMLResponse)
 async def activity_page(request: Request, start_date: str = None, end_date: str = None, role_id: str = None, _=Depends(require_auth)):
     """Moderator Activity Page with manual Redis aggregation."""
+    
+    # Check role - guests see restricted view
+    user_role = request.session.get("role", "guest")
+    if user_role != "admin":
+        return templates.TemplateResponse("activity_restricted.html", {
+            "request": request,
+            "message": "Přístup k této stránce je omezen. Pro přístup ke svým guildám kontaktujte administrátora."
+        })
     
     # Parse dates
     today = datetime.now().date()
@@ -370,47 +359,53 @@ async def activity_page(request: Request, start_date: str = None, end_date: str 
         # 1. Fetch Available Roles
         available_roles = await r.hgetall(f"guild:roles:{gid}")
         
-        # 2. Scan Activity
-        weights = {
-            "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
-            "verifications": 120, "msg_deleted": 60, "role_updates": 30,
-            "chat_time": 1, "voice_time": 1, "messages": 0
-        }
+        # 2. Discover Active Users (from event keys)
+        active_users = set()
+        for pattern in [f"events:msg:{gid}:*", f"events:voice:{gid}:*", f"events:action:{gid}:*"]:
+            async for key in r.scan_iter(pattern):
+                # Extract UID from key: events:TYPE:GID:UID
+                parts = key.split(":")
+                if len(parts) == 4:
+                    active_users.add(int(parts[3]))
         
-        async for key in r.scan_iter(f"activity:day:*:{gid}:*:*"):
-            parts = key.split(":") 
-            if len(parts) != 6: continue
+        # 3. Iterate Through Days & Users
+        current_day = d_start
+        while current_day <= d_end:
+            day_str = current_day.strftime("%Y-%m-%d")
             
-            day_str = parts[2]
-            uid = int(parts[4])
-            metric = parts[5]
+            for uid in active_users:
+                daily_stats = await get_daily_stats(r, gid, uid, current_day)
+                
+                if not daily_stats: continue  # No data this day
+                
+                # Aggregate into daily totals
+                if day_str not in days_map: days_map[day_str] = 0
+                
+                # Calculate weighted time
+                chat_t = daily_stats.get("chat_time", 0)
+                voice_t = daily_stats.get("voice_time", 0)
+                
+                # Action time
+                weights = await get_action_weights(r)
+                action_t = 0
+                for action_metric in ["bans", "kicks", "timeouts", "unbans", "verifications", "msg_deleted", "role_updates"]:
+                    action_t += daily_stats.get(action_metric, 0) * weights.get(action_metric, 0)
+                
+                weighted_total = chat_t + voice_t + action_t
+                days_map[day_str] += (weighted_total / 3600)
+                
+                # Aggregate into user totals
+                if uid not in user_map:
+                    user_map[uid] = {"weighted": 0, "chat": 0, "voice": 0, "actions": 0, "name": f"User {uid}", "avatar": "", "roles": ""}
+                
+                user_map[uid]["weighted"] += weighted_total
+                user_map[uid]["chat"] += chat_t
+                user_map[uid]["voice"] += voice_t
+                user_map[uid]["actions"] += action_t
+                
+                total_sec_30d += weighted_total
             
-            try:
-                d = datetime.strptime(day_str, "%Y-%m-%d").date()
-            except: continue
-            
-            if d < d_start or d > d_end: continue
-            
-            val = float(await r.get(key) or 0)
-            w = weights.get(metric, 1)
-            weighted_val = val * w
-            
-            # Daily Map
-            if day_str not in days_map: days_map[day_str] = 0
-            days_map[day_str] += (weighted_val / 3600)
-            
-            # User Map
-            if uid not in user_map: 
-                user_map[uid] = {"weighted": 0, "chat": 0, "voice": 0, "actions": 0, "name": f"User {uid}", "avatar": "", "roles": ""}
-            
-            user_map[uid]["weighted"] += weighted_val
-            
-            if metric == "chat_time": user_map[uid]["chat"] += val
-            elif metric == "voice_time": user_map[uid]["voice"] += val
-            elif metric in ["bans", "kicks", "timeouts", "verifications"]: 
-                user_map[uid]["actions"] += val 
-            
-            total_sec_30d += weighted_val
+            current_day += timedelta(days=1)
 
         # 3. Resolve Usernames & Roles
         try:
@@ -521,40 +516,35 @@ async def user_activity_page(request: Request, uid: int, start_date: str = None,
                 all_roles = await r.hgetall(f"guild:roles:{gid}")
                 user_info["roles"] = [all_roles.get(rid, f"Role {rid}") for rid in role_ids if rid in all_roles]
 
-        # 2. Get Activity Data for User
-        weights = {
-            "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
-            "verifications": 120, "msg_deleted": 60, "role_updates": 30,
-            "chat_time": 1, "voice_time": 1, "messages": 0
-        }
+        # 2. Get Activity Data for User (iterate through days)
+        weights = await get_action_weights(r)
         
-        # Scan pattern for this user: activity:day:*:GID:UID:METRIC
-        pattern = f"activity:day:*:{gid}:{uid}:*"
-        
-        async for key in r.scan_iter(pattern):
-            parts = key.split(":") 
-            if len(parts) != 6: continue
+        current_day = d_start
+        while current_day <= d_end:
+            day_str = current_day.strftime("%Y-%m-%d")
             
-            day_str = parts[2]
-            metric = parts[5]
+            daily_data = await get_daily_stats(r, gid, uid, current_day)
             
-            try:
-                d = datetime.strptime(day_str, "%Y-%m-%d").date()
-            except: continue
+            if daily_data:
+                # Aggregate to summary
+                for metric, val in daily_data.items():
+                    if metric != "_version":
+                        stats_summary[metric] += val
+                
+                # Calculate weighted time for daily chart
+                chat_t = daily_data.get("chat_time", 0)
+                voice_t = daily_data.get("voice_time", 0)
+                
+                action_t = 0
+                for action_metric in ["bans", "kicks", "timeouts", "unbans", "verifications", "msg_deleted", "role_updates"]:
+                    action_t += daily_data.get(action_metric, 0) * weights.get(action_metric, 0)
+                
+                weighted_total = chat_t + voice_t + action_t
+                
+                if day_str not in daily_stats: daily_stats[day_str] = 0
+                daily_stats[day_str] += weighted_total
             
-            if d < d_start or d > d_end: continue
-            
-            val = float(await r.get(key) or 0)
-            
-            # Add to Summary
-            stats_summary[metric] += val
-            
-            # Add to Daily Chart (Weighted)
-            w = weights.get(metric, 1)
-            if metric == "messages": w = 0
-            
-            if day_str not in daily_stats: daily_stats[day_str] = 0
-            daily_stats[day_str] += (val * w)
+            current_day += timedelta(days=1)
 
         await r.aclose()
     except Exception as e:
@@ -607,6 +597,155 @@ async def user_activity_page(request: Request, uid: int, start_date: str = None,
             "end_date": d_end.strftime("%Y-%m-%d")
         }
     )
+
+
+# --- HELPER: Action Weights ---
+async def get_action_weights(r: redis.Redis) -> dict:
+    """Fetch action weights from Redis or use defaults."""
+    # Defaults
+    defaults = {
+        "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
+        "verifications": 120, "msg_deleted": 60, "role_updates": 30,
+        "chat_time": 1, "voice_time": 1
+    }
+    
+    try:
+        stored = await r.hgetall("config:action_weights")
+        if stored:
+            # Merge stored values (convert to int)
+            for k, v in stored.items():
+                if k in defaults:
+                    defaults[k] = int(v)
+    except Exception as e:
+        print(f"Error fetching weights: {e}")
+        
+    return defaults
+
+async def get_daily_stats(r: redis.Redis, gid: int, uid: int, day: datetime.date) -> dict:
+    """
+    Get daily stats for a user on a specific day.
+    Uses cached value if version matches, otherwise recalculates from raw events.
+    """
+    from datetime import datetime as dt
+    import json
+    from collections import defaultdict
+    
+    day_str = day.strftime("%Y-%m-%d")
+    cache_key = f"stats:day:{day_str}:{gid}:{uid}"
+    
+    # Check cache version
+    cached_version = await r.hget(cache_key, "_version")
+    current_version = await r.get("config:weights_version") or "0"
+    
+    if cached_version == current_version:
+        # Cache hit!
+        stats = await r.hgetall(cache_key)
+        # Convert strings to floats/ints
+        return {k: float(v) if k != "_version" else v for k, v in stats.items()}
+    
+    # Cache miss → recalculate from raw events
+    weights = await get_action_weights(r)
+    
+    # Timestamp range for this day
+    from datetime import time as dt_time
+    day_start = dt.combine(day, dt_time(0, 0, 0)).timestamp()
+    day_end = dt.combine(day, dt_time(23, 59, 59)).timestamp()
+    
+    stats = defaultdict(float)
+    
+    # 1. Messages
+    msg_key = f"events:msg:{gid}:{uid}"
+    messages = await r.zrangebyscore(msg_key, day_start, day_end)
+    
+    for msg_json in messages:
+        msg_data = json.loads(msg_json)
+        stats["messages"] += 1
+        stats["chat_time"] += msg_data["len"] * weights.get("chat_time", 1)
+    
+    # 2. Voice
+    voice_key = f"events:voice:{gid}:{uid}"
+    voice_sessions = await r.zrangebyscore(voice_key, day_start, day_end)
+    
+    for vs_json in voice_sessions:
+        vs_data = json.loads(vs_json)
+        stats["voice_time"] += vs_data["duration"] * weights.get("voice_time", 1)
+    
+    # 3. Actions
+    action_key = f"events:action:{gid}:{uid}"
+    actions = await r.zrangebyscore(action_key, day_start, day_end)
+    
+    for action_json in actions:
+        action_data = json.loads(action_json)
+        action_type = action_data["type"]
+        
+        # Map back to old metric names for compatibility
+        metric_map = {
+            "ban": "bans", "kick": "kicks", "timeout": "timeouts",
+            "unban": "unbans", "role_update": "role_updates",
+            "msg_delete": "msg_deleted"
+        }
+        
+        metric = metric_map.get(action_type, action_type + "s")
+        stats[metric] += 1
+    
+    # Store in cache with version
+    cache_data = dict(stats)
+    cache_data["_version"] = current_version
+    await r.hset(cache_key, mapping={k: str(v) for k, v in cache_data.items()})
+    
+    return dict(stats)
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request, _=Depends(require_admin)):
+    """Settings page for configuring weights (admin only)."""
+    # Defaults
+    weights = {
+        "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
+        "verifications": 120, "msg_deleted": 60, "role_updates": 30,
+        "chat_time": 1, "voice_time": 1
+    }
+    
+    try:
+        r = redis.from_url("redis://172.22.0.2:6379/0", decode_responses=True)
+        weights = await get_action_weights(r)
+        await r.aclose()
+    except Exception as e:
+        print(f"Error loading settings: {e}")
+        # Keep defaults on error
+        
+    return templates.TemplateResponse("settings.html", {"request": request, "weights": weights})
+
+@app.post("/settings/weights")
+async def update_weights(
+    request: Request,
+    bans: int = Form(...), kicks: int = Form(...), timeouts: int = Form(...),
+    unbans: int = Form(...), verifications: int = Form(...), 
+    msg_deleted: int = Form(...), role_updates: int = Form(...),
+    chat_time: int = Form(...), voice_time: int = Form(...),
+    _=Depends(require_auth)
+):
+    """Update action weights in Redis."""
+    try:
+        r = redis.from_url("redis://172.22.0.2:6379/0", decode_responses=True)
+        
+        mapping = {
+            "bans": bans, "kicks": kicks, "timeouts": timeouts,
+            "unbans": unbans, "verifications": verifications,
+            "msg_deleted": msg_deleted, "role_updates": role_updates,
+            "chat_time": chat_time, "voice_time": voice_time
+        }
+        
+        await r.hset("config:action_weights", mapping=mapping)
+        
+        # INVALIDATE ALL CACHED STATS
+        await r.incr("config:weights_version")
+        
+        await r.aclose()
+        
+    except Exception as e:
+        print(f"Error saving weights: {e}")
+        
+    return RedirectResponse(url="/settings", status_code=303)
 
 
 @app.get("/api/logs")

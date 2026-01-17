@@ -36,18 +36,22 @@ except ImportError:
 REDIS_URL = "redis://172.22.0.2:6379/0"
 
 def validate_email(email: str) -> Tuple[bool, str]:
-    """Validate email format and domain."""
+    """Validate email format only (no domain restriction)."""
     # Basic email regex
     email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     
     if not re.match(email_pattern, email):
-        return False, "Invalid email format"
-    
-    # Check domain
-    if not email.lower().endswith(ALLOWED_EMAIL_DOMAIN.lower()):
-        return False, f"Only {ALLOWED_EMAIL_DOMAIN} emails are allowed"
+        return False, "Neplatný formát emailu"
     
     return True, "Valid"
+
+def get_user_role(email: str) -> str:
+    """Return user role based on email domain."""
+    ADMIN_DOMAINS = ["@nepornu.cz"]
+    for domain in ADMIN_DOMAINS:
+        if email.lower().endswith(domain):
+            return "admin"
+    return "guest"
 
 def generate_otp() -> str:
     """Generate random OTP code."""

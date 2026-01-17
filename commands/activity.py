@@ -11,6 +11,7 @@ import redis.asyncio as redis
 import math
 from collections import defaultdict
 import re
+import json
 
 # Redis Stats Keys (Daily Buckets)
 # activity:day:{YYYY-MM-DD}:{guild_id}:{user_id}:{metric}
@@ -30,16 +31,6 @@ LEAD_IN_REPLY = 60.0  # 1 minute bonus for replies (new session context)
 
 REDIS_URL = "redis://redis-hll:6379/0"
 
-ACTION_WEIGHTS = {
-    "bans": 300,
-    "kicks": 180,
-    "timeouts": 180,
-    "unbans": 120,
-    "verifications": 120,
-    "msg_deleted": 60,
-    "role_updates": 30
-}
-
 class ActivityMonitor(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -49,83 +40,33 @@ class ActivityMonitor(commands.Cog):
     async def cog_unload(self):
         await self.pool.disconnect()
 
+    async def get_action_weights(self) -> dict:
+        """Fetch action weights from Redis or use defaults."""
+        defaults = {
+            "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
+            "verifications": 120, "msg_deleted": 60, "role_updates": 30,
+            "chat_time": 1, "voice_time": 1
+        }
+        
+        try:
+            stored = await self.r.hgetall("config:action_weights")
+            if stored:
+                for k, v in stored.items():
+                    if k in defaults:
+                        defaults[k] = int(v)
+        except Exception as e:
+            print(f"Error fetching weights: {e}")
+        
+        return defaults
+
     def _get_today(self) -> str:
         return datetime.now().strftime("%Y-%m-%d")
 
     def _timestamp_to_day(self, ts: float) -> str:
         return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
 
-    def _k_day_stats(self, day: str, gid: int, uid: int, metric: str) -> str:
-        return f"activity:day:{day}:{gid}:{uid}:{metric}"
-
     def _k_state(self, gid: int, uid: int, key: str) -> str:
         return f"activity:state:{gid}:{uid}:{key}"
-
-    def _calc_lead_in(self, length: int, is_reply: bool) -> float:
-        """Calculate Lead-In time for NEW SESSION start."""
-        bonus = LEAD_IN_REPLY if is_reply else 0
-        # Base + Bonus. Character time is added SEPARATELY now for consistency.
-        return LEAD_IN_BASE + bonus
-
-    async def _update_session(self, gid: int, uid: int, message: discord.Message = None):
-        """
-        Update session state.
-        1. Always add CHAR TIME for the message.
-        2. If New Session -> Add LEAD_IN_BASE (+ Reply Bonus).
-        3. If Continue -> Update timestamp (natural gap adds up later).
-        """
-        now = time.time()
-        day_now = self._get_today()
-        
-        # 1. Always add Character Time
-        if message:
-            char_time = len(message.content) * LEAD_IN_CHAR
-            await self.r.incrbyfloat(self._k_day_stats(day_now, gid, uid, "chat_time"), char_time)
-
-        k_start = self._k_state(gid, uid, "chat_start")
-        k_last = self._k_state(gid, uid, "chat_last")
-
-        last_seen = await self.r.get(k_last)
-        
-        async with self.r.pipeline() as pipe:
-            if last_seen:
-                last_seen_f = float(last_seen)
-                
-                if now - last_seen_f > SESSION_TIMEOUT:
-                    # Time out -> Close previous
-                    start_str = await self.r.get(k_start)
-                    if start_str:
-                        start_f = float(start_str)
-                        raw_duration = last_seen_f - start_f
-                        # Max with 0, since Lead-In covers the base time now.
-                        duration = max(raw_duration, 0)
-                        
-                        day_prev = self._timestamp_to_day(last_seen_f)
-                        pipe.incrbyfloat(self._k_day_stats(day_prev, gid, uid, "chat_time"), duration)
-                    
-                    # Start NEW session
-                    pipe.set(k_start, now)
-                    
-                    # Add Lead-In (Base + Reply Bonus)
-                    if message:
-                        is_reply = (message.reference is not None)
-                        lead_in = self._calc_lead_in(len(message.content), is_reply)
-                        pipe.incrbyfloat(self._k_day_stats(day_now, gid, uid, "chat_time"), lead_in)
-                
-                # Else: Continue session. Just update last_seen.
-                
-            else:
-                # First ever
-                pipe.set(k_start, now)
-                if message:
-                    is_reply = (message.reference is not None)
-                    lead_in = self._calc_lead_in(len(message.content), is_reply)
-                    pipe.incrbyfloat(self._k_day_stats(day_now, gid, uid, "chat_time"), lead_in)
-            
-            pipe.set(k_last, now)
-            pipe.expire(k_start, 86400)
-            pipe.expire(k_last, 86400)
-            await pipe.execute()
 
     async def _update_user_info(self, user: discord.Union[discord.Member, discord.User]):
         """Cache user info in Redis for Dashboard."""
@@ -151,26 +92,22 @@ class ActivityMonitor(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild: return
-        # Increment daily message count
-        day = self._get_today()
-        await self.r.incr(self._k_day_stats(day, message.guild.id, message.author.id, "messages"))
-        await self._update_session(message.guild.id, message.author.id, message)
+        
+        # Store raw event in Sorted Set
+        # Key: events:msg:{guild_id}:{user_id}
+        # Score: timestamp (for range queries)
+        # Member: JSON {"len": X, "reply": bool}
+        
+        key = f"events:msg:{message.guild.id}:{message.author.id}"
+        ts = message.created_at.timestamp()
+        event_data = json.dumps({
+            "len": len(message.content),
+            "reply": message.reference is not None
+        })
+        
+        await self.r.zadd(key, {event_data: ts})
         await self._update_user_info(message.author)
 
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.Union[discord.Member, discord.User]):
-        if user.bot or not reaction.message.guild: return
-        await self._update_session(reaction.message.guild.id, user.id)
-        # Note: on_reaction_add user might be PartialMember causing issues if properties accessed?
-        # Usually it's Member.
-        if hasattr(user, "display_name"):
-            await self._update_user_info(user)
-
-    @commands.Cog.listener()
-    async def on_interaction(self, itx: discord.Interaction):
-        if itx.user.bot or not itx.guild: return
-        await self._update_session(itx.guild.id, itx.user.id)
-        await self._update_user_info(itx.user)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
@@ -188,15 +125,19 @@ class ActivityMonitor(commands.Cog):
         was_in = before.channel is not None
         
         if is_in and not was_in:
+            # Joining - store start time
             await self.r.set(k_voice, now)
         elif was_in and not is_in:
+            # Leaving - calculate duration and store event
             start_str = await self.r.get(k_voice)
             if start_str:
                 start = float(start_str)
                 duration = now - start
                 if duration > 0:
-                    day = self._timestamp_to_day(now) # Attribute to leave time
-                    await self.r.incrbyfloat(self._k_day_stats(day, gid, uid, "voice_time"), duration)
+                    # Store event: events:voice:{gid}:{uid}
+                    key = f"events:voice:{gid}:{uid}"
+                    event_data = json.dumps({"duration": int(duration)})
+                    await self.r.zadd(key, {event_data: start})
                 await self.r.delete(k_voice)
 
     @commands.Cog.listener()
@@ -205,37 +146,30 @@ class ActivityMonitor(commands.Cog):
         
         gid = entry.guild.id
         uid = entry.user.id
-        day = self._get_today()
+        ts = entry.created_at.timestamp()
         
-        metric = None
+        action_type = None
         
         if entry.action == discord.AuditLogAction.ban:
-            metric = "bans"
+            action_type = "ban"
         elif entry.action == discord.AuditLogAction.kick:
-            metric = "kicks"
+            action_type = "kick"
         elif entry.action == discord.AuditLogAction.unban:
-            metric = "unbans"
+            action_type = "unban"
         elif entry.action == discord.AuditLogAction.member_update:
-            # Check for Timeout
-            # AuditLogDiff has 'timed_out_until'
-            if hasattr(entry.after, "timed_out_until"):
-                # If set to None -> Remove timeout (ignore or count as unban?)
-                # If set to value -> Timeout applied
-                if entry.after.timed_out_until:
-                    metric = "timeouts"
-            
-            # Check for Role Update (if valid)
-            # Actually role_update is separate action usually, but sometimes appears here?
-            # discord.AuditLogAction.member_role_update is separate.
-            
+            # Check for Timeout (timed_out_until)
+            if hasattr(entry.after, "timed_out_until") and entry.after.timed_out_until:
+                action_type = "timeout"
         elif entry.action == discord.AuditLogAction.member_role_update:
-            metric = "role_updates"
-            
+            action_type = "role_update"
         elif entry.action == discord.AuditLogAction.message_delete:
-            metric = "msg_deleted"
+            action_type = "msg_delete"
             
-        if metric:
-            await self.r.incr(self._k_day_stats(day, gid, uid, metric))
+        if action_type:
+            # Store event: events:action:{gid}:{uid}
+            key = f"events:action:{gid}:{uid}"
+            event_data = json.dumps({"type": action_type})
+            await self.r.zadd(key, {event_data: ts})
             await self._update_user_info(entry.user)
 
     # --- HELPERS ---
@@ -246,36 +180,77 @@ class ActivityMonitor(commands.Cog):
         if h > 0: return f"{h}h {m}m"
         return f"{m}m"
 
-    async def get_aggregated_stats(self, gid: int, uid: int, start_date: date = None, end_date: date = None):
-        """Sum stats for a user within a date range."""
-        agg = defaultdict(float)
+    async def get_daily_stats(self, gid: int, uid: int, day: date) -> dict:
+        """
+        Get daily stats for a user on a specific day.
+        Uses cached value if version matches, otherwise recalculates from raw events.
+        """
+        day_str = day.strftime("%Y-%m-%d")
+        cache_key = f"stats:day:{day_str}:{gid}:{uid}"
         
-        # Pattern: activity:day:YYYY-MM-DD:GID:UID:METRIC
-        # We can iterate specifically if the range is small, but SCAN is safer for sparse data.
-        # Actually, if we have huge history, scanning "activity:day:*" might be slow.
-        # BUT, since we store GID/UID in the key, we can scan `activity:day:*:GID:UID:*`
-        pattern = f"activity:day:*:{gid}:{uid}:*"
+        # Check cache version
+        cached_version = await self.r.hget(cache_key, "_version")
+        current_version = await self.r.get("config:weights_version") or "0"
         
-        async for key in self.r.scan_iter(pattern):
-            # Key: activity:day:2025-01-16:123:456:bans
-            parts = key.split(":")
-            if len(parts) != 6: continue
+        if cached_version == current_version:
+            # Cache hit!
+            stats = await self.r.hgetall(cache_key)
+            # Convert strings to floats/ints
+            return {k: float(v) if k != "_version" else v for k, v in stats.items()}
+        
+        # Cache miss → recalculate from raw events
+        weights = await self.get_action_weights()
+        
+        # Timestamp range for this day
+        from datetime import time as dt_time
+        day_start = datetime.combine(day, dt_time(0, 0, 0)).timestamp()
+        day_end = datetime.combine(day, dt_time(23, 59, 59)).timestamp()
+        
+        stats = defaultdict(float)
+        
+        # 1. Messages
+        msg_key = f"events:msg:{gid}:{uid}"
+        messages = await self.r.zrangebyscore(msg_key, day_start, day_end)
+        
+        for msg_json in messages:
+            msg_data = json.loads(msg_json)
+            stats["messages"] += 1
+            stats["chat_time"] += msg_data["len"] * weights.get("chat_time", 1)
+            # Lead-in bonuses (simplified - count per session start)
+            # For now, just use character-based time
+        
+        # 2. Voice
+        voice_key = f"events:voice:{gid}:{uid}"
+        voice_sessions = await self.r.zrangebyscore(voice_key, day_start, day_end)
+        
+        for vs_json in voice_sessions:
+            vs_data = json.loads(vs_json)
+            stats["voice_time"] += vs_data["duration"] * weights.get("voice_time", 1)
+        
+        # 3. Actions
+        action_key = f"events:action:{gid}:{uid}"
+        actions = await self.r.zrangebyscore(action_key, day_start, day_end)
+        
+        for action_json in actions:
+            action_data = json.loads(action_json)
+            action_type = action_data["type"]
             
-            day_str = parts[2]
-            metric = parts[5]
+            # Map back to old metric names for compatibility
+            metric_map = {
+                "ban": "bans", "kick": "kicks", "timeout": "timeouts",
+                "unban": "unbans", "role_update": "role_updates",
+                "msg_delete": "msg_deleted"
+            }
             
-            # Date Filter
-            if start_date or end_date:
-                try:
-                    d = datetime.strptime(day_str, "%Y-%m-%d").date()
-                    if start_date and d < start_date: continue
-                    if end_date and d > end_date: continue
-                except: continue
-                
-            val = float(await self.r.get(key) or 0)
-            agg[metric] += val
-            
-        return agg
+            metric = metric_map.get(action_type, action_type + "s")
+            stats[metric] += 1
+        
+        # Store in cache with version
+        cache_data = dict(stats)
+        cache_data["_version"] = current_version
+        await self.r.hset(cache_key, mapping={k: str(v) for k, v in cache_data.items()})
+        
+        return dict(stats)
 
     # --- COMMANDS ---
     act_group = app_commands.Group(name="activity", description="Sledování aktivity moderátorů")
@@ -340,8 +315,47 @@ class ActivityMonitor(commands.Cog):
             await itx.followup.send("❌ Špatný formát data. Použij `DD-MM-YYYY` (např. 01-01-2025).")
             return
 
-        # Fetch Data
-        data = await self.get_aggregated_stats(gid, uid, d_after, d_before)
+        from collections import defaultdict
+        from datetime import time as dt_time
+        data = defaultdict(float)
+        
+        # Calculate timestamp range (not day-by-day iteration)
+        start_day = d_after if d_after else date(2015, 1, 1)  # Discord epoch
+        end_day = d_before if d_before else date.today()
+        
+        ts_start = datetime.combine(start_day, dt_time(0, 0, 0)).timestamp()
+        ts_end = datetime.combine(end_day, dt_time(23, 59, 59)).timestamp()
+        
+        weights = await self.get_action_weights()
+        
+        # 1. Messages - direct query
+        msg_key = f"events:msg:{gid}:{uid}"
+        messages = await self.r.zrangebyscore(msg_key, ts_start, ts_end)
+        for msg_json in messages:
+            msg_data = json.loads(msg_json)
+            data["messages"] += 1
+            data["chat_time"] += msg_data["len"] * weights.get("chat_time", 1)
+        
+        # 2. Voice - direct query
+        voice_key = f"events:voice:{gid}:{uid}"
+        voice_sessions = await self.r.zrangebyscore(voice_key, ts_start, ts_end)
+        for vs_json in voice_sessions:
+            vs_data = json.loads(vs_json)
+            data["voice_time"] += vs_data["duration"] * weights.get("voice_time", 1)
+        
+        # 3. Actions - direct query
+        action_key = f"events:action:{gid}:{uid}"
+        actions = await self.r.zrangebyscore(action_key, ts_start, ts_end)
+        metric_map = {
+            "ban": "bans", "kick": "kicks", "timeout": "timeouts",
+            "unban": "unbans", "role_update": "role_updates",
+            "msg_delete": "msg_deleted", "verification": "verifications"
+        }
+        for action_json in actions:
+            action_data = json.loads(action_json)
+            action_type = action_data["type"]
+            metric = metric_map.get(action_type, action_type + "s")
+            data[metric] += 1
         
         # Pending Session
         today = date.today()
@@ -370,6 +384,7 @@ class ActivityMonitor(commands.Cog):
         voice_t = data["voice_time"]
         msgs = int(data["messages"])
         
+        ACTION_WEIGHTS = await self.get_action_weights()
         action_time = 0
         for m, w in ACTION_WEIGHTS.items():
             action_time += (data[m] * w)
@@ -431,35 +446,36 @@ class ActivityMonitor(commands.Cog):
 
         user_scores = defaultdict(float) # uid -> total_weighted_seconds
         
-        # Scan ALL daily keys for this guild
-        pattern = f"activity:day:*:{gid}:*:*"
-        async for key in self.r.scan_iter(pattern):
-            # activity:day:YYYY-MM-DD:GID:UID:METRIC
-            parts = key.split(":")
-            if len(parts) != 6: continue
-            
-            day_str = parts[2]
-            uid = int(parts[4])
-            metric = parts[5]
-            
-            # Filter
-            if d_after or d_before:
-                try:
-                    d = datetime.strptime(day_str, "%Y-%m-%d").date()
-                    if d_after and d < d_after: continue
-                    if d_before and d > d_before: continue
-                except: continue
+        # Get weights
+        ACTION_WEIGHTS = await self.get_action_weights()
+        
+        # Discover active users
+        active_users = set()
+        for pattern in [f"events:msg:{gid}:*", f"events:voice:{gid}:*", f"events:action:{gid}:*"]:
+            async for key in self.r.scan_iter(pattern):
+                parts = key.split(":")
+                if len(parts) == 4:
+                    active_users.add(int(parts[3]))
+        
+        # Iterate through days and users
+        current_day = d_after if d_after else (date.today() - timedelta(days=365))
+        end_day = d_before if d_before else date.today()
+        
+        while current_day <= end_day:
+            for uid in active_users:
+                daily = await self.get_daily_stats(gid, uid, current_day)
                 
-            val = float(await self.r.get(key) or 0)
+                # Calculate weighted score
+                chat_t = daily.get("chat_time", 0)
+                voice_t = daily.get("voice_time", 0)
+                
+                action_t = 0
+                for action_metric in ["bans", "kicks", "timeouts", "unbans", "verifications", "msg_deleted", "role_updates"]:
+                    action_t += daily.get(action_metric, 0) * ACTION_WEIGHTS.get(action_metric, 0)
+                
+                user_scores[uid] += (chat_t + voice_t + action_t)
             
-            # Add to score
-            weight = 1.0
-            if metric in ACTION_WEIGHTS:
-                weight = ACTION_WEIGHTS[metric]
-            elif metric == "messages":
-                weight = 0 # Messages don't add time directly, chat_time does
-            
-            user_scores[uid] += (val * weight)
+            current_day += timedelta(days=1)
 
         sorted_users = sorted(user_scores.items(), key=lambda x: x[1], reverse=True)[:10]
         
@@ -500,140 +516,156 @@ class ActivityMonitor(commands.Cog):
         
         await itx.followup.send(f"⏳ Začínám Backfill od {limit_date.date()}... (Režim: 3min Base + Chars)")
         
-        # A. CHAT
-        total_msgs = 0
-        user_msgs = defaultdict(list) # {uid: [(ts, len, is_reply), ...]}
-        channels = [c for c in itx.guild.text_channels if c.permissions_for(itx.guild.me).read_message_history]
+        # A. MESSAGES → events:msg:{gid}:{uid}
+        msg_count = 0
+        user_messages = defaultdict(list)  # uid -> [(ts, len, is_reply), ...]
+        BATCH_SIZE = 10000  # Save every 10k messages
         
-        for ch in channels:
+        for channel in itx.guild.text_channels:
             try:
-                async for msg in ch.history(limit=None, after=limit_date):
-                    if msg.author.bot: continue
-                    ts = msg.created_at.timestamp()
-                    length = len(msg.content)
-                    is_reply = (msg.reference is not None)
-                    user_msgs[msg.author.id].append((ts, length, is_reply))
-                    total_msgs += 1
-                    
-                    # Update cache for this user
-                    # Note: We can't await inside this loop efficiently if it's too frequent.
-                    # But since we have msg.author, we CAN call _update_user_info
-                    # Just do it once per user to avoid spam?
-                    # Actually, doing it here ensures we get historical names if they match current?
-                    # No, msg.author reflects CURRENT member state if they are in guild.
-                    if isinstance(msg.author, discord.Member):
-                         await self._update_user_info(msg.author)
-
-            except: pass
+                async for msg in channel.history(limit=None, after=limit_date):
+                    if not msg.author.bot:
+                        ts = msg.created_at.timestamp()
+                        length = len(msg.content)
+                        is_reply = (msg.reference is not None)
+                        
+                        user_messages[msg.author.id].append((ts, length, is_reply))
+                        msg_count += 1
+                        
+                        # Update user info
+                        await self._update_user_info(msg.author)
+                        
+                        # Batch save every BATCH_SIZE messages
+                        if msg_count % BATCH_SIZE == 0:
+                            # Save current batch to Redis
+                            for uid, messages in user_messages.items():
+                                key = f"events:msg:{gid}:{uid}"
+                                mapping = {}
+                                for ts, length, is_reply in messages:
+                                    event_data = json.dumps({"len": length, "reply": is_reply})
+                                    mapping[event_data] = ts
+                                
+                                if mapping:
+                                    await self.r.zadd(key, mapping)
+                            
+                            # Clear batch and update progress
+                            user_messages.clear()
+                            
+                            try:
+                                await itx.edit_original_response(content=f"⏳ Zpracováno: {msg_count} zpráv...")
+                            except discord.HTTPException:
+                                # Webhook expired, continue silently
+                                print(f"Progress: {msg_count} messages")
+                                
+            except discord.Forbidden:
+                pass
+            except Exception as e:
+                print(f"Error in {channel.name}: {e}")
+        
+        # Store remaining message events
+        for uid, messages in user_messages.items():
+            key = f"events:msg:{gid}:{uid}"
+            mapping = {}
+            for ts, length, is_reply in messages:
+                event_data = json.dumps({"len": length, "reply": is_reply})
+                mapping[event_data] = ts
             
-        async with self.r.pipeline() as pipe:
-            for uid, msgs in user_msgs.items():
-                if not msgs: continue
-                msgs.sort(key=lambda x: x[0])
-                
-                curr_start_ts = msgs[0][0]
-                last_seen_ts = msgs[0][0]
-                
-                # First Message: Lead-In (Base + Reply) + Chars
-                # Note: Chars are added for EVERY message now.
-                
-                # 1. Add Lead-In for the very first session
-                first_li = self._calc_lead_in(msgs[0][1], msgs[0][2]) # Base + Reply only?
-                # _calc_lead_in was updated to be Base + Reply in this snippet.
-                day0 = self._timestamp_to_day(curr_start_ts)
-                pipe.incrbyfloat(self._k_day_stats(day0, gid, uid, "chat_time"), first_li)
-                
-                # Loop all messages
-                for i in range(len(msgs)):
-                    (t, length, is_reply) = msgs[i]
-                    day = self._timestamp_to_day(t)
-                    
-                    # A. Always add Message Count
-                    pipe.incr(self._k_day_stats(day, gid, uid, "messages"))
-                    
-                    # B. Always add Character Time
-                    char_t = length * LEAD_IN_CHAR
-                    pipe.incrbyfloat(self._k_day_stats(day, gid, uid, "chat_time"), char_t)
-                    
-                    # C. Session Logic
-                    if i > 0:
-                        if t - last_seen_ts <= SESSION_TIMEOUT:
-                            # Continue Session
-                            last_seen_ts = t
-                        else:
-                            # End Previous Session
-                            dur = last_seen_ts - curr_start_ts
-                            day_prev = self._timestamp_to_day(last_seen_ts)
-                            pipe.incrbyfloat(self._k_day_stats(day_prev, gid, uid, "chat_time"), dur)
-                            
-                            # Start NEW Session
-                            curr_start_ts = t
-                            last_seen_ts = t
-                            
-                            # Add Lead-In for New Session
-                            li = self._calc_lead_in(length, is_reply)
-                            pipe.incrbyfloat(self._k_day_stats(day, gid, uid, "chat_time"), li)
-                            
-                # Final Session End
-                dur = last_seen_ts - curr_start_ts
-                day_end = self._timestamp_to_day(last_seen_ts)
-                pipe.incrbyfloat(self._k_day_stats(day_end, gid, uid, "chat_time"), dur)
-            
-            await pipe.execute()
+            if mapping:
+                await self.r.zadd(key, mapping)
 
-        # B. AUDIT LOGS
+        # B. AUDIT LOGS → events:action:{gid}:{uid}
         audit_ops = 0
+        user_actions = defaultdict(list)  # uid -> [(ts, action_type), ...]
+        
         try:
             async for entry in itx.guild.audit_logs(limit=None, after=limit_date):
                 if entry.user and not entry.user.bot:
-                    metric = None
-                    if entry.action == discord.AuditLogAction.ban: metric = "bans"
-                    elif entry.action == discord.AuditLogAction.kick: metric = "kicks"
-                    elif entry.action == discord.AuditLogAction.unban: metric = "unbans"
-                    elif entry.action == discord.AuditLogAction.message_delete: metric = "msg_deleted"
-                    elif entry.action == discord.AuditLogAction.member_role_update: metric = "role_updates"
+                    action_type = None
+                    
+                    if entry.action == discord.AuditLogAction.ban:
+                        action_type = "ban"
+                    elif entry.action == discord.AuditLogAction.kick:
+                        action_type = "kick"
+                    elif entry.action == discord.AuditLogAction.unban:
+                        action_type = "unban"
+                    elif entry.action == discord.AuditLogAction.message_delete:
+                        action_type = "msg_delete"
+                    elif entry.action == discord.AuditLogAction.member_role_update:
+                        action_type = "role_update"
                     elif entry.action == discord.AuditLogAction.member_update:
-                        # Check for Timeout (timed_out_until)
                         if hasattr(entry.after, "timed_out_until") and entry.after.timed_out_until:
-                            metric = "timeouts"
-                            
-                    if metric:
-                        day = self._timestamp_to_day(entry.created_at.timestamp())
-                        await self.r.incr(self._k_day_stats(day, gid, entry.user.id, metric))
+                            action_type = "timeout"
+                    
+                    if action_type:
+                        ts = entry.created_at.timestamp()
+                        user_actions[entry.user.id].append((ts, action_type))
                         audit_ops += 1
-                        # Update info
+                        
                         if isinstance(entry.user, discord.Member):
-                             await self._update_user_info(entry.user)
+                            await self._update_user_info(entry.user)
         except Exception as e:
             print(f"Audit error: {e}")
+        
+        # Store action events in Sorted Sets
+        for uid, actions in user_actions.items():
+            key = f"events:action:{gid}:{uid}"
+            mapping = {}
+            for ts, action_type in actions:
+                event_data = json.dumps({"type": action_type})
+                mapping[event_data] = ts
+            
+            if mapping:
+                await self.r.zadd(key, mapping)
 
-        # C. VERIFICATIONS
+        # C. VERIFICATIONS → events:action:{gid}:{uid}
         verifs = 0
         VERIFICATION_LOG_CHANNEL_ID = 1404416148077809705
         log_ch = itx.guild.get_channel(VERIFICATION_LOG_CHANNEL_ID)
+        
         if log_ch:
             re_approve = re.compile(r"Schválil <@!?(\d+)>")
             re_bypass = re.compile(r"Manuální bypass - <@!?(\d+)>")
+            
+            verification_events = defaultdict(list)  # uid -> [ts, ...]
+            
             try:
                 async for msg in log_ch.history(limit=None, after=limit_date):
                     if msg.author.id == self.bot.user.id:
                         uid = None
                         m = re_approve.search(msg.content)
-                        if m: uid = int(m.group(1))
+                        if m:
+                            uid = int(m.group(1))
                         else:
                             m = re_bypass.search(msg.content)
-                            if m: uid = int(m.group(1))
-                            
+                            if m:
+                                uid = int(m.group(1))
+                        
                         if uid:
-                            day = self._timestamp_to_day(msg.created_at.timestamp())
-                            await self.r.incr(self._k_day_stats(day, gid, uid, "verifications"))
+                            ts = msg.created_at.timestamp()
+                            verification_events[uid].append(ts)
                             verifs += 1
-            except: pass
+            except:
+                pass
+            
+            # Store verification events
+            for uid, timestamps in verification_events.items():
+                key = f"events:action:{gid}:{uid}"
+                mapping = {}
+                for ts in timestamps:
+                    event_data = json.dumps({"type": "verification"})
+                    mapping[event_data] = ts
+                
+                if mapping:
+                    await self.r.zadd(key, mapping)
 
-        await itx.followup.send(f"✅ **Hotovo!**\n"
-                                f"Zpracováno: {total_msgs} zpráv, {audit_ops} audit akcí, {verifs} verifikací.\n"
-                                f"Režim: 3 min base + 1s/znak.\n"
-                                f"Zkus: `/activity stats after:01-01-2025`.")
+        try:
+            await itx.followup.send(f"✅ **Hotovo!**\n"
+                                    f"Zpracováno: {msg_count} zpráv, {audit_ops} audit akcí, {verifs} verifikací.\n"
+                                    f"Data uložena do event systému.\n"
+                                    f"Zkus: `/activity stats after:01-01-2025`.")
+        except discord.HTTPException:
+            # Webhook token vypršel (15min timeout) - backfill ale doběhl
+            print(f"Backfill completed: {msg_count} msgs, {audit_ops} actions, {verifs} verifs")
 
     @act_group.command(name="report", description="Zobrazí report aktivity týmu (7 a 30 dní).")
     @app_commands.checks.has_permissions(administrator=True) # Admin only for full report
