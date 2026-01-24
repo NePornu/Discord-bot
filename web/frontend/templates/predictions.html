@@ -1,0 +1,443 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+    <div>
+        <h1 class="title">🔮 Predikce</h1>
+        <p style="color: var(--text-secondary);">Odhad budoucího vývoje na základě historických dat serveru.</p>
+    </div>
+
+    <div style="display: flex; gap: 16px; align-items: center;">
+        <button id="editLayoutBtn" onclick="toggleEditMode()" class="btn"
+            style="padding: 6px 12px; white-space: nowrap; display: flex; align-items: center; gap: 8px; background: var(--bg-card);">
+            🖊️ Upravit rozložení
+        </button>
+        <button id="saveLayoutBtn" onclick="saveLayout()" class="btn"
+            style="padding: 6px 12px; white-space: nowrap; display: none; align-items: center; gap: 8px; background: var(--success-gradient); color: white;">
+            💾 Uložit
+        </button>
+    </div>
+</div>
+
+<!-- Hidden Widgets Drawer -->
+<div id="hidden-drawer" class="hidden-drawer"
+    style="display: none; margin-bottom: 30px; background: var(--bg-secondary); padding: 20px; border-radius: 16px; border: 2px dashed var(--glass-border);">
+    <h3 style="margin-bottom: 15px; color: var(--text-secondary);">Skryté widgety (přetáhněte zpět pro zobrazení)
+    </h3>
+    <div id="hidden-widgets-grid" class="grid"
+        style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; min-height: 100px;">
+        <!-- Hidden items go here -->
+    </div>
+</div>
+
+<!-- Macros for Widgets -->
+{% macro render_widget(id) %}
+{% if id == 'card_pred_members' %}
+<div class="card" data-id="card_pred_members">
+    <h3 style="color: var(--text-secondary); font-size: 14px; margin-bottom: 8px;">Očekávaný počet členů za 30 dní
+    </h3>
+    <div class="stat-value" id="pred-members">--</div>
+    <div class="stat-diff" id="pred-members-diff">Počítám...</div>
+    <div
+        style="font-size: 11px; color: var(--text-tertiary); margin-top: 8px; border-top: 1px solid var(--glass-border); padding-top: 8px;">
+        📊 Průměrný měsíční růst: <strong id="avg-growth">--</strong> členů | Aktuálně: <strong
+            id="current-members">--</strong>
+    </div>
+</div>
+{% elif id == 'card_pred_msgs' %}
+<div class="card" data-id="card_pred_msgs">
+    <h3 style="color: var(--text-secondary); font-size: 14px; margin-bottom: 8px;">Odhad zpráv (Zítra)</h3>
+    <div class="stat-value" id="pred-msgs">--</div>
+    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">dle 30denního trendu a sezónnosti
+    </div>
+</div>
+{% elif id == 'chart_main_pred' %}
+<div class="card" data-id="chart_main_pred" style="min-height: 350px;">
+    <h3 style="margin-bottom: 16px;">📈 Výhled: Růst členů (6 měsíců)</h3>
+    <div style="height: 300px;"><canvas id="predictionChart"></canvas></div>
+</div>
+{% elif id == 'chart_activity_forecast' %}
+<div class="card" data-id="chart_activity_forecast">
+    <h3 style="margin-bottom: 16px;">📅 Predikce aktivity (7 dní)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Očekávaný objem zpráv.</p>
+    <div style="height: 220px;"><canvas id="activityForecastChart"></canvas></div>
+</div>
+{% elif id == 'chart_dau_pred' %}
+<div class="card" data-id="chart_dau_pred">
+    <h3 style="margin-bottom: 16px;">👤 Predikce DAU (7 dní)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Denně aktivní uživatelé. Trend:
+        <strong id="dau-trend">--</strong>
+    </p>
+    <div style="height: 220px;"><canvas id="dauChart"></canvas></div>
+</div>
+{% elif id == 'widget_mau' %}
+<div class="card" data-id="widget_mau">
+    <h3 style="margin-bottom: 16px;">📊 Predikce MAU (3 měsíce)</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+        <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 24px; font-weight: 700; color: #3b82f6;" id="mau-value">--</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">MAU (tento měsíc)</div>
+        </div>
+        <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 24px; font-weight: 700; color: #10b981;" id="stickiness-value">--%</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">DAU/MAU Ratio</div>
+        </div>
+    </div>
+    <div style="height: 180px;"><canvas id="mauChart"></canvas></div>
+</div>
+{% elif id == 'widget_stability' %}
+<div class="card" data-id="widget_stability">
+    <h3 style="margin-bottom: 16px;">🚦 Predikce stability</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 24px; font-weight: 700; color: var(--success);" id="churn-risk-val">--%</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Skóre stability</div>
+        </div>
+        <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 24px; font-weight: 700;" id="leaves-3m">--</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Odchodů (3 měsíce)</div>
+        </div>
+    </div>
+    <div id="risk-details" style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px;">
+        <div style="font-weight: 600; margin-bottom: 8px;" id="risk-title">📊 Analýza</div>
+        <p id="risk-explanation" style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5;">
+            Načítám data...</p>
+    </div>
+</div>
+{% elif id == 'chart_peak' %}
+<div class="card" data-id="chart_peak">
+    <h3 style="margin-bottom: 16px;">⏰ Predikce vrcholových hodin</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Kdy očekávat nejvyšší aktivitu
+        zítra.</p>
+    <div style="height: 200px;"><canvas id="peakHoursChart"></canvas></div>
+</div>
+{% elif id == 'chart_seasonal' %}
+<div class="card" data-id="chart_seasonal">
+    <h3 style="margin-bottom: 16px;">📆 Sezónní predikce</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Očekávaná aktivita podle dne v
+        týdnu.</p>
+    <div style="height: 200px;"><canvas id="seasonalChart"></canvas></div>
+</div>
+{% elif id == 'chart_engagement' %}
+<div class="card" data-id="chart_engagement">
+    <h3 style="margin-bottom: 16px;">💬 Predikce engagementu</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+        <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 20px; font-weight: 700; color: #8b5cf6;" id="eng-current">--</div>
+            <div style="font-size: 11px; color: var(--text-secondary);">Aktuální</div>
+        </div>
+        <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 20px; font-weight: 700; color: #ec4899;" id="eng-predicted">--</div>
+            <div style="font-size: 11px; color: var(--text-secondary);">Za 7 dní</div>
+        </div>
+    </div>
+    <div style="height: 140px;"><canvas id="engagementChart"></canvas></div>
+</div>
+{% elif id == 'chart_new_returning' %}
+<div class="card" data-id="chart_new_returning">
+    <h3 style="margin-bottom: 16px;">👥 Predikce: Noví vs Vracející</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Očekávaný poměr.</p>
+    <div style="height: 200px;"><canvas id="newVsReturningChart"></canvas></div>
+</div>
+{% elif id == 'chart_voice' %}
+<div class="card" data-id="chart_voice">
+    <h3 style="margin-bottom: 16px;">🎤 Predikce voice aktivity</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Očekávané minuty (7 dní).</p>
+    <div style="height: 200px;"><canvas id="voiceChart"></canvas></div>
+</div>
+{% elif id == 'chart_channels' %}
+<div class="card" data-id="chart_channels">
+    <h3 style="margin-bottom: 16px;">📊 Predikce top kanálů</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Očekávaná aktivita (zítra).</p>
+    <div style="height: 200px;"><canvas id="channelsChart"></canvas></div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% set default_order = ['card_pred_members', 'card_pred_msgs', 'chart_main_pred', 'chart_activity_forecast',
+'chart_dau_pred', 'widget_mau', 'widget_stability', 'chart_peak', 'chart_seasonal', 'chart_engagement',
+'chart_new_returning', 'chart_voice', 'chart_channels'] %}
+{% set active_order = widget_order if widget_order else default_order %}
+
+<!-- Find hidden widgets -->
+{% set hidden_widgets = [] %}
+{% for def_id in default_order %}
+{% if def_id not in active_order %}
+{% set _ = hidden_widgets.append(def_id) %}
+{% endif %}
+{% endfor %}
+
+<!-- Main Grid -->
+<div id="predictions-grid" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
+    {% for widget_id in active_order %}
+    {{ render_widget(widget_id) }}
+    {% endfor %}
+</div>
+
+<!-- Hidden Bucket -->
+<div style="display:none;">
+    <div id="hidden-bucket">
+        {% for widget_id in hidden_widgets %}
+        {{ render_widget(widget_id) }}
+        {% endfor %}
+    </div>
+</div>
+</div>
+
+<style>
+    .sortable-ghost {
+        opacity: 0.4;
+        background: var(--bg-tertiary);
+        border: 2px dashed var(--primary);
+    }
+
+    .draggable-mode .card {
+        cursor: grab;
+        border: 2px dashed rgba(255, 255, 255, 0.1);
+    }
+
+    .draggable-mode .card:hover {
+        border-color: var(--primary);
+    }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+<script>
+    // --- Sortable Implementation ---
+    let sortableMain = null;
+    let sortableHidden = null;
+    const grid = document.getElementById('predictions-grid');
+    const drawer = document.getElementById('hidden-drawer');
+    const hiddenGrid = document.getElementById('hidden-widgets-grid');
+    const editBtn = document.getElementById('editLayoutBtn');
+    const saveBtn = document.getElementById('saveLayoutBtn');
+
+    // Move hidden widgets to drawer on load
+    document.addEventListener('DOMContentLoaded', () => {
+        const bucket = document.getElementById('hidden-bucket');
+        while (bucket.children.length > 0) {
+            hiddenGrid.appendChild(bucket.children[0]);
+        }
+    });
+
+    function toggleEditMode() {
+        if (sortableMain) {
+            // Cancel/Exit
+            sortableMain.destroy();
+            sortableHidden.destroy();
+            sortableMain = null;
+            sortableHidden = null;
+
+            editBtn.innerHTML = '🖊️ Upravit rozložení';
+            editBtn.classList.remove('btn-active');
+            editBtn.style.background = '';
+            saveBtn.style.display = 'none';
+            drawer.style.display = 'none';
+            grid.classList.remove('draggable-mode');
+            hiddenGrid.classList.remove('draggable-mode');
+            window.location.reload();
+        } else {
+            // Enable
+            drawer.style.display = 'block';
+            grid.classList.add('draggable-mode');
+            hiddenGrid.classList.add('draggable-mode');
+
+            sortableMain = new Sortable(grid, {
+                group: 'predictions',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                handle: '.card'
+            });
+
+            sortableHidden = new Sortable(hiddenGrid, {
+                group: 'predictions',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                handle: '.card'
+            });
+
+            editBtn.innerHTML = '❌ Zrušit';
+            editBtn.style.background = 'var(--bg-tertiary)';
+            saveBtn.style.display = 'flex';
+        }
+    }
+
+    async function saveLayout() {
+        if (!sortableMain) return;
+        const visibleOrder = sortableMain.toArray();
+
+        const formData = new FormData();
+        formData.append('widget_order', JSON.stringify(visibleOrder));
+        formData.append('page', 'predictions');
+
+        try {
+            const resp = await fetch('/settings/dashboard', {
+                method: 'POST',
+                body: formData
+            });
+            if (resp.ok) {
+                window.location.reload();
+            } else {
+                alert('Chyba při ukládání rozložení');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Chyba spojení');
+        }
+    }
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const resp = await fetch('/api/predictions-data');
+            const data = await resp.json();
+
+            // Populate Cards (Check if element exists first!)
+            const safeSetText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+            safeSetText('pred-members', data.predictions.members_30d);
+
+            const diffEl = document.getElementById('pred-members-diff');
+            if (diffEl) {
+                diffEl.textContent = ((data.predictions.members_growth_pct > 0 ? '+' : '') + data.predictions.members_growth_pct + '%');
+                diffEl.className = 'stat-diff ' + (data.predictions.members_growth_pct >= 0 ? 'diff-positive' : 'diff-negative');
+            }
+
+            safeSetText('avg-growth', data.predictions.avg_monthly_growth || 0);
+            safeSetText('current-members', data.predictions.current_members || '--');
+            safeSetText('pred-msgs', data.predictions.expected_msgs_tomorrow);
+
+            // Chart initializers check for element existence inside
+            if (document.getElementById('predictionChart')) {
+                new Chart(document.getElementById('predictionChart'), {
+                    type: 'line',
+                    data: {
+                        labels: [...data.history.dates, ...data.forecast.dates],
+                        datasets: [
+                            { label: 'Historie', data: [...data.history.members, ...Array(data.forecast.dates.length).fill(null)], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4 },
+                            { label: 'Predikce', data: [...Array(data.history.dates.length - 1).fill(null), data.history.members[data.history.members.length - 1], ...data.forecast.members], borderColor: '#ec4899', borderDash: [5, 5], backgroundColor: 'rgba(236, 72, 153, 0.05)', fill: true, tension: 0.4 }
+                        ]
+                    },
+                    options: {
+                        interaction: { intersect: false, mode: 'index' },
+                        plugins: { legend: { display: true } }
+                    }
+                });
+            }
+
+            if (document.getElementById('activityForecastChart')) {
+                new Chart(document.getElementById('activityForecastChart'), {
+                    type: 'bar',
+                    data: { labels: data.forecast.days, datasets: [{ label: 'Očekávané zprávy', data: data.forecast.activity, backgroundColor: data.forecast.activity.map((v, i) => i === 0 ? '#10b981' : 'rgba(139, 92, 246, 0.5)'), borderRadius: 4 }] },
+                    options: { plugins: { legend: { display: false } } }
+                });
+            }
+
+            if (document.getElementById('dauChart') && data.dau) {
+                safeSetText('dau-trend', data.dau.trend === 'up' ? '📈 Rostoucí' : data.dau.trend === 'down' ? '📉 Klesající' : '➡️ Stabilní');
+                new Chart(document.getElementById('dauChart'), {
+                    type: 'line',
+                    data: { labels: [...data.dau.history_labels, ...data.dau.forecast_labels], datasets: [{ label: 'Historie', data: [...data.dau.history, ...Array(data.dau.forecast.length).fill(null)], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4 }, { label: 'Predikce', data: [...Array(data.dau.history.length - 1).fill(null), data.dau.history[data.dau.history.length - 1], ...data.dau.forecast], borderColor: '#ec4899', borderDash: [5, 5], backgroundColor: 'rgba(236, 72, 153, 0.05)', fill: true, tension: 0.4 }] },
+                    options: {
+                        interaction: { intersect: false, mode: 'index' },
+                        plugins: { legend: { display: true, position: 'bottom' } },
+                        scales: { x: { display: false } }
+                    }
+                });
+            }
+
+            if (document.getElementById('mauChart') && data.mau) {
+                safeSetText('mau-value', data.mau.current);
+                safeSetText('stickiness-value', data.mau.dau_mau_ratio + '%');
+                new Chart(document.getElementById('mauChart'), {
+                    type: 'bar',
+                    data: { labels: ['Nyní', '+1 měsíc', '+2 měsíce', '+3 měsíce'], datasets: [{ label: 'MAU Predikce', data: data.mau.forecast, backgroundColor: ['#3b82f6', 'rgba(59,130,246,0.7)', 'rgba(59,130,246,0.5)', 'rgba(59,130,246,0.3)'], borderRadius: 4 }] },
+                    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+                });
+            }
+
+            // Peak Hours
+            if (document.getElementById('peakHoursChart')) {
+                const hourlyPrediction = [];
+                for (let h = 0; h < 24; h++) {
+                    let base = data.predictions.expected_msgs_tomorrow / 24;
+                    if (h >= 18 && h <= 22) base *= 2.5; else if (h >= 14 && h <= 17) base *= 1.5; else if (h >= 3 && h <= 8) base *= 0.2;
+                    hourlyPrediction.push(Math.round(base));
+                }
+                new Chart(document.getElementById('peakHoursChart'), { type: 'line', data: { labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ label: 'Predikce', data: hourlyPrediction, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', fill: true, tension: 0.4 }] }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false } } } });
+            }
+
+            // Seasonal
+            if (document.getElementById('seasonalChart') && data.forecast.activity) {
+                new Chart(document.getElementById('seasonalChart'), {
+                    type: 'radar',
+                    data: { labels: data.forecast.days || ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'], datasets: [{ label: 'Aktivita', data: data.forecast.activity, borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.2)' }] },
+                    options: {
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            r: {
+                                ticks: { showLabelBackdrop: false, color: '#9ca3af' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                pointLabels: { color: '#9ca3af' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Engagement
+            if (document.getElementById('engagementChart')) {
+                const currentEng = data.dau ? Math.round(data.dau.avg / (data.mau?.current || 1) * 100) : 0;
+                const predictedEng = data.dau?.forecast ? Math.round(data.dau.forecast.slice(-1)[0] / (data.mau?.forecast?.slice(-1)[0] || 1) * 100) : currentEng;
+                safeSetText('eng-current', currentEng + '%');
+                safeSetText('eng-predicted', predictedEng + '%');
+                new Chart(document.getElementById('engagementChart'), { type: 'line', data: { labels: ['Nyní', '+1d', '+2d', '+3d', '+4d', '+5d', '+6d', '+7d'], datasets: [{ label: 'Engagement %', data: [currentEng, ...Array(7).fill(0).map((_, i) => currentEng + (predictedEng - currentEng) * (i + 1) / 7 | 0)], borderColor: '#ec4899', tension: 0.4 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } } });
+            }
+
+            // New vs Returning
+            if (document.getElementById('newVsReturningChart')) {
+                const avgMonthlyGrowth = data.predictions.avg_monthly_growth || 5;
+                const totalMembers = data.predictions.current_members || 500;
+                new Chart(document.getElementById('newVsReturningChart'), { type: 'doughnut', data: { labels: ['Vracející se', 'Noví'], datasets: [{ data: [Math.round(totalMembers * 0.7), Math.round(avgMonthlyGrowth)], backgroundColor: ['#3b82f6', '#10b981'], borderWidth: 0 }] }, options: { plugins: { legend: { display: true, position: 'bottom' } }, cutout: '50%' } });
+            }
+
+            // Voice (Simplified)
+            if (document.getElementById('voiceChart')) {
+                const voicePred = data.forecast.activity.map(a => Math.round(a * 0.15));
+                new Chart(document.getElementById('voiceChart'), { type: 'bar', data: { labels: data.forecast.days, datasets: [{ label: 'Minuty', data: voicePred, backgroundColor: '#10b981', borderRadius: 4 }] }, options: { plugins: { legend: { display: false } } } });
+            }
+
+            // Channels (Simplified fallback) 
+            if (document.getElementById('channelsChart')) {
+                const container = document.getElementById('channelsChart').parentElement;
+                container.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-secondary);"><div style="font-size:48px;margin-bottom:12px;">📊</div><p>Načítám data...</p></div>';
+            }
+
+            // Risk Analysis
+            const currentMembers = data.predictions.current_members || 500;
+            const leaves3m = (data.history.leaves || []).slice(-3).reduce((a, b) => a + b, 0);
+            let stability = 100;
+            if (leaves3m > 0 && currentMembers > 0) {
+                const churnPct = (leaves3m / currentMembers) * 100;
+                stability = Math.max(0, Math.round(100 - (churnPct * 10)));
+            }
+            safeSetText('churn-risk-val', stability + '%');
+            safeSetText('leaves-3m', leaves3m);
+            const stabilityEl = document.getElementById('churn-risk-val');
+            if (stabilityEl) stabilityEl.style.color = stability < 50 ? '#ef4444' : stability < 80 ? '#f59e0b' : '#10b981';
+
+            const titleEl = document.getElementById('risk-title');
+            const explEl = document.getElementById('risk-explanation');
+            let explanation = `Za 3 měsíce odešlo ${leaves3m} členů.`;
+            if (titleEl && explEl) {
+                titleEl.textContent = stability >= 90 ? '✅ Výborná stabilita' : '⚠️ Pozor na odchody';
+                explEl.textContent = explanation;
+            }
+        } catch (e) {
+            console.error("Prediction load error", e);
+        }
+    });
+</script>
+{% endblock %}

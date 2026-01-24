@@ -1,0 +1,523 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Top Bar -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+        <h1 class="title">Přehled Serveru</h1>
+        <p style="color: var(--text-secondary);">Statistiky serveru v reálném čase</p>
+    </div>
+
+    <div style="display: flex; gap: 16px; align-items: center;">
+        <div class="live-indicator">
+            <span class="live-dot"></span>
+            <span>LIVE</span>
+        </div>
+
+        <button id="editLayoutBtn" onclick="toggleEditMode()" class="btn"
+            style="padding: 6px 12px; white-space: nowrap; display: flex; align-items: center; gap: 8px; background: var(--bg-card);">
+            🖊️ Upravit rozložení
+        </button>
+        <button id="saveLayoutBtn" onclick="saveLayout()" class="btn"
+            style="padding: 6px 12px; white-space: nowrap; display: none; align-items: center; gap: 8px; background: var(--success-gradient); color: white;">
+            💾 Uložit
+        </button>
+
+        <form method="GET" action="/"
+            style="display: flex; gap: 12px; align-items: center; background: var(--bg-card); padding: 8px 16px; border-radius: 12px; border: 1px solid var(--glass-border);">
+            <div>
+                <label
+                    style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Role</label>
+                <select name="role_id"
+                    style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px; min-width: 120px;">
+                    <option value="all" {% if selected_role=='all' %}selected{% endif %}>Všechny role</option>
+                    {% for rid, rname in roles %}
+                    <option value="{{ rid }}" {% if selected_role==rid %}selected{% endif %}>{{ rname }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Start
+                    Date</label>
+                <input type="date" name="start_date" value="{{ start_date|default('2025-12-21') }}"
+                    style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px;">
+            </div>
+            <div>
+                <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">End
+                    Date</label>
+                <input type="date" name="end_date" value="{{ end_date|default('2026-01-20') }}"
+                    style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px;">
+            </div>
+            <button type="submit"
+                style="height: 32px; padding: 0 16px; background: var(--primary-gradient); border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer; margin-top: 16px;">
+                Filter
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Hidden Widgets Drawer -->
+<div id="hidden-drawer" class="hidden-drawer"
+    style="display: none; margin-bottom: 30px; background: var(--bg-secondary); padding: 20px; border-radius: 16px; border: 2px dashed var(--glass-border);">
+    <h3 style="margin-bottom: 15px; color: var(--text-secondary);">Skryté widgety (přetáhněte zpět pro zobrazení)</h3>
+    <div id="hidden-widgets-grid" class="grid"
+        style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; min-height: 100px;">
+        <!-- Hidden items go here -->
+    </div>
+</div>
+
+<!-- Macros for Widgets -->
+{% macro render_widget(id) %}
+{% if id == 'kpi_online' %}
+<div class="card stat-card" data-id="kpi_online">
+    <div class="stat-label">
+        Online Nyní
+        <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Počet uživatelů
+                online/active.</span></span>
+    </div>
+    <div class="stat-value" id="stat-online">{{ realtime_active }}</div>
+    <div class="stat-diff diff-positive">V reálném čase</div>
+</div>
+{% elif id == 'kpi_members' %}
+<div class="card stat-card" data-id="kpi_members">
+    <div class="stat-label">
+        Členů celkem
+        <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Celkový počet uživatelů.</span></span>
+    </div>
+    <div class="stat-value" id="stat-members">{{ total_members }}</div>
+    <div class="stat-diff diff-neutral">Velikost serveru</div>
+</div>
+{% elif id == 'kpi_dau' %}
+<div class="card stat-card" data-id="kpi_dau">
+    <div class="stat-label">
+        Průměrné DAU
+        <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Denně aktivní uživatelé.</span></span>
+    </div>
+    <div class="stat-value" id="stat-dau">{{ avg_dau }}</div>
+    <div class="stat-diff diff-neutral">Denně aktivní</div>
+</div>
+{% elif id == 'kpi_churn' %}
+<div class="card stat-card" data-id="kpi_churn">
+    <div class="stat-label">
+        Míra odchodů
+        <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Procento odchodů za období.</span></span>
+    </div>
+    <div class="stat-value" id="stat-churn">{{ churn_rate }}%</div>
+    <div class="stat-diff diff-negative">Měsíční</div>
+</div>
+{% elif id == 'security_score' %}
+<div class="card stat-card" data-id="security_score" id="security-score-card">
+    <div class="stat-label">
+        🏠 Skóre komunity
+        <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Celkové hodnocení zdraví
+                a aktivity komunity.</span></span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <div class="security-score-circle" style="width: 54px; height: 54px;">
+            <svg class="progress-ring" width="54" height="54">
+                <circle stroke="rgba(255,255,255,0.05)" stroke-width="4" fill="transparent" r="24" cx="27" cy="27" />
+                <circle id="security-progress-ring" class="progress-ring-circle" stroke="var(--accent)" stroke-width="4"
+                    stroke-linecap="round" fill="transparent" r="24" cx="27" cy="27"
+                    style="stroke-dasharray: 150.8; stroke-dashoffset: 150.8;" />
+            </svg>
+            <div id="security-score-val" style="position: absolute; font-size: 18px; font-weight: 700;">--</div>
+        </div>
+        <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.4;">
+            <div id="security-verdict" style="color: white; font-weight: 600;">Načítání...</div>
+            <div id="security-subtext">Analyzuji data...</div>
+        </div>
+    </div>
+    <div id="security-insights"
+        style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px; font-size: 12px; display: none;">
+        <div
+            style="font-weight: 600; margin-bottom: 6px; color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">
+            Postřehy</div>
+        <div id="insights-list"
+            style="display: flex; flex-direction: column; gap: 8px; color: var(--text-secondary); max-height: 200px; overflow-y: auto; padding-right: 4px;">
+        </div>
+    </div>
+    <!-- Breakdown tooltip -->
+    <div id="security-breakdown"
+        style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #161625; border: 1px solid var(--glass-border); border-radius: 12px; padding: 16px; margin-top: 8px; z-index: 10001; box-shadow: 0 12px 32px rgba(0,0,0,0.9); backdrop-filter: none;">
+        <div style="font-weight: 700; margin-bottom: 12px; font-size: 0.95rem; color: white;">Rozklad skóre</div>
+        <div id="security-components" style="font-size: 0.85rem;"></div>
+    </div>
+</div>
+{% elif id == 'chart_growth' %}
+<div class="card" data-id="chart_growth" style="min-height: 350px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="margin: 0;">📈 Růst členů</h3>
+        <div style="display: flex; gap: 10px;">
+            <button class="chart-toggle active" data-chart="growth" data-type="total">Celkem</button>
+            <button class="chart-toggle" data-chart="growth" data-type="joins">Přírůstky</button>
+        </div>
+    </div>
+    <div style="height: 300px;"><canvas id="memberGrowthChart"></canvas></div>
+    <div id="growthEmpty"
+        style="display: none; height: 100%; align-items: center; justify-content: center; top:0; position:absolute;">
+        Brak danych</div>
+</div>
+{% elif id == 'chart_hourly' %}
+<div class="card" data-id="chart_hourly" style="min-height: 350px;">
+    <h3>⏰ Hodinová aktivita</h3>
+    <div style="height: 300px;"><canvas id="hourlyActivityChart"></canvas></div>
+</div>
+{% elif id == 'chart_stickiness' %}
+<div class="card" data-id="chart_stickiness" style="min-height: 300px;">
+    <h3>🧲 Stickiness & Retention</h3>
+    <div style="height: 250px;"><canvas id="stickinessChart"></canvas></div>
+</div>
+{% elif id == 'chart_msglen' %}
+<div class="card" data-id="chart_msglen" style="min-height: 300px;">
+    <h3>📏 Délka zpráv</h3>
+    <div style="height: 250px;"><canvas id="msgLenChart"></canvas></div>
+</div>
+{% elif id == 'chart_weekly' %}
+<div class="card" data-id="chart_weekly" style="min-height: 250px;">
+    <h3>📅 Týdenní aktivita</h3>
+    <div style="height: 200px;"><canvas id="weeklyActivityChart"></canvas></div>
+</div>
+{% elif id == 'response_stats' %}
+<div class="card" data-id="response_stats">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+        <div style="text-align:center;">
+            <div class="stat-label">Průměrná délka</div>
+            <div class="stat-value" style="font-size: 1.5rem;">{{ avg_msg_len }}</div>
+        </div>
+        <div style="text-align:center;">
+            <div class="stat-label">Nejaktivnější den</div>
+            <div class="stat-value" style="font-size: 1.5rem;">{{ peak_day }}</div>
+        </div>
+        <div style="text-align:center;">
+            <div class="stat-label">Podíl odpovědí</div>
+            <div class="stat-value" style="font-size: 1.5rem;">{{ reply_ratio }}%</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% set default_order = ['kpi_online', 'kpi_members', 'kpi_dau', 'kpi_churn', 'security_score', 'chart_growth',
+'chart_hourly', 'chart_stickiness', 'chart_msglen', 'chart_weekly', 'response_stats'] %}
+{% set active_order = widget_order if widget_order else default_order %}
+<!-- Find hidden widgets -->
+{% set hidden_widgets = [] %}
+{% for def_id in default_order %}
+{% if def_id not in active_order %}
+{% set _ = hidden_widgets.append(def_id) %}
+{% endif %}
+{% endfor %}
+
+<!-- Main Dashboard Grid -->
+<div id="dashboard-grid" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
+    {% for widget_id in active_order %}
+    {{ render_widget(widget_id) }}
+    {% endfor %}
+</div>
+
+<!-- Server-side render hidden widgets container (populated via JS) -->
+<div style="display:none;">
+    <div id="hidden-bucket">
+        {% for widget_id in hidden_widgets %}
+        {{ render_widget(widget_id) }}
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+    #security-score-card:hover {
+        z-index: 9999 !important;
+    }
+
+    #security-score-card:hover #security-breakdown {
+        display: block !important;
+    }
+
+    .sortable-ghost {
+        opacity: 0.4;
+        background: var(--bg-tertiary);
+        border: 2px dashed var(--primary);
+    }
+
+    .draggable-mode .card {
+        cursor: grab;
+        border: 2px dashed rgba(255, 255, 255, 0.1);
+    }
+
+    .draggable-mode .card:hover {
+        border-color: var(--primary);
+    }
+
+    .security-score-circle {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .progress-ring-circle {
+        transition: stroke-dashoffset 0.8s ease;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+    }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+<script>
+    // --- Sortable / Drag-and-Drop Implementation ---
+    let sortableMain = null;
+    let sortableHidden = null;
+    const grid = document.getElementById('dashboard-grid');
+    const drawer = document.getElementById('hidden-drawer');
+    const hiddenGrid = document.getElementById('hidden-widgets-grid');
+    const editBtn = document.getElementById('editLayoutBtn');
+    const saveBtn = document.getElementById('saveLayoutBtn');
+
+    // Move hidden widgets to drawer on load
+    document.addEventListener('DOMContentLoaded', () => {
+        const bucket = document.getElementById('hidden-bucket');
+        while (bucket.children.length > 0) {
+            hiddenGrid.appendChild(bucket.children[0]);
+        }
+    });
+
+    function toggleEditMode() {
+        if (sortableMain) {
+            // Cancel/Exit
+            sortableMain.destroy();
+            sortableHidden.destroy();
+            sortableMain = null;
+            sortableHidden = null;
+
+            editBtn.innerHTML = '🖊️ Upravit rozložení';
+            editBtn.classList.remove('btn-active');
+            editBtn.style.background = '';
+            saveBtn.style.display = 'none';
+            drawer.style.display = 'none';
+            grid.classList.remove('draggable-mode');
+            hiddenGrid.classList.remove('draggable-mode');
+            window.location.reload();
+        } else {
+            // Enable
+            drawer.style.display = 'block';
+            grid.classList.add('draggable-mode');
+            hiddenGrid.classList.add('draggable-mode');
+
+            sortableMain = new Sortable(grid, {
+                group: 'dashboard',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                handle: '.card'
+            });
+
+            sortableHidden = new Sortable(hiddenGrid, {
+                group: 'dashboard',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                handle: '.card'
+            });
+
+            editBtn.innerHTML = '❌ Zrušit';
+            editBtn.style.background = 'var(--bg-tertiary)';
+            saveBtn.style.display = 'flex';
+        }
+    }
+
+    async function saveLayout() {
+        if (!sortableMain) return;
+        const visibleOrder = sortableMain.toArray();
+
+        const formData = new FormData();
+        formData.append('widget_order', JSON.stringify(visibleOrder));
+        formData.append('page', 'overview');
+
+        try {
+            const resp = await fetch('/settings/dashboard', {
+                method: 'POST',
+                body: formData
+            });
+            if (resp.ok) {
+                window.location.reload();
+            } else {
+                alert('Chyba při ukládání rozložení');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Chyba spojení');
+        }
+    }
+</script>
+
+<script>
+    // Load Security Score
+    document.addEventListener('DOMContentLoaded', async function () {
+        try {
+            const resp = await fetch('/api/security-score');
+            const data = await resp.json();
+
+            if (data.overall_score !== undefined) {
+                const score = data.overall_score;
+                const ring = document.getElementById('security-progress-ring');
+                const valueEl = document.getElementById('security-score-val');
+                const ratingEl = document.getElementById('security-verdict');
+                const detailEl = document.getElementById('security-subtext');
+                const componentsEl = document.getElementById('security-components');
+
+                if (ring) {
+                    const circumference = 2 * Math.PI * 24;
+                    const offset = circumference - (score / 100) * circumference;
+                    ring.style.strokeDasharray = `${circumference} ${circumference}`;
+                    ring.style.strokeDashoffset = offset;
+                    ring.style.stroke = data.rating_color || '#6B7280';
+                }
+                if (valueEl) {
+                    valueEl.textContent = score;
+                    valueEl.style.color = data.rating_color;
+                }
+                if (ratingEl) {
+                    ratingEl.textContent = data.rating || 'Neznámý';
+                    ratingEl.style.color = data.rating_color;
+                }
+                if (detailEl) {
+                    detailEl.textContent = 'Najetím zobrazíte detaily';
+                    detailEl.style.color = 'var(--text-tertiary)';
+                }
+
+                // Breakdown logic
+                if (data.components && componentsEl) {
+                    let html = '';
+                    for (const [key, comp] of Object.entries(data.components)) {
+                        const barColor = comp.score >= 70 ? '#10B981' : comp.score >= 40 ? '#F59E0B' : '#EF4444';
+                        html += `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;"><span>${comp.label}</span><span style="color:${barColor}">${comp.score}</span></div></div>`;
+                    }
+                    componentsEl.innerHTML = html;
+                }
+
+                // Insights logic
+                const insightsCont = document.getElementById('security-insights');
+                const insightsList = document.getElementById('insights-list');
+                if (data.insights && data.insights.length > 0 && insightsCont && insightsList) {
+                    insightsCont.style.display = 'block';
+                    insightsList.innerHTML = data.insights.map(txt => {
+                        const formatted = txt.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                        return `<div style="display:flex;gap:8px;align-items:flex-start;line-height:1.4;">
+                            <span style="flex:1;">${formatted}</span>
+                        </div>`;
+                    }).join('');
+                } else if (insightsCont) {
+                    insightsCont.style.display = 'none';
+                }
+            }
+        } catch (e) {
+            console.error(e);
+            const detailEl = document.getElementById('security-subtext');
+            if (detailEl) detailEl.textContent = 'Err: ' + e.message;
+        }
+    });
+</script>
+
+<script src="/static/js/charts.js?v=2"></script>
+<script>
+    const chartData = {
+        dau: {
+            labels: {{ dau_labels | tojson | safe }},
+    data: { { dau_data | tojson | safe } }
+        },
+    growth: {
+        labels: { { labels | tojson | safe } },
+        joins: { { joins_data | tojson | safe } },
+        leaves: { { leaves_data | tojson | safe } }
+    },
+    hourly: {
+        labels: { { hourly_labels | tojson | safe } },
+        data: { { hourly_activity | tojson | safe } }
+    },
+    stickiness: {
+        labels: { { retention_labels | tojson | safe } },
+        dauMau: { { dau_mau_ratio | tojson | safe } },
+        dauWau: { { dau_wau_ratio | tojson | safe } }
+    },
+    msglen: {
+        labels: { { msglen_labels | tojson | safe } },
+        data: { { msglen_data | tojson | safe } }
+    },
+    weekly: {
+        labels: { { weekly_labels | tojson | safe } },
+        data: { { weekly_data | tojson | safe } }
+    }
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        try {
+            if (chartData.dau.data && document.getElementById('dauChart')) {
+                ChartUtils.createLineChart('dauChart', chartData.dau.labels, chartData.dau.data, 'DAU', '#8b5cf6', '#ec4899');
+            }
+            if (chartData.growth.joins && document.getElementById('memberGrowthChart')) {
+                new Chart(document.getElementById('memberGrowthChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.growth.labels,
+                        datasets: [
+                            { label: 'Joins', data: chartData.growth.joins, backgroundColor: '#10b981' },
+                            { label: 'Leaves', data: chartData.growth.leaves, backgroundColor: '#ef4444' }
+                        ]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } }
+                });
+            }
+            if (chartData.hourly.data && document.getElementById('hourlyActivityChart')) {
+                ChartUtils.createBarChart('hourlyActivityChart', chartData.hourly.labels, chartData.hourly.data, 'Msgs', '#f59e0b', '#fbbf24');
+            }
+            if (chartData.stickiness.dauMau && document.getElementById('stickinessChart')) {
+                ChartUtils.createMultiChart('stickinessChart', chartData.stickiness.labels, [
+                    { label: 'DAU/MAU', data: chartData.stickiness.dauMau },
+                    { label: 'DAU/WAU', data: chartData.stickiness.dauWau }
+                ]);
+            }
+            if (chartData.msglen.data && document.getElementById('msgLenChart')) {
+                new Chart(document.getElementById('msgLenChart'), {
+                    type: 'doughnut',
+                    data: { labels: chartData.msglen.labels, datasets: [{ data: chartData.msglen.data, backgroundColor: ['#8b5cf6', '#6366f1', '#4f46e5', '#ec4899', '#f472b6'] }] },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+            if (chartData.weekly.data && document.getElementById('weeklyActivityChart')) {
+                new Chart(document.getElementById('weeklyActivityChart'), {
+                    type: 'radar',
+                    data: { labels: chartData.weekly.labels, datasets: [{ label: 'Activity', data: chartData.weekly.data, backgroundColor: 'rgba(139, 92, 246, 0.2)', borderColor: '#8b5cf6' }] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                ticks: { showLabelBackdrop: false, color: '#9ca3af' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                pointLabels: { color: '#9ca3af' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Animate stats
+            const valOnline = {{ realtime_active | default (0) | tojson | safe
+        }};
+    const valMembers = {{ total_members | default (0) | tojson | safe }};
+    const valDau = {{ avg_dau | default (0) | tojson | safe }};
+    const valChurn = {{ churn_rate | default (0) | tojson | safe }};
+
+    const stats = [
+        { id: 'stat-online', value: valOnline },
+        { id: 'stat-members', value: valMembers },
+        { id: 'stat-dau', value: valDau },
+        { id: 'stat-churn', value: valChurn }
+    ];
+    stats.forEach(s => {
+        const el = document.getElementById(s.id);
+        if (el) el.innerText = s.value;
+    });
+
+        } catch (e) { console.error(e); }
+    });
+</script>
+{% endblock %}

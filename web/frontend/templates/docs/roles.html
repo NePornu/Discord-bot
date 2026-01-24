@@ -1,0 +1,60 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Role a XP{% endblock %}
+
+{% block docs_content %}
+<section id="roles">
+    <h1>Vážený XP Systém a Správa Rolí</h1>
+    <p>Zapomeňte na jednoduché počítání zpráv. Náš systém oceňuje kvalitu a skutečnou aktivitu, nikoliv spam.</p>
+
+    <h2>Algoritmus výpočtu XP</h2>
+    <p>Každá interakce je ohodnocena podle jejího přínosu pro komunitu.</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Typ Akce</th>
+                <th>Získané XP</th>
+                <th>Podmínky a Poznámky</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><b>Krátká zpráva</b><br><span style="font-size:0.8em; color:#9ca3af">
+                        < 10 znaků</span>
+                </td>
+                <td>1 bod</td>
+                <td>Např. "ok", "lol", "díky". Zamezuje rychlému expení pomocí jednoslovných odpovědí.</td>
+            </tr>
+            <tr>
+                <td><b>Standardní zpráva</b><br><span style="font-size:0.8em; color:#9ca3af">10 - 50 znaků</span></td>
+                <td>2 body</td>
+                <td>Běžná konverzace.</td>
+            </tr>
+            <tr>
+                <td><b>Hodnotná diskuze</b><br><span style="font-size:0.8em; color:#9ca3af">> 50 znaků</span></td>
+                <td>3 body</td>
+                <td>Odměňujeme promyšlené příspěvky, které rozvíjejí diskuzi.</td>
+            </tr>
+            <tr>
+                <td><b>Voice Aktivita</b></td>
+                <td>2 body / minuta</td>
+                <td>Podmínkou jsou alespoň 2 uživatelé v kanálu (prevence solo-farmení).</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Anti-Spam Ochrana</h2>
+    <p>Aby byl žebříček fér, implementovali jsme několik ochranných mechanismů:</p>
+    <ul>
+        <li><b>Message Cooldown:</b> XP za zprávu lze získat maximálně jednou za 60 sekund. Spamování 10 zpráv za minutu
+            vám přinese stejné XP jako jedna zpráva.</li>
+        <li><b>Voice AFK Detekce:</b> Pokud je uživatel ve voice kanálu "Deafened" (neslyší) nebo "Muted" (nemluví) déle
+            než 15 minut, přestává dostávat XP.</li>
+    </ul>
+
+    <h2>Automatické Role (Auto-Roles)</h2>
+    <p>V nastavení dashboardu můžete definovat úrovně XP, při jejichž dosažení bot automaticky přidělí roli na Discordu
+        (např. "Aktivní Člen", "Veterán").</p>
+</section>
+{% endblock %}

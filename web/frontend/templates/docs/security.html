@@ -1,0 +1,85 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Skóre bezpečnosti{% endblock %}
+
+{% block docs_content %}
+<section id="security">
+    <h1>Skóre bezpečnosti (Security Score)</h1>
+    <p>Skóre bezpečnosti je naše proprietární metrika, která kvantifikuje "zdraví" a odolnost vašeho serveru. Je
+        počítáno v reálném čase na základě dat z Discord API a vaší aktivity.</p>
+
+    <div class="info-box">
+        <b>Doporučená hodnota</b>
+        Zdravý komunitní server by měl usilovat o skóre <b>nad 85 bodů</b>. Hodnota 100/100 je dosažitelná, ale vyžaduje
+        perfektní konfiguraci.
+    </div>
+
+    <h2>Detailní rozpad bodování (0-100)</h2>
+    <p>Celkových 100 bodů je složeno ze 4 hlavních pilířů. Zde je přesný návod, jak získat maximum bodů.</p>
+
+    <h3>1. Moderátorské pokrytí (Max 25 bodů)</h3>
+    <p>Tento faktor měří, zda máte dostatek "očí" na počet aktivních členů.</p>
+    <ul>
+        <li><b>Logika:</b> <code>Min(25, (Počet Modů / Aktivní Členové) * Koeficient)</code></li>
+        <li><b>Ideální stav:</b> 1 aktivní moderátor na každých 500 aktivních členů (DAU).</li>
+        <li><b>Penalizace:</b> Pokud máte 0 moderátorů, získáte 0 bodů. Bot nepočítá Admina jako moderátora, pokud nemá
+            explicitní roli.</li>
+    </ul>
+
+    <h3>2. Konfigurace Serveru (Max 25 bodů)</h3>
+    <p>Technické zabezpečnení serveru proti botům a spamu.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Nastavení</th>
+                <th>Body</th>
+                <th>Doporučení</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Verification Level</td>
+                <td>10 bodů</td>
+                <td>Alespoň "Low" (vyžaduje ověřený email). "High" (10 minut čekání) je ideální.</td>
+            </tr>
+            <tr>
+                <td>Explicit Content Filter</td>
+                <td>10 bodů</td>
+                <td>Musí být zapnuto skenování médií ("Scan media from all members").</td>
+            </tr>
+            <tr>
+                <td>2FA pro Moderátory</td>
+                <td>5 bodů</td>
+                <td>Zapnutá povinnost 2FA pro role s administrátorskými právy.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>3. Zapojení a "Živost" (Max 25 bodů)</h3>
+    <p>Bezpečnost není jen o zámcích, ale i o komunitě. Mrtvý server je náchylnější k převzetí.</p>
+    <ul>
+        <li><b>Měřeno pomocí Stickiness:</b> Poměr <code>DAU / MAU</code>.</li>
+        <li><b>> 20% Stickiness:</b> Plných 25 bodů. (Každý 5. člen se vrací denně)</li>
+        <li><b>
+                < 5% Stickiness:</b> 5 bodů. (Server je neaktivní)</li>
+    </ul>
+
+    <h3>4. Historie Moderace (Max 25 bodů)</h3>
+    <p>Provádí moderátoři svou práci? Bot sleduje Audit Log za posledních 30 dní.</p>
+    <ul>
+        <li><b>Aktivní reakce:</b> Zaznamenali jsme bany, kicky nebo timeouty?</li>
+        <li><b>Plných 25 bodů:</b> Alespoň 5 moderátorských akcí za měsíc (ukazuje, že systém funguje).</li>
+        <li><b>Bonus:</b> Používání příkazů <code>/warn</code> nebo <code>/timeout</code>.</li>
+    </ul>
+
+    <h2>Doporučení pro zlepšení</h2>
+    <p>V dashboardu pod grafem skóre naleznete sekci <b>💡 Doporučení</b>. Ta dynamicky analyzuje, kde ztrácíte body:
+    </p>
+    <pre>
+Příklad doporučení:
+"Zvyšte úroveň ověření (Verification Level) v nastavení Discordu."
+-> Důvod: Váš server je nastaven na 'None', což umožňuje nájezdy botů. Zisk: +10 bodů.
+    </pre>
+
+</section>
+{% endblock %}

@@ -1,36 +1,6 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
+*.pyc
+.env
+dashboard.log
 venv/
-ENV/
-env/
-
-# Sensitive files
-bot_token.py
-config.py
-verification_config.py
-dashboard_secrets.py
-
-# Logs
-*.log
-
-# Data files
-bot_data/
-data/
-
-# Editor backup files
-*.save
-*.swp
-*.swo
-*~
-
-# OS files
 .DS_Store
-Thumbs.db
-
-# Tasks
-tasks/

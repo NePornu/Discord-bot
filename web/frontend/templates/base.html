@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="cs">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NePornu Bot Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=2.7">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="/static/js/chart.js"></script>
+</head>
+
+<body>
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle menu">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+
+    <!-- Mobile Overlay -->
+    <div class="mobile-overlay" id="mobileOverlay"></div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="brand">
+            <i class="fas fa-robot fa-lg" style="margin-right: 10px;"></i> Bot Dashboard
+        </div>
+        <nav>
+            <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">
+                <i class="fas fa-chart-pie"></i> Přehled
+            </a>
+            <a href="/analytics" class="nav-link {% if request.url.path == '/analytics' %}active{% endif %}">
+                <i class="fas fa-chart-line"></i> Analytics
+            </a>
+            <a href="/predictions" class="nav-link {% if request.url.path == '/predictions' %}active{% endif %}">
+                <i class="fas fa-lightbulb"></i> Predikce
+            </a>
+            <a href="/activity" class="nav-link {% if request.url.path == '/activity' %}active{% endif %}">
+                <i class="fas fa-bolt"></i> Aktivita
+            </a>
+            <a href="/profile" class="nav-link {% if request.url.path == '/profile' %}active{% endif %}">
+                <i class="fas fa-user-circle"></i> Profil
+            </a>
+            <a href="/leaderboard" class="nav-link {% if request.url.path == '/leaderboard' %}active{% endif %}">
+                <i class="fas fa-trophy"></i> Žebříček
+            </a>
+            <a href="/settings" class="nav-link {% if request.url.path == '/settings' %}active{% endif %}">
+                <i class="fas fa-cog"></i> Nastavení
+            </a>
+            <a href="/settings/team" class="nav-link {% if request.url.path == '/settings/team' %}active{% endif %}">
+                <i class="fas fa-users"></i> Tým
+            </a>
+        </nav>
+
+        {% if request.session.authenticated %}
+        <div class="user-widget">
+            <div class="user-info">
+                {% set user = request.session.discord_user %}
+                <div class="avatar-wrapper">
+                    {% if user.avatar %}
+                    <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png"
+                        alt="{{ user.username }}">
+                    {% else %}
+                    <div class="avatar-placeholder">{{ user.username[0]|upper }}</div>
+                    {% endif %}
+                </div>
+                <div class="details">
+                    <span class="username">{{ user.username }}</span>
+                    <span class="role-badge">{{ request.session.role|upper }}</span>
+                </div>
+            </div>
+
+            <!-- Server Widget -->
+            <div class="user-widget-section mt-3">
+                {% if sidebar_guild_name %}
+                <!-- Active Server State -->
+                <div class="server-active-card">
+                    <div class="server-active-icon">
+                        {% if sidebar_guild_icon %}
+                        <img src="https://cdn.discordapp.com/icons/{{ sidebar_guild_id }}/{{ sidebar_guild_icon }}.png"
+                            alt="{{ sidebar_guild_name }}">
+                        {% else %}
+                        <div class="server-placeholder">{{ sidebar_guild_name[0]|upper }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="server-active-info">
+                        <span class="server-active-name">{{ sidebar_guild_name }}</span>
+                        <a href="/select-server" class="server-switch-btn" title="Přepnout server">
+                            <i class="fas fa-exchange-alt"></i> Přepnout
+                        </a>
+                    </div>
+                </div>
+                {% else %}
+                <!-- Empty State -->
+                <a href="/select-server" class="btn-connect-server">
+                    <div class="connect-icon"><i class="fas fa-plus"></i></div>
+                    <span class="connect-text">Vybrat server</span>
+                </a>
+                {% endif %}
+            </div>
+
+            <a href="/logout" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i> Odhlásit se
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="content">
+        <div class="page-container">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Mobile Menu JavaScript -->
+    <script>
+        (function () {
+            const toggle = document.getElementById('mobileMenuToggle');
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobileOverlay');
+
+            function openMenu() {
+                toggle.classList.add('active');
+                sidebar.classList.add('active');
+                overlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeMenu() {
+                toggle.classList.remove('active');
+                sidebar.classList.remove('active');
+                overlay.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+
+            toggle.addEventListener('click', function () {
+                if (sidebar.classList.contains('active')) {
+                    closeMenu();
+                } else {
+                    openMenu();
+                }
+            });
+
+            overlay.addEventListener('click', closeMenu);
+
+            // Close menu on nav link click (for mobile UX)
+            document.querySelectorAll('.nav-link').forEach(function (link) {
+                link.addEventListener('click', function () {
+                    if (window.innerWidth <= 768) {
+                        closeMenu();
+                    }
+                });
+            });
+
+            // Close on escape key
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && sidebar.classList.contains('active')) {
+                    closeMenu();
+                }
+            });
+
+            // Handle resize
+            window.addEventListener('resize', function () {
+                if (window.innerWidth > 768) {
+                    closeMenu();
+                }
+            });
+        })();
+    </script>
+</body>
+
+</html>

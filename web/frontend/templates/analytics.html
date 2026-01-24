@@ -1,0 +1,750 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+{% set layout = request.session.get('dashboard_layout', {}) %}
+{% macro is_visible(key) %}{{ layout.get(key, True) }}{% endmacro %}
+
+<!-- Toolbar -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+        <h1 class="title">Advanced Analytics</h1>
+        <p style="color: var(--text-secondary);">Channel stats, leaderboards, and insights</p>
+    </div>
+
+    <div style="display: flex; gap: 12px; align-items: center;">
+        <button id="editLayoutBtn" class="btn" onclick="toggleEditMode()" style="background: var(--bg-card);">
+            🖊️ Upravit rozložení
+        </button>
+        <button id="saveLayoutBtn" class="btn" onclick="saveLayout()"
+            style="display: none; background: var(--success-gradient); color: white;">
+            💾 Uložit
+        </button>
+    </div>
+</div>
+
+<div style="margin-bottom: 40px;">
+    <form method="GET"
+        style="display: flex; gap: 12px; align-items: center; background: var(--bg-card); padding: 8px 16px; border-radius: 12px; border: 1px solid var(--glass-border);">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Role</label>
+            <select name="role_id" id="roleFilter" style="min-width: 140px;">
+                <option value="all" {% if selected_role=='all' %}selected{% endif %}>Všechny role</option>
+                {% for rid, rname in roles %}
+                <option value="{{ rid }}" {% if selected_role==rid %}selected{% endif %}>{{ rname }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Od</label>
+            <input type="date" name="start_date" id="startDate" value="{{ start_date|default('2025-12-21') }}">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Do</label>
+            <input type="date" name="end_date" id="endDate" value="{{ end_date|default('2026-01-20') }}">
+        </div>
+        <button type="submit" class="btn"
+            style="height: 42px; margin-top: auto; display: flex; align-items: center; gap: 8px;">
+            <span>Filtrovat</span>
+        </button>
+    </form>
+</div>
+
+<!-- Macros for Widgets -->
+{% set all_widgets = [
+('wow_card', '📈 Trends (WoW)'),
+('mom_card', '📊 Trends (MoM)'),
+('top_channels', '🏆 Top Channels'),
+('leaderboard', '👑 Leaderboard'),
+('peak_analysis', '🔥 Peak Time'),
+('channel_dist', '📢 Channel Dist'),
+('commands', '🤖 Commands'),
+('voice_stats', '🎙️ Voice Stats'),
+('traffic', '🚦 Traffic'),
+('trend_analysis', '📈 Growth Trend'),
+('engagement', '🎯 Engagement'),
+('export', '📤 Export Tools'),
+('insights', '💡 Insights'),
+('growth_chart', '📈 Member Growth'),
+('hourly_chart', '⏰ Hourly Activity'),
+('weekday_chart', '📅 Weekday Activity'),
+('msg_len_chart', '📏 Msg Lengths'),
+('weekend_chart', '🎉 Weekend Ratio')
+] %}
+
+{% macro render_widget(id) %}
+{% if id == 'wow_card' %}{{ render_wow() }}
+{% elif id == 'mom_card' %}{{ render_mom() }}
+{% elif id == 'top_channels' %}{{ render_top_channels() }}
+{% elif id == 'leaderboard' %}{{ render_leaderboard() }}
+{% elif id == 'peak_analysis' %}{{ render_peak() }}
+{% elif id == 'channel_dist' %}{{ render_channel_dist() }}
+{% elif id == 'commands' %}{{ render_commands() }}
+{% elif id == 'voice_stats' %}{{ render_voice() }}
+{% elif id == 'traffic' %}{{ render_traffic() }}
+{% elif id == 'trend_analysis' %}{{ render_trend() }}
+{% elif id == 'engagement' %}{{ render_engagement() }}
+{# Export removed #}
+{% elif id == 'insights' %}{{ render_insights() }}
+{% elif id == 'growth_chart' %}{{ render_growth() }}
+{% elif id == 'hourly_chart' %}{{ render_hourly() }}
+{% elif id == 'weekday_chart' %}{{ render_weekday() }}
+{% elif id == 'msg_len_chart' %}{{ render_msg_len() }}
+{% elif id == 'weekend_chart' %}{{ render_weekend_ratio() }}
+{% endif %}
+{% endmacro %}
+
+{% macro render_wow() %}
+<div class="card widget-item" data-id="wow_card">
+    <h3 style="margin-bottom: 12px;">📈 Week-over-Week <span class="info-icon dash-tooltip">? <span
+                class="dash-tooltip-text">Srovnání DAU tento týden vs minulý.</span></span></h3>
+    <div class="stat-value" id="wow-value">Loading...</div>
+    <div class="stat-diff" id="wow-change">Calculating...</div>
+</div>
+{% endmacro %}
+
+{% macro render_mom() %}
+<div class="card widget-item" data-id="mom_card">
+    <h3 style="margin-bottom: 12px;">📊 Month-over-Month <span class="info-icon dash-tooltip">? <span
+                class="dash-tooltip-text">Srovnání aktivity tento měsíc vs minulý.</span></span></h3>
+    <div class="stat-value" id="mom-value">Loading...</div>
+    <div class="stat-diff" id="mom-change">Calculating...</div>
+</div>
+{% endmacro %}
+
+{% macro render_top_channels() %}
+<div class="card widget-item" data-id="top_channels">
+    <h3 style="margin-bottom: 16px;">🏆 Top Channels <span class="info-icon dash-tooltip">? <span
+                class="dash-tooltip-text">Nejaktivnější kanály.</span></span></h3>
+    <div class="chart-container" style="position: relative;">
+        <div id="channelChartLoader"
+            style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-card); z-index: 10;">
+            <div style="text-align: center;">
+                <div class="loading-spinner"></div>
+                <p style="color: var(--text-secondary); margin-top: 12px;">Načítám data...</p>
+            </div>
+        </div>
+        <div id="channelChartEmpty"
+            style="position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-card); z-index: 5;">
+            <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+            <h4 style="margin-bottom: 8px;">Žádná data</h4>
+        </div>
+        <canvas id="channelChart"></canvas>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_leaderboard() %}
+<div class="card widget-item" data-id="leaderboard">
+    <h3 style="margin-bottom: 16px;">👑 Leaderboard <span class="info-icon dash-tooltip">? <span
+                class="dash-tooltip-text">Nejaktivnější uživatelé.</span></span></h3>
+    <div id="leaderboard-container" style="max-height: 400px; overflow-y: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Uživatel</th>
+                    <th style="text-align: right;">Zprávy</th>
+                    <th style="text-align: right;">Prům.</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard-tbody">
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-secondary);">Loading...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_peak() %}
+<div class="card widget-item full-width" data-id="peak_analysis" style="grid-column: span 2;">
+    <h3 style="margin-bottom: 20px;">🔥 Analýza špičky <span class="info-icon dash-tooltip">? <span
+                class="dash-tooltip-text">Časy s nejvyšší aktivitou.</span></span></h3>
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+        <div>
+            <div style="color: var(--text-secondary); margin-bottom: 8px;">Hodina</div>
+            <div class="stat-value" style="font-size: 2rem;" id="peak-hour">--</div>
+        </div>
+        <div>
+            <div style="color: var(--text-secondary); margin-bottom: 8px;">Den</div>
+            <div class="stat-value" style="font-size: 2rem;" id="peak-day">--</div>
+        </div>
+        <div>
+            <div style="color: var(--text-secondary); margin-bottom: 8px;">Zprávy</div>
+            <div class="stat-value" style="font-size: 2rem;" id="peak-messages">--</div>
+        </div>
+        <div>
+            <div style="color: var(--text-secondary); margin-bottom: 8px;">Klid</div>
+            <div class="stat-value" style="font-size: 2rem;" id="quiet-period">--</div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_channel_dist() %}
+<div class="card widget-item" data-id="channel_dist">
+    <h3 style="margin-bottom: 16px;">📢 Rozložení (Kanály)</h3>
+    <div class="chart-container" style="height: 300px;"><canvas id="channelDistChart"></canvas></div>
+</div>
+{% endmacro %}
+
+{% macro render_commands() %}
+<div class="card widget-item" data-id="commands">
+    <h3 style="margin-bottom: 16px;">🤖 Příkazy</h3>
+    <div class="chart-container" style="height: 300px;"><canvas id="commandChart"></canvas></div>
+</div>
+{% endmacro %}
+
+{% macro render_voice() %}
+<div class="card widget-item" data-id="voice_stats">
+    <h3 style="margin-bottom: 16px;">🎙️ Voice Top 10</h3>
+    <div style="overflow-y: auto; max-height: 300px;">
+        <table style="width: 100%;">
+            <thead>
+                <tr>
+                    <th style="padding:8px;">Uživatel</th>
+                    <th style="padding:8px;text-align:right;">Čas</th>
+                </tr>
+            </thead>
+            <tbody id="voice-tbody">
+                <tr>
+                    <td colspan="2" style="text-align:center;padding:20px;">Načítám...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_traffic() %}
+<div class="card widget-item" data-id="traffic">
+    <h3 style="margin-bottom: 16px;">🚦 Traffic</h3>
+    <div class="chart-container" style="height: 300px;"><canvas id="trafficChart"></canvas></div>
+</div>
+{% endmacro %}
+
+{% macro render_trend() %}
+<div class="card widget-item" data-id="trend_analysis">
+    <h3 style="margin-bottom: 16px;">📈 Trend Analýza</h3>
+    <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div style="background:var(--bg-tertiary);padding:16px;border-radius:12px;text-align:center;">
+            <div style="font-size:12px;color:var(--text-secondary);">Růst 7d</div>
+            <div id="trend-7d" style="font-size:1.5rem;font-weight:700;">--</div>
+        </div>
+        <div style="background:var(--bg-tertiary);padding:16px;border-radius:12px;text-align:center;">
+            <div style="font-size:12px;color:var(--text-secondary);">Růst 30d</div>
+            <div id="trend-30d" style="font-size:1.5rem;font-weight:700;">--</div>
+        </div>
+        <div style="background:var(--bg-tertiary);padding:16px;border-radius:12px;text-align:center;">
+            <div style="font-size:12px;color:var(--text-secondary);">DAU</div>
+            <div id="trend-avg-dau" style="font-size:1.5rem;font-weight:700;">--</div>
+        </div>
+        <div style="background:var(--bg-tertiary);padding:16px;border-radius:12px;text-align:center;">
+            <div style="font-size:12px;color:var(--text-secondary);">Predikce</div>
+            <div id="trend-prediction" style="font-size:1.5rem;font-weight:700;">--</div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_engagement() %}
+<div class="card widget-item" data-id="engagement">
+    <h3 style="margin-bottom: 16px;">🎯 Zapojení</h3>
+    <div style="display: flex; align-items: center; gap: 24px;">
+        <div
+            style="width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; background: conic-gradient(#8b5cf6 0deg, #8b5cf6 var(--engagement-deg, 0deg), var(--bg-tertiary) var(--engagement-deg, 0deg)); border-radius: 50%;">
+            <div
+                style="width: 70px; height: 70px; background: var(--bg-card); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 1.5rem; font-weight: 700;" id="engagement-score">--</span>
+            </div>
+        </div>
+        <div style="flex: 1;">
+            <div style="font-size: 12px; color: var(--text-secondary);">Aktivita</div>
+            <div style="height: 8px; background: var(--bg-tertiary); border-radius: 4px; margin: 4px 0 12px;">
+                <div id="msg-activity-bar"
+                    style="height:100%;width:0%;background:linear-gradient(90deg, #8b5cf6, #ec4899);border-radius:4px;">
+                </div>
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Voice</div>
+            <div style="height: 8px; background: var(--bg-tertiary); border-radius: 4px; margin: 4px 0 12px;">
+                <div id="voice-activity-bar"
+                    style="height:100%;width:0%;background:linear-gradient(90deg, #10b981, #34d399);border-radius:4px;">
+                </div>
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary);">Retence</div>
+            <div style="height: 8px; background: var(--bg-tertiary); border-radius: 4px; margin: 4px 0 0;">
+                <div id="retention-bar"
+                    style="height:100%;width:0%;background:linear-gradient(90deg, #f59e0b, #fbbf24);border-radius:4px;">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+
+
+
+
+{% macro render_insights() %}
+<div class="card widget-item" data-id="insights">
+    <h3 style="margin-bottom: 16px;">💡 Postřehy</h3>
+    <div id="insights-container" style="font-size: 14px;">
+        <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">⏳ Načítám...</div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_growth() %}
+<div class="card widget-item" data-id="growth_chart">
+    <h3 style="margin-bottom: 16px;">📈 Růst členů</h3>
+    <div class="chart-container" style="height: 300px;"><canvas id="growthChart"></canvas></div>
+</div>
+{% endmacro %}
+
+{% macro render_hourly() %}
+<div class="card widget-item" data-id="hourly_chart">
+    <h3 style="margin-bottom: 16px;">⏰ Denní aktivita (0-24h)</h3>
+    <div class="chart-container" style="height: 300px;"><canvas id="hourlyChart"></canvas></div>
+</div>
+{% endmacro %}
+
+{% macro render_weekday() %}
+<div class="card widget-item" data-id="weekday_chart">
+    <h3 style="margin-bottom: 16px;">📅 Aktivita v týdnu</h3>
+    <div class="chart-container" style="height: 300px;"><canvas id="weekdayChart"></canvas></div>
+</div>
+{% endmacro %}
+
+{% macro render_msg_len() %}
+<div class="card widget-item" data-id="msg_len_chart">
+    <h3 style="margin-bottom: 16px;">📏 Délka zpráv <small style="color:var(--text-secondary);">(znaky)</small></h3>
+    <div class="chart-container" style="height: 300px;"><canvas id="msgLenChart"></canvas></div>
+</div>
+{% endmacro %}
+
+{% macro render_weekend_ratio() %}
+<div class="card widget-item" data-id="weekend_chart">
+    <h3 style="margin-bottom: 16px;">🎉 Víkend vs Týden</h3>
+    <div class="chart-container" style="height: 300px;"><canvas id="weekendChart"></canvas></div>
+</div>
+{% endmacro %}
+
+{% macro render_xp_leaderboard() %}
+<div class="card widget-item" data-id="xp_leaderboard">
+    <h3 style="margin-bottom: 16px;">🏆 XP Leaderboard</h3>
+    <div id="xp-leaderboard-container" style="max-height: 400px; overflow-y: auto;">
+        <table style="width: 100%;">
+            <thead>
+                <tr>
+                    <th style="padding: 8px;">#</th>
+                    <th style="padding: 8px;">Uživatel</th>
+                    <th style="padding: 8px; text-align: right;">Level</th>
+                    <th style="padding: 8px; text-align: right;">XP</th>
+                </tr>
+            </thead>
+            <tbody id="xp-leaderboard-tbody">
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-secondary);">Načítám
+                        XP...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_widget(widget_id) %}
+{% if widget_id == 'wow_card' %}{{ render_wow() }}
+{% elif widget_id == 'mom_card' %}{{ render_mom() }}
+{% elif widget_id == 'top_channels' %}{{ render_top_channels() }}
+{% elif widget_id == 'leaderboard' %}{{ render_leaderboard() }}
+{% elif widget_id == 'peak_analysis' %}{{ render_peak() }}
+{% elif widget_id == 'channel_dist' %}{{ render_channel_dist() }}
+{% elif widget_id == 'commands' %}{{ render_commands() }}
+{% elif widget_id == 'voice_stats' %}{{ render_voice() }}
+{% elif widget_id == 'traffic' %}{{ render_traffic() }}
+{% elif widget_id == 'trend_analysis' %}{{ render_trend() }}
+{% elif widget_id == 'engagement' %}{{ render_engagement() }}
+
+{% elif widget_id == 'insights' %}{{ render_insights() }}
+{% elif widget_id == 'growth_chart' %}{{ render_growth() }}
+{% elif widget_id == 'hourly_chart' %}{{ render_hourly() }}
+{% elif widget_id == 'weekday_chart' %}{{ render_weekday() }}
+{% elif widget_id == 'msg_len_chart' %}{{ render_msg_len() }}
+{% elif widget_id == 'weekend_chart' %}{{ render_weekend_ratio() }}
+{% elif widget_id == 'weekend_chart' %}{{ render_weekend_ratio() }}
+{% elif widget_id == 'xp_leaderboard' %}{{ render_xp_leaderboard() }}
+{% endif %}
+{% endmacro %}
+
+<!-- Hidden Widgets Drawer (Visible only in Edit Mode) -->
+<div id="hidden-drawer"
+    style="display: none; background: rgba(0,0,0,0.3); border: 2px dashed var(--glass-border); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+    <h3 style="margin-bottom: 12px; color: var(--text-secondary);">🚫 Skryté widgety (Přetáhněte sem pro skrytí)</h3>
+    <div id="hidden-widgets-grid" class="grid"
+        style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
+        {% set visible_set = widget_order|list %}
+        {% for wid, wname in all_widgets %}
+        {% if wid not in widget_order %}
+        {{ render_widget(wid) }}
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Main Dashboard Grid -->
+<div id="dashboard-grid" class="grid" style="grid-template-columns: repeat(2, 1fr); gap: 24px; min-height: 200px;">
+    {% for widget_id in widget_order %}
+    <!-- Only render if it exists in our macro list to avoid errors -->
+    {{ render_widget(widget_id) }}
+    {% endfor %}
+</div>
+
+<script src="/static/js/charts.js?v=2"></script>
+<script>
+    // --- Sortable / Drag-and-Drop Implementation ---
+    let sortableMain = null;
+    let sortableHidden = null;
+    const grid = document.getElementById('dashboard-grid');
+    const drawer = document.getElementById('hidden-drawer');
+    const hiddenGrid = document.getElementById('hidden-widgets-grid');
+    const editBtn = document.getElementById('editLayoutBtn');
+    const saveBtn = document.getElementById('saveLayoutBtn');
+
+    function toggleEditMode() {
+        if (sortableMain) {
+            sortableMain.destroy();
+            sortableHidden.destroy();
+            sortableMain = null;
+            sortableHidden = null;
+            editBtn.textContent = '🖊️ Upravit rozložení';
+            editBtn.style.background = 'var(--bg-card)';
+            saveBtn.style.display = 'none';
+            drawer.style.display = 'none';
+            grid.classList.remove('draggable-mode');
+            hiddenGrid.classList.remove('draggable-mode');
+        } else {
+            drawer.style.display = 'block';
+            grid.classList.add('draggable-mode');
+            hiddenGrid.classList.add('draggable-mode');
+            sortableMain = new Sortable(grid, { group: 'dashboard', animation: 150, ghostClass: 'sortable-ghost', handle: '.card' });
+            sortableHidden = new Sortable(hiddenGrid, { group: 'dashboard', animation: 150, ghostClass: 'sortable-ghost', handle: '.card' });
+            editBtn.textContent = '❌ Zrušit úpravy';
+            editBtn.style.background = 'var(--bg-tertiary)';
+            saveBtn.style.display = 'inline-block';
+        }
+    }
+
+    async function saveLayout() {
+        if (!sortableMain) return;
+        const visibleOrder = sortableMain.toArray();
+        const formData = new FormData();
+        formData.append('widget_order', JSON.stringify(visibleOrder));
+        try {
+            await fetch('/settings/dashboard', { method: 'POST', body: formData });
+            window.location.reload();
+        } catch (e) { alert('Chyba při ukládání: ' + e); }
+    }
+</script>
+
+<style>
+    /* Draggable Styles */
+    .draggable-mode .card {
+        cursor: grab;
+        border: 2px dashed var(--glass-border);
+        transform: scale(0.98);
+    }
+
+    .draggable-mode .card:hover {
+        border-color: var(--accent);
+    }
+
+    .sortable-ghost {
+        opacity: 0.4;
+        background: var(--accent) !important;
+    }
+
+    /* Responsive overrides */
+    @media (max-width: 768px) {
+        #dashboard-grid {
+            grid-template-columns: 1fr !important;
+        }
+
+        .full-width {
+            grid-column: span 1 !important;
+        }
+    }
+</style>
+
+<script>
+    // --- Data Loading Functions (Same as before, but calls guarded) ---
+    function getFilterParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (!urlParams.has('start_date')) {
+            const sd = document.getElementById('startDate');
+            if (sd) urlParams.set('start_date', sd.value);
+            const ed = document.getElementById('endDate');
+            if (ed) urlParams.set('end_date', ed.value);
+            const rid = document.getElementById('roleFilter');
+            if (rid) urlParams.set('role_id', rid.value);
+        }
+        return urlParams.toString();
+    }
+
+    // Call loaders if elements exist
+    document.addEventListener('DOMContentLoaded', () => {
+        if (document.getElementById('wow-value')) loadComparisons();
+        if (document.getElementById('channelChart')) loadChannelStats();
+        if (document.getElementById('channelDistChart')) loadChannelDist();
+        if (document.getElementById('leaderboard-tbody')) loadLeaderboard();
+        if (document.getElementById('peak-hour')) loadPeakAnalysis();
+        if (document.getElementById('commandChart')) loadCommandStats();
+        if (document.getElementById('voice-tbody')) loadVoiceStats();
+        if (document.getElementById('trafficChart')) loadTrafficStats();
+        if (document.getElementById('trend-7d')) loadAnalyticsTools();
+
+        // Load Extended Stats if any new widget is present
+        if (document.getElementById('growthChart') || document.getElementById('hourlyChart') || document.getElementById('weekdayChart') || document.getElementById('msgLenChart') || document.getElementById('weekendChart')) {
+            loadExtendedStats();
+        }
+        if (document.getElementById('growthChart') || document.getElementById('hourlyChart') || document.getElementById('weekdayChart') || document.getElementById('msgLenChart') || document.getElementById('weekendChart')) {
+            loadExtendedStats();
+        }
+        if (document.getElementById('xp-leaderboard-tbody')) loadXpLeaderboard();
+    });
+
+    async function loadExtendedStats() {
+        try {
+            const resp = await fetch(`/api/extended-stats?${getFilterParams()}`);
+            const data = await resp.json();
+
+            if (document.getElementById('growthChart')) {
+                new Chart(document.getElementById('growthChart'), {
+                    type: 'line',
+                    data: { labels: data.dates, datasets: [{ label: 'Celkem členů', data: data.growth_total, borderColor: '#3b82f6', fill: true, backgroundColor: 'rgba(59,130,246,0.1)' }] }
+                });
+            }
+
+            if (document.getElementById('hourlyChart')) {
+                new Chart(document.getElementById('hourlyChart'), {
+                    type: 'bar',
+                    data: { labels: Array.from({ length: 24 }, (_, i) => i + ':00'), datasets: [{ label: 'Aktivita', data: data.hourly_dist, backgroundColor: '#8b5cf6' }] }
+                });
+            }
+
+            if (document.getElementById('weekdayChart')) {
+                new Chart(document.getElementById('weekdayChart'), {
+                    type: 'bar',
+                    data: { labels: ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'], datasets: [{ label: 'Zprávy', data: data.weekly_dist, backgroundColor: '#10b981' }] }
+                });
+            }
+
+            if (document.getElementById('msgLenChart')) {
+                new Chart(document.getElementById('msgLenChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['0-5', '6-30', '31-75', '76-150', '150+'],
+                        datasets: [{ data: data.msg_length_dist, backgroundColor: ['#64748b', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'] }]
+                    }
+                });
+            }
+
+            if (document.getElementById('weekendChart')) {
+                new Chart(document.getElementById('weekendChart'), {
+                    type: 'pie',
+                    data: {
+                        labels: ['Pracovní dny', 'Víkend'],
+                        datasets: [{ data: [data.weekend_ratio.weekday, data.weekend_ratio.weekend], backgroundColor: ['#3b82f6', '#ec4899'] }]
+                    }
+                });
+            }
+        } catch (e) { }
+    }
+
+    async function loadComparisons() {
+        try {
+            const resp = await fetch(`/api/comparisons?${getFilterParams()}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.week_over_week && document.getElementById('wow-value')) {
+                document.getElementById('wow-value').textContent = `${data.week_over_week.this_week} DAU`;
+                const wc = document.getElementById('wow-change');
+                const wp = data.week_over_week.change_percent;
+                wc.textContent = `${wp > 0 ? '+' : ''}${wp}% vs last week`;
+                wc.className = `stat-diff ${wp > 0 ? 'diff-positive' : 'diff-negative'}`;
+            }
+            if (data.month_over_month && document.getElementById('mom-value')) {
+                document.getElementById('mom-value').textContent = `${data.month_over_month.this_month} DAU`;
+                const mc = document.getElementById('mom-change');
+                const mp = data.month_over_month.change_percent;
+                mc.textContent = `${mp > 0 ? '+' : ''}${mp}% vs last month`;
+                mc.className = `stat-diff ${mp > 0 ? 'diff-positive' : 'diff-negative'}`;
+            }
+        } catch (e) { }
+    }
+
+    async function loadChannelStats() {
+        if (!document.getElementById('channelChart')) return;
+        try {
+            const resp = await fetch(`/api/channel-stats?${getFilterParams()}`);
+            const data = await resp.json();
+            document.getElementById('channelChartLoader').style.display = 'none';
+            if (!data.channels || !data.channels.length) { document.getElementById('channelChartEmpty').style.display = 'flex'; return; }
+
+            new Chart(document.getElementById('channelChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: data.channels.map(c => c.name),
+                    datasets: [{ label: 'Messages', data: data.channels.map(c => c.count), backgroundColor: 'rgba(139,92,246,0.6)' }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        } catch (e) {
+            console.error(e);
+            document.getElementById('channelChartLoader').style.display = 'none';
+        }
+    }
+
+    async function loadXpLeaderboard() {
+        try {
+            const resp = await fetch('/api/leaderboard/xp');
+            const data = await resp.json();
+            const tbody = document.getElementById('xp-leaderboard-tbody');
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;">Žádná XP data.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(u => `
+                <tr style="border-bottom: 1px solid var(--glass-border);">
+                    <td style="padding: 12px 8px; font-weight: 700; color: ${u.rank <= 3 ? '#f59e0b' : 'inherit'}">#${u.rank}</td>
+                    <td style="padding: 12px 8px; display: flex; align-items: center; gap: 10px;">
+                         <div style="width: 32px; height: 32px; border-radius: 50%; background: ${u.avatar ? `url('${u.avatar}')` : '#333'} center/cover;"></div>
+                         <div>
+                            <div style="font-weight: 600;">${u.username}</div>
+                         </div>
+                    </td>
+                    <td style="padding: 12px 8px; text-align: right; font-weight: 700;">Lvl ${u.level}</td>
+                    <td style="padding: 12px 8px; text-align: right; color: var(--text-secondary);">${u.xp.toLocaleString()} XP</td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            console.error("XP Load Error:", e);
+            document.getElementById('xp-leaderboard-tbody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:red;">Chyba načítání.</td></tr>';
+        }
+    }
+
+
+    async function loadLeaderboard() {
+        const tbody = document.getElementById('leaderboard-tbody');
+        if (!tbody) return;
+        try {
+            const resp = await fetch(`/api/leaderboard?limit=10&${getFilterParams()}`);
+            const data = await resp.json();
+            if (!data.leaderboard.length) { tbody.innerHTML = '<tr><td>No Data</td></tr>'; return; }
+            tbody.innerHTML = data.leaderboard.map((u, i) => `<tr><td>${i + 1}</td><td>${u.name}</td><td style="text-align:right">${u.total_messages}</td><td style="text-align:right">${u.avg_message_length}</td></tr>`).join('');
+        } catch (e) { }
+    }
+
+    async function loadPeakAnalysis() {
+        if (!document.getElementById('peak-hour')) return;
+        try {
+            const resp = await fetch(`/api/peak-stats?${getFilterParams()}`);
+            const data = await resp.json();
+            document.getElementById('peak-hour').textContent = data.peak_hour;
+            document.getElementById('peak-day').textContent = data.peak_day;
+            document.getElementById('peak-messages').textContent = data.peak_messages;
+            document.getElementById('quiet-period').textContent = data.quiet_period;
+        } catch (e) { }
+    }
+
+    async function loadChannelDist() {
+        if (!document.getElementById('channelDistChart')) return;
+        try {
+            const resp = await fetch(`/api/channel-stats?${getFilterParams()}`);
+            const data = await resp.json();
+            const top = data.channels.slice(0, 5);
+            new Chart(document.getElementById('channelDistChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: top.map(c => c.name),
+                    datasets: [{ data: top.map(c => c.count), backgroundColor: ['#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6'] }]
+                }
+            });
+        } catch (e) { }
+    }
+
+    async function loadCommandStats() {
+        if (!document.getElementById('commandChart')) return;
+        try {
+            const resp = await fetch(`/api/command-stats?${getFilterParams()}`);
+            const data = await resp.json();
+            new Chart(document.getElementById('commandChart'), {
+                type: 'bar',
+                data: { labels: data.commands.map(c => c.name), datasets: [{ label: 'Usage', data: data.commands.map(c => c.count), backgroundColor: '#ec4899' }] }
+            });
+        } catch (e) { }
+    }
+
+    async function loadVoiceStats() {
+        const tbody = document.getElementById('voice-tbody');
+        if (!tbody) return;
+        try {
+            const resp = await fetch(`/api/voice-stats?${getFilterParams()}`);
+            const data = await resp.json();
+            tbody.innerHTML = data.leaderboard.map(u => `<tr><td>${u.name}</td><td style="text-align:right">${Math.round(u.minutes / 60)}h ${u.minutes % 60}m</td></tr>`).join('');
+        } catch (e) { }
+    }
+
+    async function loadTrafficStats() {
+        if (!document.getElementById('trafficChart')) return;
+        try {
+            const resp = await fetch(`/api/traffic-stats?${getFilterParams()}`);
+            const data = await resp.json();
+            new Chart(document.getElementById('trafficChart'), {
+                type: 'line',
+                data: { labels: data.labels, datasets: [{ label: 'Joins', data: data.joins, borderColor: '#10b981' }, { label: 'Leaves', data: data.leaves, borderColor: '#ef4444' }] }
+            });
+        } catch (e) { }
+    }
+
+    async function loadAnalyticsTools() {
+        if (!document.getElementById('trend-7d')) return;
+        try {
+            const resp = await fetch(`/api/analytics-tools?${getFilterParams()}`);
+            const data = await resp.json();
+            document.getElementById('trend-7d').textContent = data.trends.growth_7d + '%';
+            document.getElementById('trend-30d').textContent = data.trends.growth_30d + '%';
+            document.getElementById('trend-avg-dau').textContent = data.trends.avg_dau;
+            document.getElementById('trend-prediction').textContent = data.trends.prediction;
+            document.getElementById('engagement-score').textContent = data.engagement.score;
+            document.documentElement.style.setProperty('--engagement-deg', (data.engagement.score * 3.6) + 'deg');
+
+            // Bars
+            document.getElementById('msg-activity-bar').style.width = data.engagement.msg_activity + '%';
+            document.getElementById('voice-activity-bar').style.width = data.engagement.voice_activity + '%';
+            document.getElementById('retention-bar').style.width = data.engagement.retention + '%';
+
+            // Insights
+            const cont = document.getElementById('insights-container');
+            cont.innerHTML = '';
+            data.insights.forEach(i => {
+                const d = document.createElement('div');
+                d.className = 'insight-item';
+                d.style.padding = '10px'; d.style.marginBottom = '5px'; d.style.background = 'var(--bg-tertiary)'; d.style.borderLeft = '4px solid #8b5cf6';
+                d.textContent = i.text;
+                cont.appendChild(d);
+            });
+        } catch (e) { }
+    }
+</script>
+{% endblock %}

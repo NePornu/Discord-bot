@@ -1,0 +1,39 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Backfill Systém{% endblock %}
+
+{% block docs_content %}
+<section id="backfill">
+    <h1>Inteligentní Backfill Systém</h1>
+    <p>Při prvním přidání bota na server nemusíte začínat s prázdným grafem. Náš vlastnoručně vyvinutý Backfill Engine
+        dokáže zrekonstruovat historii serveru.</p>
+
+    <h2>Jak funguje proces doplňování dat?</h2>
+    <p>Proces je navržen tak, aby byl maximálně efektivní a bezpečný vůči limitům Discord API.</p>
+
+    <h3>1. Fáze indexace</h3>
+    <p>Bot nejprve projde seznam všech textových kanálů, ke kterým má přístup, a vytvoří prioritizovanou frontu úloh.
+        Nejaktivnější kanály jsou zpracovány jako první.</p>
+
+    <h3>2. Dávkové zpracování (Batch Processing)</h3>
+    <p>Zprávy nejsou stahovány po jedné, ale po blocích (100 zpráv na jeden API request). Tím snižujeme zátěž sítě o
+        99%.</p>
+
+    <h3>3. Agregace a Anonymizace</h3>
+    <div class="info-box">
+        <b>Důležité: Ochrana soukromí</b>
+        Neukládáme a nikdy nečteme text vašich zpráv. Backfill systém extrahuje pouze metadata.
+    </div>
+    <p>Ukládáme pouze:</p>
+    <ul>
+        <li><b>Timestamp:</b> Kdy byla zpráva odeslána.</li>
+        <li><b>UserID:</b> Identifikátor autora (pro statistiky aktivity).</li>
+        <li><b>ChannelID:</b> Kde byla zpráva odeslána.</li>
+        <li><b>MessageLength:</b> Počet znaků (pro analýzu kvality diskuze).</li>
+    </ul>
+
+    <h3>4. Rate-Limit Management</h3>
+    <p>Náš systém obsahuje sofistikovaný "Smart Throttling". Pokud Discord API začne hlásit zpomalení (HTTP 429),
+        backfill se automaticky pozastaví a zpomalí, aby neohrozil funkčnost ostatních botů na serveru.</p>
+</section>
+{% endblock %}
