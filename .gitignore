@@ -1,6 +1,10 @@
 __pycache__/
 *.pyc
 .env
-dashboard.log
+*.log
+*.db
+config/bot_token.py
+data/*.json
+bot_data/
 venv/
 .DS_Store
