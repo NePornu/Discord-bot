@@ -1,37 +1,35 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="content">
-    <div class="page-header">
-        <div class="page-header-title">
-            <h1 class="title">Správa Týmu</h1>
-            <p style="color: var(--text-secondary);">Spravujte přístup uživatelů k dashboardu tohoto serveru.</p>
-        </div>
-        <div class="page-header-actions">
-            <button onclick="openAddMemberModal()" class="btn btn-primary">
-                <i class="fa-solid fa-user-plus"></i> Přidat Člena
-            </button>
-        </div>
+<div class="page-header">
+    <div class="page-header-title">
+        <h1 class="title">Správa Týmu</h1>
+        <p style="color: var(--text-secondary);">Spravujte přístup uživatelů k dashboardu tohoto serveru.</p>
     </div>
+    <div class="page-header-actions">
+        <button onclick="openAddMemberModal()" class="btn btn-primary">
+            <i class="fa-solid fa-user-plus"></i> Přidat Člena
+        </button>
+    </div>
+</div>
 
-    <!-- Team List -->
-    <div class="card">
-        <div class="table-container">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Uživatel</th>
-                        <th>Oprávnění</th>
-                        <th>Akce</th>
-                    </tr>
-                </thead>
-                <tbody id="teamTableBody">
-                    <tr>
-                        <td colspan="3" style="text-align:center; padding: 40px;">Načítání týmu...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+<!-- Team List -->
+<div class="card">
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Uživatel</th>
+                    <th>Oprávnění</th>
+                    <th>Akce</th>
+                </tr>
+            </thead>
+            <tbody id="teamTableBody">
+                <tr>
+                    <td colspan="3" style="text-align:center; padding: 40px;">Načítání týmu...</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -156,7 +154,7 @@
         tbody.innerHTML = team.map(u => `
         <tr>
             <td style="display:flex; align-items:center; gap:12px;">
-                <div class="avatar" style="width:32px; height:32px; border-radius:50%; background-image: url('${u.avatar ? 'https://cdn.discordapp.com/avatars/' + u.id + '/' + u.avatar + '.png' : 'https://cdn.discordapp.com/embed/avatars/0.png'}'); background-size:cover;"></div>
+                <div class="avatar" style="width:32px; height:32px; border-radius:50%; background-image: url('${u.avatar ? (u.avatar.startsWith('http') ? u.avatar : 'https://cdn.discordapp.com/avatars/' + u.id + '/' + u.avatar + '.png') : 'https://cdn.discordapp.com/embed/avatars/0.png'}'); background-size:cover;"></div>
                 <div>
                     <div style="font-weight:600;">${u.username}</div>
                     <div style="font-size:0.8rem; color:var(--text-muted);">${u.id}</div>

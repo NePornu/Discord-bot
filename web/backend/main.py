@@ -49,7 +49,8 @@ from .utils import (
     get_trend_analysis, get_engagement_score, get_insights, get_security_score,
     get_voice_leaderboard, get_command_stats, get_traffic_stats, get_channel_distribution,
     get_time_comparisons, get_leaderboard_data,
-    get_dashboard_team, add_dashboard_user, remove_dashboard_user, get_dashboard_permissions
+    get_dashboard_team, add_dashboard_user, remove_dashboard_user, get_dashboard_permissions,
+    get_daily_stats, get_action_weights
 )
 
 # ... (rest of imports)
@@ -58,6 +59,11 @@ app = FastAPI(title="Bot Dashboard", docs_url=None, redoc_url=None)
 
 # Add session middleware for authentication (same_site=lax for OAuth redirects)
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=SESSION_EXPIRY_HOURS * 3600, same_site="lax", https_only=False)
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return RedirectResponse(url="/static/img/hero_dashboard.png") # Placeholder
+
 
 @app.get("/select-server", response_class=HTMLResponse)
 async def select_server_page(request: Request):
@@ -139,6 +145,55 @@ async def dashboard(request: Request, start_date: str = None, end_date: str = No
         </body></html>
         """, status_code=500)
 
+@app.get("/features", response_class=HTMLResponse)
+async def landing_features(request: Request):
+    return templates.TemplateResponse("landing_features.html", {"request": request})
+
+
+@app.get("/about", response_class=HTMLResponse)
+async def landing_about(request: Request):
+    # Fetch real aggregate stats for About page
+    stats = {"servers": "1", "users": "---", "uptime": "99.9%"}
+    try:
+        r = await get_redis_client()
+        bot_guilds = await r.smembers("bot:guilds")
+        
+        total_msgs = 0
+        total_users = 0
+        
+        for gid in bot_guilds:
+            tm = await r.get(f"stats:total_msgs:{gid}") or "0"
+            tu = await r.get(f"presence:total:{gid}") or "0"
+            
+            total_msgs += int(tm)
+            total_users += int(tu)
+            
+        stats["servers"] = len(bot_guilds)
+        stats["users"] = f"{total_users:,}".replace(",", " ")
+        stats["messages"] = f"{total_msgs:,}".replace(",", " ")
+        
+    except Exception as e:
+        print(f"Error fetching about stats: {e}")
+        
+    context = {"request": request, "stats": stats}
+    return templates.TemplateResponse("landing_about.html", context)
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def legal_privacy(request: Request):
+    return templates.TemplateResponse("docs/privacy.html", {"request": request})
+
+@app.get("/terms", response_class=HTMLResponse)
+async def legal_terms(request: Request):
+    return templates.TemplateResponse("docs/terms.html", {"request": request})
+
+@app.get("/changelog", response_class=HTMLResponse)
+async def docs_changelog(request: Request):
+    return templates.TemplateResponse("docs/changelog.html", {"request": request})
+
+@app.get("/support", response_class=HTMLResponse)
+async def support_page(request: Request):
+    return templates.TemplateResponse("docs/support.html", {"request": request})
+
 async def _dashboard_logic(request: Request, start_date: str = None, end_date: str = None, role_id: str = None):
     """Main Dashboard Overview."""
     # Check if user is authenticated
@@ -199,6 +254,78 @@ async def _dashboard_logic(request: Request, start_date: str = None, end_date: s
 
     guild_id = int(guild_id)
     
+    # --- PERMISSION CHECK ---
+    # Check if user has dashboard access
+    from .utils import get_dashboard_permissions
+    perms = await get_dashboard_permissions(guild_id, user["id"])
+    
+    # If NO permissions, show ONLY XP Leaderboard (Restricted View)
+    if not perms:
+        try:
+             # Fetch XP Leaderboard Data manually for this view
+             r = await get_redis_client()
+             xp_key = f"levels:xp:{guild_id}"
+             top_users = await r.zrevrange(xp_key, 0, 49, withscores=True) # Top 50
+             
+             leaderboard_data = []
+             for i, (uid_str, xp_score) in enumerate(top_users, 1):
+                 uid = str(uid_str)
+                 xp = int(float(xp_score))
+                 
+                 # Resolve User Info
+                 u_info = await r.hgetall(f"user:info:{uid}") or {}
+                 username = u_info.get("name") or u_info.get("username") or f"User {uid}"
+                 avatar = u_info.get("avatar")
+                 
+                 # Calculate Level (Replicating formula from levels.py)
+                 # We need config for accurate calculation
+                 xp_conf = await r.hgetall("config:xp_formula")
+                 a = int(xp_conf.get("a", 50))
+                 b = int(xp_conf.get("b", 200)) 
+                 c_const = int(xp_conf.get("c", 100))
+                 
+                 import math
+                 def calc_level(cxp):
+                     if cxp < c_const: return 0
+                     c_val = c_const - cxp
+                     d = (b**2) - (4*a*c_val)
+                     if d < 0: return 0
+                     return int((-b + math.sqrt(d)) / (2*a))
+                 
+                 def xp_for_lvl(lvl):
+                     return a * (lvl ** 2) + b * lvl + c_const
+                     
+                 level = calc_level(xp)
+                 next_xp = xp_for_lvl(level + 1)
+                 prev_xp = xp_for_lvl(level) if level > 0 else 0
+                 
+                 needed = next_xp - prev_xp
+                 current = xp - prev_xp
+                 progress = int((current / needed) * 100) if needed > 0 else 0
+                 
+                 leaderboard_data.append({
+                     "rank": i,
+                     "username": username,
+                     "user_id": uid,
+                     "avatar": avatar,
+                     "level": level,
+                     "xp": xp,
+                     "progress": min(100, max(0, progress))
+                 })
+                 
+             return templates.TemplateResponse("leaderboard.html", {
+                 "request": request, 
+                 "leaderboard": leaderboard_data, 
+                 "user": user,
+                 "is_restricted": True
+             })
+             
+        except Exception as e:
+            print(f"Restricted view error: {e}")
+            return templates.TemplateResponse("leaderboard.html", {"request": request, "leaderboard": [], "user": user, "error": str(e)})
+
+    # --- END PERMISSION CHECK ---
+    
     # Fetch roles for the filter
     from .utils import get_cached_roles
     roles = await get_cached_roles(guild_id)
@@ -251,7 +378,51 @@ async def _dashboard_logic(request: Request, start_date: str = None, end_date: s
     real_total_members = summary_stats["discord"]["users"]
     churn_rate = round((total_leaves / max(1, real_total_members)) * 100, 2)
     
-    # Render Template
+    # Define Context for Template
+    context = {
+        "request": request,
+        "stats": summary_stats,
+        "member_stats": member_stats,
+        "activity_stats": activity_stats,
+        "deep_stats": deep_stats,
+        "redis_stats": redis_stats,
+        "realtime_active": realtime_active,
+        "churn_rate": churn_rate,
+        "active_staff_count": 0, # Placeholder or calc
+        "roles": roles_list,
+        "user_role": role_id,
+        "start_date": start_date,
+        "end_date": end_date,
+        "guild_id": guild_id,
+        "user": user,
+        
+        # KPI Metrics
+        "total_members": summary_stats["discord"]["users"],
+        "avg_dau": activity_stats.get("avg_dau", 0),
+        "avg_msg_len": deep_stats.get("avg_msg_len", "-"),
+        "peak_day": deep_stats.get("peak_day", "-"),
+        "reply_ratio": deep_stats.get("reply_ratio", 0),
+        
+        # Flattened Stats for ChartJS
+        "dau_labels": activity_stats.get("dau_labels", []),
+        "dau_data": activity_stats.get("dau_data", []),
+        "labels": member_stats.get("labels", []),
+        "joins_data": member_stats.get("joins", []),
+        "leaves_data": member_stats.get("leaves", []),
+        "total_data": member_stats.get("total", []),
+        
+        # Chart Variables
+        "hourly_labels": redis_stats.get("hourly_labels", []),
+        "hourly_activity": redis_stats.get("hourly_activity", []),
+        "retention_labels": deep_stats.get("retention_labels", []),
+        "dau_mau_ratio": deep_stats.get("dau_mau_ratio", []),
+        "dau_wau_ratio": deep_stats.get("dau_wau_ratio", []),
+        "msglen_labels": redis_stats.get("msglen_labels", []),
+        "msglen_data": redis_stats.get("msglen_data", []),
+        "weekly_labels": deep_stats.get("weekly_labels", []),
+        "weekly_data": deep_stats.get("weekly_data", [])
+    }
+
     # Inject Global Sidebar Context
     sidebar_ctx = await get_sidebar_context(request)
     context.update(sidebar_ctx)
@@ -398,17 +569,20 @@ async def docs_page(request: Request, page_name: str = "index"):
     """Serve documentation pages with safety check."""
     allowed_pages = {
         "index", "setup", "commands", "security", "analytics", "export",
-        "faq", "support", "ai", "backfill", "roles", "insights"
+        "faq", "support", "ai", "backfill", "roles", "insights",
+        "privacy", "terms", "changelog"
     }
     
     if page_name not in allowed_pages:
         # Fallback to index or 404
         return RedirectResponse(url="/docs")
         
-    return templates.TemplateResponse(f"docs/{page_name}.html", {
-        "request": request,
-        "page_name": page_name
-    })
+    # Inject Global Sidebar Context
+    sidebar_ctx = await get_sidebar_context(request)
+    
+    context = {"request": request, "page_name": page_name}
+    context.update(sidebar_ctx)
+    return templates.TemplateResponse(f"docs/{page_name}.html", context)
 
 @app.get("/login")
 async def login_page(request: Request):
@@ -686,12 +860,18 @@ async def team_settings_page(request: Request):
     perms = await get_dashboard_permissions(guild_id, user_id, role)
     
     if "*" not in perms and "manage_team" not in perms:
-         return templates.TemplateResponse("activity_restricted.html", {
-                "request": request,
-                "message": "Nemáte oprávnění spravovat tým."
-         })
+        sidebar_ctx = await get_sidebar_context(request)
+        ctx = {
+            "request": request,
+            "message": "Nemáte oprávnění spravovat tým."
+        }
+        ctx.update(sidebar_ctx)
+        return templates.TemplateResponse("activity_restricted.html", ctx)
 
-    return templates.TemplateResponse("team.html", {
+    # Inject Global Sidebar Context
+    sidebar_ctx = await get_sidebar_context(request)
+    
+    ctx = {
         "request": request,
         "user": request.session.get("discord_user"),
         "current_perms": perms,
@@ -701,7 +881,9 @@ async def team_settings_page(request: Request):
             {"id": "export_data", "name": "Export Dat", "desc": "Stahování CSV/JSON exportů"},
             {"id": "manage_team", "name": "Spravovat Tým", "desc": "Přidávání a odebírání uživatelů"}
         ]
-    })
+    }
+    ctx.update(sidebar_ctx)
+    return templates.TemplateResponse("team.html", ctx)
 
 # --- XP API ---
 @app.get("/api/leaderboard/xp")
@@ -724,9 +906,15 @@ async def get_xp_leaderboard(request: Request):
     data = []
     
     # We might need to batch fetch user info or use cached
+    current_rank = 1
     for i, (uid, xp) in enumerate(top_users, 1):
         user_info = await r.hgetall(f"user:info:{uid}") or {}
+        username = user_info.get("username", "Unknown")
         
+        # Skip deleted users
+        if username == "Deleted User":
+            continue
+            
         # Calculate level 
         # (Duplicate logic from bot, maybe move to shared utils?)
         # Simple recalc here:
@@ -743,13 +931,14 @@ async def get_xp_leaderboard(request: Request):
                  level = int((-b + math.sqrt(d)) / (2*a))
         
         data.append({
-            "rank": i,
+            "rank": current_rank,
             "user_id": uid,
-            "username": user_info.get("username", "Unknown"),
+            "username": username,
             "avatar": user_info.get("avatar"),
             "xp": xp,
             "level": level
         })
+        current_rank += 1
         
     return data
 
@@ -759,7 +948,10 @@ async def get_xp_leaderboard(request: Request):
 
 @app.get("/commands", response_class=HTMLResponse)
 async def commands_page(request: Request, _=Depends(require_auth)):
-    return templates.TemplateResponse("commands.html", {"request": request})
+    sidebar_ctx = await get_sidebar_context(request)
+    ctx = {"request": request}
+    ctx.update(sidebar_ctx)
+    return templates.TemplateResponse("docs/commands.html", ctx)
 
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_page(request: Request, start_date: str = None, end_date: str = None, role_id: str = None, _=Depends(require_auth)):
@@ -959,12 +1151,16 @@ async def activity_page(request: Request, guild_id: str = None, start_date: str 
                     "request": request,
                     "message": "Nemáte práva moderátora pro zobrazení statistik této guildy."
                 })
-        else:
+            # Inject Global Sidebar Context
+            sidebar_ctx = await get_sidebar_context(request)
+            
             # Guest
-            return templates.TemplateResponse("activity_restricted.html", {
+            ctx = {
                 "request": request,
                 "message": "Přístup k této stránce je omezen. Nemáte moderátorská práva."
-            })
+            }
+            ctx.update(sidebar_ctx)
+            return templates.TemplateResponse("activity_restricted.html", ctx)
     
     # Fetch Stats
     # Fetch Stats
@@ -974,7 +1170,7 @@ async def activity_page(request: Request, guild_id: str = None, start_date: str 
     activity_stats = await get_activity_stats(int(target_guild_id), start_date=start_date, end_date=end_date)
     
     # Get deep stats (consistency, leaderboard, etc.) - Uses Redis HLL
-    deep_stats = await get_deep_stats_redis(int(target_guild_id), start_date=start_date, end_date=end_date)
+    deep_stats = await get_deep_stats_redis(int(target_guild_id), start_date=start_date, end_date=end_date, role_id=role_id)
     
     # 2. Redis Based stats (Hourly, Heatmap, Msg Len)
     redis_stats = await get_redis_dashboard_stats(int(target_guild_id), start_date=start_date, end_date=end_date)
@@ -1002,6 +1198,11 @@ async def activity_page(request: Request, guild_id: str = None, start_date: str 
     # Inject Global Sidebar Context
     sidebar_ctx = await get_sidebar_context(request)
     
+    # Fetch roles for the filter
+    from .utils import get_cached_roles
+    roles = await get_cached_roles(int(target_guild_id))
+    roles_list = [(r["id"], r["name"]) for r in roles]
+
     ctx = {
         "request": request,
         "guild_id": target_guild_id,
@@ -1010,7 +1211,20 @@ async def activity_page(request: Request, guild_id: str = None, start_date: str 
         "redis_stats": redis_stats,
         "warning_msg": warning_msg,
         "user_role": user_role,
-        "user": request.session.get("discord_user")
+        "user": request.session.get("discord_user"),
+        
+        # Mapping for activity.html charts
+        "daily_labels": deep_stats.get("daily_labels", []),
+        "daily_hours": deep_stats.get("daily_weighted_hours", []), 
+        "leaderboard": deep_stats.get("leaderboard", []),
+        "total_hours_30d": deep_stats.get("total_hours_30d", 0),
+        "active_staff_count": deep_stats.get("active_staff_count", 0),
+        "top_action": deep_stats.get("top_action", "-"),
+        "roles": roles_list,
+        "selected_role": role_id or "all",
+        "start_date": start_date or d_start.strftime("%Y-%m-%d"),
+        "end_date": end_date or d_end.strftime("%Y-%m-%d"),
+        "warning": warning_msg
     }
     ctx.update(sidebar_ctx)
     return templates.TemplateResponse("activity.html", ctx)
@@ -1033,24 +1247,30 @@ async def leaderboard_page(request: Request, _=Depends(require_auth)):
     leaderboard_data = []
     
     # 2. Process Data
+    # Fetch XP Formula Config
+    xp_conf = await r.hgetall("config:xp_formula")
+    CA = int(xp_conf.get("a", 50))
+    CB = int(xp_conf.get("b", 200))
+    CC = int(xp_conf.get("c", 100))
+
     import math
+    current_rank = 1
     for i, (uid, xp) in enumerate(top_users, 1):
         user_info = await r.hgetall(f"user:info:{uid}") or {}
         xp = int(xp)
         
-        # Level Calc (Same as bot/api)
+        # Level Calc (Configurable)
+        # XP = A*L^2 + B*L + C => A*L^2 + B*L + (C - XP) = 0
         level = 0
-        if xp >= 100:
-             a, b, c = 5, 50, 100 - xp
+        if xp >= CC:
+             a, b, c = CA, CB, CC - xp
              d = (b**2) - (4*a*c)
              if d >= 0:
                  level = int((-b + math.sqrt(d)) / (2*a))
         
         # Calculate progress to next level
-        # xp_for_level = 5*L^2 + 50*L + 100
-        # next_level_xp = 5*(L+1)^2 + 50*(L+1) + 100
-        current_level_xp = 5 * (level**2) + 50 * level + 100
-        next_level_xp = 5 * ((level+1)**2) + 50 * (level+1) + 100
+        current_level_xp = CA * (level**2) + CB * level + CC
+        next_level_xp = CA * ((level+1)**2) + CB * (level+1) + CC
         
         # XP needed for NEXT level relative to current level base
         xp_needed = next_level_xp - current_level_xp
@@ -1060,16 +1280,24 @@ async def leaderboard_page(request: Request, _=Depends(require_auth)):
         if xp_needed <= 0: xp_needed = 1
         progress_pct = min(100, max(0, int((xp_progress / xp_needed) * 100)))
 
+        # Resolve Display Name
+        display_name = user_info.get("username") or user_info.get("name")
+        
+        # Skip unknown or deleted users
+        if not display_name or display_name == "Deleted User":
+             continue
+        
         leaderboard_data.append({
-            "rank": i,
+            "rank": current_rank,
             "user_id": uid,
-            "username": user_info.get("username", "Unknown User"),
+            "username": display_name,
             "avatar": user_info.get("avatar"),
             "xp": xp,
             "level": level,
             "progress": progress_pct,
             "next_level_xp": int(next_level_xp)
         })
+        current_rank += 1
 
     # Inject Global Sidebar Context
     sidebar_ctx = await get_sidebar_context(request)
@@ -1192,140 +1420,27 @@ async def user_activity_page(request: Request, uid: int, start_date: str = None,
     
     total_actions = sum(action_breakdown.values())
 
-    return templates.TemplateResponse(
-        "user_activity.html",
-        {
-            "request": request,
-            "user_info": user_info,
-            "user_roles": user_info["roles"],
-            "daily_labels": daily_labels,
-            "daily_values": daily_values,
-            "total_time_h": total_h,
-            "chat_time_h": chat_h,
-            "voice_time_h": voice_h,
-            "user_stats": stats_summary,
-            "action_breakdown": action_breakdown,
-            "total_actions": total_actions,
-            "start_date": d_start.strftime("%Y-%m-%d"),
-            "end_date": d_end.strftime("%Y-%m-%d")
+    # Inject Global Sidebar Context
+    sidebar_ctx = await get_sidebar_context(request)
+    
+    ctx = {
+        "request": request,
+        "user_info": user_info,
+        "days": sorted_days,
+        "values": daily_values,
+        "is_bot": user_info.get("bot", False),
+        "summary": {
+            "total_h": total_h,
+            "chat_h": chat_h,
+            "voice_h": voice_h,
+            "actions": total_actions,
+            "breakdown": action_breakdown
         }
-    )
-
-
-# --- HELPER: Action Weights ---
-async def get_action_weights(r: redis.Redis) -> dict:
-    """Fetch action weights from Redis or use defaults."""
-    # Defaults
-    defaults = {
-        "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
-        "verifications": 120, "msg_deleted": 60, "role_updates": 30,
-        "chat_time": 1, "voice_time": 1,
-        "session_base": 180, "char_weight": 1, "reply_weight": 60, "msg_weight": 0
     }
-    
-    try:
-        stored = await r.hgetall("config:action_weights")
-        if stored:
-            # Merge stored values (convert to int)
-            for k, v in stored.items():
-                if k in defaults:
-                    defaults[k] = int(v)
-    except Exception as e:
-        print(f"Error fetching weights: {e}")
-        
-    return defaults
+    ctx.update(sidebar_ctx)
+    return templates.TemplateResponse("user_activity.html", ctx)
 
-async def get_daily_stats(r: redis.Redis, gid: int, uid: int, day: datetime.date) -> dict:
-    """
-    Get daily stats for a user on a specific day.
-    Uses cached value if version matches, otherwise recalculates from raw events.
-    """
-    from datetime import datetime as dt
-    import json
-    from collections import defaultdict
-    
-    day_str = day.strftime("%Y-%m-%d")
-    cache_key = f"stats:day:{day_str}:{gid}:{uid}"
-    
-    # Check cache version
-    cached_version = await r.hget(cache_key, "_version")
-    current_version = await r.get("config:weights_version") or "0"
-    
-    if cached_version == current_version:
-        # Cache hit!
-        stats = await r.hgetall(cache_key)
-        # Convert strings to floats/ints
-        return {k: float(v) if k != "_version" else v for k, v in stats.items()}
-    
-    # Cache miss → recalculate from raw events
-    weights = await get_action_weights(r)
-    
-    # Timestamp range for this day
-    from datetime import time as dt_time
-    day_start = dt.combine(day, dt_time(0, 0, 0)).timestamp()
-    day_end = dt.combine(day, dt_time(23, 59, 59)).timestamp()
-    
-    stats = defaultdict(float)
-    
-    # 1. Messages
-    msg_key = f"events:msg:{gid}:{uid}"
-    messages = await r.zrangebyscore(msg_key, day_start, day_end, withscores=True)
-    
-    last_msg_ts = 0
-    raw_chat_time = 0
-    SESSION_GAP = 300 # 5 minutes to trigger new session base
-    
-    for msg_json, score in messages:
-        msg_data = json.loads(msg_json)
-        msg_ts = float(score)
-        
-        # Session Base
-        if last_msg_ts == 0 or (msg_ts - last_msg_ts) > SESSION_GAP:
-            raw_chat_time += weights.get("session_base", 180)
-        
-        last_msg_ts = msg_ts
-        
-        # Components
-        raw_chat_time += msg_data.get("len", 0) * weights.get("char_weight", 1)
-        raw_chat_time += weights.get("msg_weight", 0)
-        if msg_data.get("reply"):
-            raw_chat_time += weights.get("reply_weight", 60)
-            
-    stats["messages"] += len(messages)
-    stats["chat_time"] = raw_chat_time * weights.get("chat_time", 1)
-    
-    # 2. Voice
-    voice_key = f"events:voice:{gid}:{uid}"
-    voice_sessions = await r.zrangebyscore(voice_key, day_start, day_end)
-    
-    for vs_json in voice_sessions:
-        vs_data = json.loads(vs_json)
-        stats["voice_time"] += vs_data["duration"] * weights.get("voice_time", 1)
-    
-    # 3. Actions
-    action_key = f"events:action:{gid}:{uid}"
-    actions = await r.zrangebyscore(action_key, day_start, day_end)
-    
-    for action_json in actions:
-        action_data = json.loads(action_json)
-        action_type = action_data["type"]
-        
-        # Map back to old metric names for compatibility
-        metric_map = {
-            "ban": "bans", "kick": "kicks", "timeout": "timeouts",
-            "unban": "unbans", "role_update": "role_updates",
-            "msg_delete": "msg_deleted"
-        }
-        
-        metric = metric_map.get(action_type, action_type + "s")
-        stats[metric] += 1
-    
-    # Store in cache with version
-    cache_data = dict(stats)
-    cache_data["_version"] = current_version
-    await r.hset(cache_key, mapping={k: str(v) for k, v in cache_data.items()})
-    
-    return dict(stats)
+# Helper functions moved to utils.py
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, _=Depends(require_admin)):
@@ -1346,6 +1461,9 @@ async def settings_page(request: Request, _=Depends(require_admin)):
         "verification_level": 2
     }
     
+    # XP Formula Defaults
+    xp_formula = {"a": 50, "b": 200, "c": 100}
+    
     try:
         r = await get_redis_client()
         weights = await get_action_weights(r)
@@ -1360,7 +1478,18 @@ async def settings_page(request: Request, _=Depends(require_admin)):
         if stored_sec_ideals:
             for k, v in stored_sec_ideals.items():
                 security_ideals[k] = float(v) if '.' in str(v) else int(v)
-        pass
+
+        # Load XP Formula
+        stored_xp = await r.hgetall("config:xp_formula")
+        if stored_xp:
+            xp_formula["a"] = int(stored_xp.get("a", 50))
+            xp_formula["b"] = int(stored_xp.get("b", 200))
+            xp_formula["c"] = int(stored_xp.get("c", 100))
+            xp_formula["min"] = int(stored_xp.get("min", 15))
+            xp_formula["max"] = int(stored_xp.get("max", 25))
+            xp_formula["voice_min"] = int(stored_xp.get("voice_min", 5))
+            xp_formula["voice_max"] = int(stored_xp.get("voice_max", 10))
+            
     except Exception as e:
         print(f"Error loading settings: {e}")
         # Keep defaults on error
@@ -1373,7 +1502,10 @@ async def settings_page(request: Request, _=Depends(require_admin)):
         roles = await get_cached_roles(int(guild_id))
         roles_list = [(r["id"], r["name"]) for r in roles]
 
-    return templates.TemplateResponse("settings.html", {
+    # Inject Global Sidebar Context
+    sidebar_ctx = await get_sidebar_context(request)
+
+    ctx = {
         "request": request, 
         "weights": weights,
         "show_deleted_data": request.session.get("show_deleted_data", False),
@@ -1381,8 +1513,11 @@ async def settings_page(request: Request, _=Depends(require_admin)):
         "default_role_id": request.session.get("default_role_id", "all"),
         "roles": roles_list,
         "security_weights": security_weights,
-        "security_ideals": security_ideals
-    })
+        "security_ideals": security_ideals,
+        "xp_formula": xp_formula
+    }
+    ctx.update(sidebar_ctx)
+    return templates.TemplateResponse("settings.html", ctx)
 
 @app.post("/settings/general")
 async def update_general_settings(
@@ -1412,6 +1547,7 @@ async def update_dashboard_layout(
     show_traffic: Optional[str] = Form(None),
     show_tools: Optional[str] = Form(None),
     widget_order: Optional[str] = Form(None),
+    widget_spans: Optional[str] = Form(None),
     page: str = Form("analytics"),
     _=Depends(require_auth)
 ):
@@ -1429,6 +1565,17 @@ async def update_dashboard_layout(
             "show_tools": show_tools == "on"
         }
         request.session["dashboard_layout"] = layout
+    
+    # Save widget spans
+    if widget_spans:
+        import json
+        try:
+            spans_dict = json.loads(widget_spans)
+            current_spans = request.session.get("dashboard_spans", {})
+            current_spans.update(spans_dict)
+            request.session["dashboard_spans"] = current_spans
+        except Exception as e:
+            print(f"Invalid widget spans JSON: {e}")
     
     # Save order if provided
     if widget_order:
@@ -1739,7 +1886,8 @@ async def get_predictions_data(request: Request, _=Depends(require_auth)):
     churn_score = min(round(churn_rate * 100 * 10), 100)
     if total_recent_leaves == 0: churn_score = 0
     
-    return JSONResponse({
+    # Build Response Dict
+    res_dict = {
         "history": {
             "dates": history_dates,
             "members": history_members,
@@ -1774,8 +1922,35 @@ async def get_predictions_data(request: Request, _=Depends(require_auth)):
             "churn_risk": churn_score,
             "avg_monthly_growth": round(avg_monthly_growth, 1),
             "current_members": current_members
-        }
-    })
+        },
+        "channels": []
+    }
+    
+    try:
+        from .utils import get_channel_distribution
+        # Get distribution for last 30 days as baseline (Long-term data)
+        dist = await get_channel_distribution(int(guild_id), days=30)
+        # Fetch names (defined at bottom of this file)
+        channels_info = await get_discord_channels(int(guild_id))
+        cmap = {str(c['id']): c['name'] for c in channels_info}
+        
+        predicted_channels = []
+        total_baseline = sum(c['count'] for c in dist) if dist else 1
+        
+        for d in dist[:5]: # Top 5
+            share = d['count'] / total_baseline
+            pred_count = round(share * expected_msgs_tomorrow)
+            predicted_channels.append({
+                "name": cmap.get(str(d['channel_id']), f"#{d['channel_id']}"),
+                "count": pred_count
+            })
+        
+        res_dict["channels"] = predicted_channels
+        return JSONResponse(res_dict)
+        
+    except Exception as e:
+        print(f"Error in channel predictions: {e}")
+        return JSONResponse(res_dict)
 
 @app.post("/settings/weights")
 async def update_weights(
@@ -1811,6 +1986,35 @@ async def update_weights(
     except Exception as e:
         print(f"Error saving weights: {e}")
         
+    return RedirectResponse(url="/settings", status_code=303)
+
+@app.post("/settings/xp-formula")
+async def update_xp_formula(
+    request: Request,
+    xp_a: int = Form(...),
+    xp_b: int = Form(...),
+    xp_c: int = Form(...),
+    xp_min: int = Form(15),
+    xp_max: int = Form(25),
+    xp_voice_min: int = Form(5),
+    xp_voice_max: int = Form(10),
+    _=Depends(require_admin)
+):
+    """Update XP formula coefficients in Redis."""
+    try:
+        r = await get_redis_client()
+        await r.hset("config:xp_formula", mapping={
+            "a": xp_a,
+            "b": xp_b,
+            "c": xp_c,
+            "min": xp_min,
+            "max": xp_max,
+            "voice_min": xp_voice_min,
+            "voice_max": xp_voice_max
+        })
+    except Exception as e:
+        print(f"Error saving XP formula: {e}")
+    
     return RedirectResponse(url="/settings", status_code=303)
 
 

@@ -1,154 +1,402 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
+<style>
+    :root {
+        --glass-bg: rgba(17, 24, 39, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --accent-glow: 0 0 20px rgba(139, 92, 246, 0.15);
+        --text-muted: #9ca3af;
+        --card-radius: 16px;
+    }
+
+    .glass-card {
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--card-radius);
+        padding: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .glass-card:hover {
+        border-color: rgba(139, 92, 246, 0.3);
+        box-shadow: var(--accent-glow);
+    }
+
+    .stat-value {
+        font-size: 2.5rem;
+        font-weight: 800;
+        background: linear-gradient(to right, #fff, #c4b5fd);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.05em;
+    }
+
+    .stat-label {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .filter-bar {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 4px;
+        border-radius: 12px;
+        border: 1px solid var(--glass-border);
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .filter-input {
+        background: transparent;
+        border: none;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        outline: none;
+        transition: background 0.2s;
+    }
+
+    .filter-input:hover,
+    .filter-input:focus {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .filter-input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        cursor: pointer;
+    }
+
+    .btn-filter {
+        background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+    }
+
+    .btn-filter:hover {
+        opacity: 0.9;
+    }
+
+    /* Leaderboard Styles */
+    .lb-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0 8px;
+    }
+
+    .lb-row {
+        transition: transform 0.2s;
+    }
+
+    .lb-row:hover {
+        transform: scale(1.01);
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .lb-cell {
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.02);
+        first-child: border-radius: 12px 0 0 12px;
+        last-child: border-radius: 0 12px 12px 0;
+    }
+
+    .lb-cell:first-child {
+        border-top-left-radius: 12px;
+        border-bottom-left-radius: 12px;
+    }
+
+    .lb-cell:last-child {
+        border-top-right-radius: 12px;
+        border-bottom-right-radius: 12px;
+    }
+
+    .rank-badge {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-weight: bold;
+        font-size: 0.9rem;
+    }
+
+    .rank-1 {
+        background: linear-gradient(135deg, #FFD700, #FDB931);
+        color: #000;
+        box-shadow: 0 0 10px rgba(255, 215, 0, 0.4);
+    }
+
+    .rank-2 {
+        background: linear-gradient(135deg, #E0E0E0, #BDBDBD);
+        color: #000;
+    }
+
+    .rank-3 {
+        background: linear-gradient(135deg, #CD7F32, #A0522D);
+        color: #000;
+    }
+
+    .rank-other {
+        color: var(--text-muted);
+        font-family: monospace;
+    }
+</style>
+
+<!-- Header & Filters -->
+<div
+    style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 32px; flex-wrap: wrap; gap: 20px;">
     <div>
-        <h1 class="title">Moderator Activity</h1>
-        <p style="color: var(--text-secondary);">Tracking active time and weighted actions</p>
+        <h1
+            style="font-size: 2.5rem; font-weight: 800; margin-bottom: 8px; background: linear-gradient(90deg, #fff, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+            Team Activity
+        </h1>
+        <p style="color: var(--text-muted);">Monitor actions, voice time, and engagement.</p>
     </div>
 
-    <form method="GET" action="/activity"
-        style="display: flex; gap: 12px; align-items: center; background: var(--bg-card); padding: 8px 16px; border-radius: 12px; border: 1px solid var(--glass-border);">
-        <div>
-            <label
-                style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Role</label>
-            <select name="role_id"
-                style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px; min-width: 120px;">
-                <option value="all" {% if selected_role=='all' %}selected{% endif %}>All Roles</option>
-                {% for rid, rname in roles %}
-                <option value="{{ rid }}" {% if selected_role==rid %}selected{% endif %}>{{ rname }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Start
-                Date</label>
-            <input type="date" name="start_date" value="{{ start_date }}"
-                style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px;">
-        </div>
-        <div>
-            <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">End
-                Date</label>
-            <input type="date" name="end_date" value="{{ end_date }}"
-                style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 6px; border-radius: 6px;">
-        </div>
-        <button type="submit"
-            style="height: 32px; padding: 0 16px; background: var(--primary-gradient); border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer; margin-top: 16px;">
-            Filter
-        </button>
+    <form method="GET" action="/activity" class="filter-bar">
+        <select name="role_id" class="filter-input" style="background: rgba(0,0,0,0.2);">
+            <option value="all" {% if selected_role=='all' %}selected{% endif %}>All Roles</option>
+            {% for rid, rname in roles %}
+            <option value="{{ rid }}" {% if selected_role==rid %}selected{% endif %}>{{ rname }}</option>
+            {% endfor %}
+        </select>
+        <div style="width: 1px; height: 20px; background: var(--glass-border);"></div>
+        <input type="date" name="start_date" value="{{ start_date }}" class="filter-input">
+        <span style="color: var(--text-muted);">-</span>
+        <input type="date" name="end_date" value="{{ end_date }}" class="filter-input">
+        <button type="submit" class="btn-filter">Update View</button>
     </form>
 </div>
 
 {% if warning %}
 <div
-    style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); color: #facc15; padding: 12px; border-radius: 8px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px;">
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
-        <line x1="12" y1="9" x2="12" y2="13"></line>
-        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-    </svg>
-    <span>{{ warning }}</span>
+    style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); color: #facc15; padding: 16px; border-radius: 12px; margin-bottom: 32px; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(4px);">
+    <span>⚠️ {{ warning }}</span>
 </div>
 {% endif %}
 
-<!-- Grid for Summary & Chart -->
-<div class="grid" style="grid-template-columns: 3fr 1fr; gap: 24px;">
-
-    <!-- Timeline Chart -->
-    <div class="card">
-        <h3 style="margin-bottom: 16px;">📈 Team Activity ({{ start_date }} - {{ end_date }})</h3>
-        <div class="chart-container" style="height: 300px;">
-            <canvas id="activityTrendChart"></canvas>
+<!-- KPI Cards -->
+<div
+    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 32px;">
+    <!-- Card 1 -->
+    <div class="glass-card">
+        <div class="stat-label">Active Staff</div>
+        <div class="stat-value">{{ active_staff_count }}</div>
+        <div style="margin-top: 12px; display: flex; align-items: center; gap: 6px; color: #4ade80; font-size: 0.9rem;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M20 6L9 17l-5-5" />
+            </svg>
+            Actually Contributing
         </div>
     </div>
 
-    <!-- Summary Stats -->
-    <div class="card" style="display: flex; flex-direction: column; justify-content: center; gap: 24px;">
-        <div class="stat-group">
-            <div class="stat-label">Total Time (30d)</div>
-            <div class="stat-value" style="color: #a78bfa;">{{ total_hours_30d }}h</div>
+    <!-- Card 2 -->
+    <div class="glass-card">
+        <div class="stat-label">Total Hours (Filter)</div>
+        <div class="stat-value">
+            {% if total_hours_30d < 1 and total_hours_30d> 0 %}
+                {{ (total_hours_30d * 60)|round|int }}m
+                {% else %}
+                {{ total_hours_30d }}h
+                {% endif %}
         </div>
-        <div class="stat-group">
-            <div class="stat-label">Active Staff</div>
-            <div class="stat-value">{{ active_staff_count }}</div>
+        <div style="margin-top: 12px; color: var(--text-muted); font-size: 0.9rem;">
+            Combined Voice & Chat
         </div>
-        <div class="stat-group">
-            <div class="stat-label">Top Metric</div>
-            <div class="stat-value" style="font-size: 1.5rem;">{{ top_action }}</div>
+    </div>
+
+    <!-- Card 3 -->
+    <div class="glass-card">
+        <div class="stat-label">Top Metric</div>
+        <div class="stat-value" style="font-size: 2rem;">{{ top_action }}</div>
+        <div style="margin-top: 12px; color: #a78bfa; font-size: 0.9rem;">
+            Most Frequent Action
         </div>
     </div>
 </div>
 
-<!-- Leaderboard Section -->
-<div class="card" style="margin-top: 32px;">
-    <h3 style="margin-bottom: 20px;">🏆 Leaderboard (Last 30 Days)</h3>
-    <div style="overflow-x: auto;">
-        <table style="width: 100%; border-collapse: collapse;">
-            <thead>
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
-                    <th style="padding: 12px; width: 50px;">#</th>
-                    <th style="padding: 12px;">User & Roles</th>
-                    <th style="padding: 12px;">Mod Actions</th>
-                    <th style="padding: 12px;">Total Time</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for user in leaderboard %}
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s;">
-                    <td
-                        style="padding: 12px; font-weight: bold; color: {% if loop.index <= 3 %}#ffd700{% else %}var(--text-secondary){% endif %};">
-                        {{ loop.index }}</td>
-                    <td style="padding: 12px;">
-                        <div style="display: flex; align-items: center; gap: 12px;">
+<!-- Main Activity Chart -->
+<div class="glass-card" style="margin-bottom: 32px; padding: 32px;">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 24px;">
+        <h3 style="font-size: 1.25rem; font-weight: 700;">Activity Trend</h3>
+        <div style="display: flex; gap: 12px;">
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted);">
+                <span style="width: 8px; height: 8px; background: #8b5cf6; border-radius: 50%;"></span> Weighted Hours
+            </span>
+        </div>
+    </div>
+    <div class="chart-container" style="height: 350px; width: 100%;">
+        <canvas id="activityTrendChart"></canvas>
+    </div>
+</div>
+
+<!-- Leaderboard -->
+<div class="glass-card">
+    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 24px;">Top Contributors</h3>
+
+    {% if leaderboard %}
+    <table class="lb-table">
+        <tbody>
+            {% for user in leaderboard %}
+            <tr class="lb-row">
+                <td class="lb-cell" style="width: 60px;">
+                    <div class="rank-badge rank-{{ loop.index if loop.index <= 3 else 'other' }}">
+                        {{ loop.index }}
+                    </div>
+                </td>
+                <td class="lb-cell">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <div
+                            style="width: 42px; height: 42px; border-radius: 50%; background: #2d3748; overflow: hidden; border: 2px solid rgba(255,255,255,0.1);">
+                            {% if user.avatar %}
+                            {% if user.avatar.startswith('http') %}
+                            <img src="{{ user.avatar }}" style="width: 100%; height: 100%; object-fit: cover;">
+                            {% else %}
+                            <img src="https://cdn.discordapp.com/avatars/{{ user.user_id }}/{{ user.avatar }}.png"
+                                style="width: 100%; height: 100%; object-fit: cover;">
+                            {% endif %}
+                            {% else %}
                             <div
-                                style="width: 32px; height: 32px; background: var(--bg-secondary); border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
-                                {% if user.avatar %}
-                                <img src="{{ user.avatar }}" alt=""
-                                    style="width: 100%; height: 100%; object-fit: cover;">
-                                {% else %}
-                                <span style="font-size: 12px;">{{ user.name[0] }}</span>
-                                {% endif %}
+                                style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #a0aec0; font-weight: bold;">
+                                {{ user.name[0] }}
                             </div>
-                            <div>
-                                <div style="font-weight: 600;">{{ user.name }}</div>
-                                {% if user.role_names %}
-                                <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;">
-                                    {% for role in user.role_names %}
-                                    <span
-                                        style="font-size: 10px; padding: 2px 6px; background: rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-secondary);">
-                                        {{ role }}
-                                    </span>
-                                    {% endfor %}
-                                </div>
-                                {% endif %}
+                            {% endif %}
+                        </div>
+                        <div>
+                            <div style="font-weight: 700; font-size: 1rem;">{{ user.name }}</div>
+                            <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+                                {% for role in user.role_names %}
+                                <span
+                                    style="font-size: 0.7rem; padding: 2px 8px; background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border-radius: 4px;">{{
+                                    role }}</span>
+                                {% endfor %}
                             </div>
                         </div>
-                    </td>
-                    <td style="padding: 12px; font-weight: bold; color: #60a5fa;">{{ user.action_count }}</td>
-                    <td style="padding: 12px; font-weight: bold; color: #a78bfa;">{{ user.weighted_h }}h</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                    </div>
+                </td>
+                <td class="lb-cell" style="width: 200px;">
+                    <div style="margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 0.85rem;">
+                        <span style="color: var(--text-muted);">Contribution Score</span>
+                        <span style="font-weight: bold; color: white;">
+                            {% if user.weighted_h < 1 and user.weighted_h> 0 %}
+                                {{ (user.weighted_h * 60)|round|int }}m
+                                {% else %}
+                                {{ user.weighted_h }}h
+                                {% endif %}
+                        </span>
+                    </div>
+                    <!-- Progres bar relative to max (simulated max=User1) -->
+                    {% set max_score = leaderboard[0].weighted_h | default(100) %}
+                    {% set pct = (user.weighted_h / max_score * 100) if max_score > 0 else 0 %}
+                    <div
+                        style="width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden;">
+                        <div
+                            style="width: {{ pct }}%; height: 100%; background: linear-gradient(90deg, #8b5cf6, #6d28d9); border-radius: 3px;">
+                        </div>
+                    </div>
+                </td>
+                <td class="lb-cell" style="width: 120px; text-align: right;">
+                    <div style="font-size: 0.9rem; color: var(--text-muted);">Actions</div>
+                    <div style="font-size: 1.1rem; font-weight: bold; color: #fff;">{{ user.action_count }}</div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="text-align: center; padding: 60px 0; color: var(--text-muted);">
+        <div style="font-size: 3rem; margin-bottom: 16px;">😴</div>
+        <h3>No activity found for this period.</h3>
+        <p>Try adjusting the filters or check back later.</p>
     </div>
+    {% endif %}
 </div>
 
-<script src="/static/js/charts.js?v=2"></script>
 <script>
-    // Data passed from backend
     const labels = {{ daily_labels | tojson }};
     const data = {{ daily_hours | tojson }};
 
     document.addEventListener('DOMContentLoaded', function () {
-        ChartUtils.createLineChart(
-            'activityTrendChart',
-            labels,
-            data,
-            'Total Hours Worked',
-            '#a78bfa',
-            '#c4b5fd'
-        );
+        const ctx = document.getElementById('activityTrendChart').getContext('2d');
+
+        // Gradient fill
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
+        gradient.addColorStop(1, 'rgba(139, 92, 246, 0)');
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Weighted Activity Hours',
+                    data: data,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: gradient,
+                    borderWidth: 3,
+                    tension: 0.4, // Smooths the line
+                    pointBackgroundColor: '#1f2937',
+                    pointBorderColor: '#a78bfa',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                        titleColor: '#fff',
+                        bodyColor: '#e5e7eb',
+                        borderColor: 'rgba(255,255,255,0.1)',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: false,
+                        callbacks: {
+                            label: function (context) {
+                                return context.parsed.y + ' hrs';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false, drawBorder: false },
+                        ticks: { color: '#6b7280', maxTicksLimit: 10 }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)', borderDash: [4, 4], drawBorder: false },
+                        ticks: { color: '#6b7280' },
+                        beginAtZero: true
+                    }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
     });
 </script>
 {% endblock %}

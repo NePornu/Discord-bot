@@ -177,6 +177,19 @@
     <h3>📅 Týdenní aktivita</h3>
     <div style="height: 200px;"><canvas id="weeklyActivityChart"></canvas></div>
 </div>
+{% elif id == 'chart_heatmap' %}
+<div class="card" data-id="chart_heatmap" style="min-height: 350px;">
+    <h3>🔥 Activity Heatmap</h3>
+    <div style="display: flex; height: 300px; flex-direction: column;">
+        <div
+            style="display: flex; justify-content: space-between; margin-bottom: 8px; padding-left: 40px; font-size: 0.8rem; color: var(--text-tertiary);">
+            <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span>
+        </div>
+        <div id="heatmap-container" style="display: grid; grid-template-rows: repeat(7, 1fr); gap: 4px; flex: 1;">
+            <!-- Cells injected by JS -->
+        </div>
+    </div>
+</div>
 {% elif id == 'response_stats' %}
 <div class="card" data-id="response_stats">
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
@@ -198,20 +211,51 @@
 {% endmacro %}
 
 {% set default_order = ['kpi_online', 'kpi_members', 'kpi_dau', 'kpi_churn', 'security_score', 'chart_growth',
-'chart_hourly', 'chart_stickiness', 'chart_msglen', 'chart_weekly', 'response_stats'] %}
+'chart_hourly', 'chart_heatmap', 'chart_stickiness', 'chart_msglen', 'chart_weekly', 'response_stats'] %}
 {% set active_order = widget_order if widget_order else default_order %}
-<!-- Find hidden widgets -->
-{% set hidden_widgets = [] %}
-{% for def_id in default_order %}
-{% if def_id not in active_order %}
-{% set _ = hidden_widgets.append(def_id) %}
-{% endif %}
-{% endfor %}
-
-<!-- Main Dashboard Grid -->
-<div id="dashboard-grid" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
+{% set saved_spans = request.session.get('dashboard_spans', {}) %}
+<div id="dashboard-grid" class="grid">
     {% for widget_id in active_order %}
-    {{ render_widget(widget_id) }}
+    {# Determine initial span #}
+    {% set default_span = 1 %}
+    {% if widget_id in ['security_score', 'chart_growth', 'chart_hourly', 'chart_stickiness', 'chart_msglen',
+    'chart_weekly', 'chart_heatmap'] %}{% set default_span = 2 %}{% endif %}
+    {% set span_val = saved_spans.get(widget_id, default_span) %}
+
+    <div class="widget-wrapper span-{{ span_val }}" data-id="{{ widget_id }}" data-span="{{ span_val }}"
+        style="position: relative; display: flex; flex-direction: column;">
+        <!-- Resize Controls (Absolute to Wrapper) -->
+        <!-- Resize Controls (Absolute to Wrapper) -->
+        <!-- Resize Controls (Premium) -->
+        <!-- Resize Controls (Horizontal Expansion) -->
+        <div class="resize-controls"
+            style="display: none; position: absolute; top: 8px; right: 8px; z-index: 100; gap: 4px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+            <button class="resize-btn action-decrease" title="Zúžit (o sloupec doleva)"
+                style="width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.05); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: all 0.2s;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" />
+                </svg>
+            </button>
+            <button class="resize-btn action-increase" title="Rozšířit (o sloupec doprava)"
+                style="width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.05); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: all 0.2s;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M13 17l5-5-5-5M6 17l5-5-5-5" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- The Widget (Card) -->
+        <!-- Force card to fill wrapper -->
+        <style>
+            .widget-wrapper .card {
+                height: 100% !important;
+                margin: 0 !important;
+            }
+        </style>
+        {{ render_widget(widget_id) }}
+    </div>
     {% endfor %}
 </div>
 
@@ -219,12 +263,58 @@
 <div style="display:none;">
     <div id="hidden-bucket">
         {% for widget_id in hidden_widgets %}
-        {{ render_widget(widget_id) }}
+        {# Determine initial span #}
+        {% set default_span = 1 %}
+        {% if widget_id in ['security_score', 'chart_growth', 'chart_hourly', 'chart_stickiness', 'chart_msglen',
+        'chart_weekly', 'chart_heatmap'] %}{% set default_span = 2 %}{% endif %}
+        {% set span_val = saved_spans.get(widget_id, default_span) %}
+
+        <div class="widget-wrapper span-{{ span_val }}" data-id="{{ widget_id }}" data-span="{{ span_val }}"
+            style="position: relative; display: flex; flex-direction: column;">
+
+            <!-- Resize Controls -->
+            <div class="resize-controls"
+                style="display: none; position: absolute; top: 8px; right: 8px; z-index: 100; gap: 4px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                <button class="resize-btn action-decrease" title="Zúžit"
+                    style="width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.05); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" />
+                    </svg>
+                </button>
+                <button class="resize-btn action-increase" title="Rozšířit"
+                    style="width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.05); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M13 17l5-5-5-5M6 17l5-5-5-5" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- The Widget -->
+            <style>
+                .widget-wrapper .card {
+                    height: 100% !important;
+                    margin: 0 !important;
+                }
+            </style>
+            {{ render_widget(widget_id) }}
+        </div>
         {% endfor %}
     </div>
 </div>
 
 <style>
+    .widget-wrapper {
+        transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+
+    .widget-wrapper.resizing {
+        z-index: 100 !important;
+        transform: scale(1.02);
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.4);
+    }
+
     #security-score-card:hover {
         z-index: 9999 !important;
     }
@@ -296,12 +386,19 @@
             drawer.style.display = 'none';
             grid.classList.remove('draggable-mode');
             hiddenGrid.classList.remove('draggable-mode');
+
+            // Hide Controls explicitly
+            document.querySelectorAll('.resize-controls').forEach(el => el.style.display = 'none');
+
             window.location.reload();
         } else {
             // Enable
             drawer.style.display = 'block';
             grid.classList.add('draggable-mode');
             hiddenGrid.classList.add('draggable-mode');
+
+            // Show Controls explicitly
+            document.querySelectorAll('.resize-controls').forEach(el => el.style.display = 'flex');
 
             sortableMain = new Sortable(grid, {
                 group: 'dashboard',
@@ -323,12 +420,70 @@
         }
     }
 
+    // --- Robust Resize Logic (Capture Phase Delegation) ---
+    // Handle mousedown/touchstart FIRST to block Sortable
+    grid.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.resize-controls')) {
+            e.stopPropagation(); // Stop Sortable from seeing this event
+        }
+    }, { capture: true });
+
+    grid.addEventListener('touchstart', (e) => {
+        if (e.target.closest('.resize-controls')) {
+            e.stopPropagation();
+        }
+    }, { capture: true });
+
+    // Handle Clicks
+    grid.addEventListener('click', (e) => {
+        const btn = e.target.closest('.resize-btn');
+        if (!btn) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const wrapper = btn.closest('.widget-wrapper');
+        const isIncrease = btn.classList.contains('action-increase');
+        const delta = isIncrease ? 1 : -1;
+
+        if (wrapper) {
+            let currentSpan = parseInt(wrapper.dataset.span || 1);
+            let newSpan = Math.max(1, Math.min(4, currentSpan + delta));
+
+            // Update Class and Data
+            wrapper.classList.remove('span-1', 'span-2', 'span-3', 'span-4');
+            wrapper.classList.add(`span-${newSpan}`);
+            wrapper.dataset.span = newSpan;
+
+            // Direct CSS Injection Fallback
+            wrapper.style.gridColumn = `span ${newSpan}`;
+
+            // Visual Feedback
+            wrapper.style.transform = 'scale(1.02)';
+            wrapper.style.boxShadow = '0 0 20px var(--accent)';
+            setTimeout(() => {
+                wrapper.style.transform = '';
+                wrapper.style.boxShadow = '';
+            }, 200);
+        }
+    });
+
     async function saveLayout() {
         if (!sortableMain) return;
-        const visibleOrder = sortableMain.toArray();
+        // Sortable works on the grid children (wrappers now)
+        const wrappers = document.querySelectorAll('#dashboard-grid .widget-wrapper');
+        const visibleOrder = [];
+        const spans = {};
+
+        wrappers.forEach(w => {
+            const id = w.dataset.id;
+            visibleOrder.push(id);
+            spans[id] = parseInt(w.dataset.span || 1);
+        });
 
         const formData = new FormData();
         formData.append('widget_order', JSON.stringify(visibleOrder));
+        formData.append('widget_spans', JSON.stringify(spans));
         formData.append('page', 'overview');
 
         try {
@@ -416,53 +571,88 @@
     });
 </script>
 
-<script src="/static/js/charts.js?v=2"></script>
 <script>
     const chartData = {
         dau: {
             labels: {{ dau_labels | tojson | safe }},
-    data: { { dau_data | tojson | safe } }
+    data: {{ dau_data | tojson | safe }}
         },
     growth: {
-        labels: { { labels | tojson | safe } },
-        joins: { { joins_data | tojson | safe } },
-        leaves: { { leaves_data | tojson | safe } }
+        labels: {{ labels | tojson | safe }},
+        joins: {{ joins_data | tojson | safe }},
+        leaves: {{ leaves_data | tojson | safe }},
+        total: {{ total_data | default ([]) | tojson | safe }}
     },
     hourly: {
-        labels: { { hourly_labels | tojson | safe } },
-        data: { { hourly_activity | tojson | safe } }
+        labels: {{ hourly_labels | tojson | safe }},
+        data: {{ hourly_activity | tojson | safe }}
     },
     stickiness: {
-        labels: { { retention_labels | tojson | safe } },
-        dauMau: { { dau_mau_ratio | tojson | safe } },
-        dauWau: { { dau_wau_ratio | tojson | safe } }
+        labels: {{ retention_labels | tojson | safe }},
+        dauMau: {{ dau_mau_ratio | tojson | safe }},
+        dauWau: {{ dau_wau_ratio | tojson | safe }}
     },
     msglen: {
-        labels: { { msglen_labels | tojson | safe } },
-        data: { { msglen_data | tojson | safe } }
+        labels: {{ msglen_labels | tojson | safe }},
+        data: {{ msglen_data | tojson | safe }}
     },
     weekly: {
-        labels: { { weekly_labels | tojson | safe } },
-        data: { { weekly_data | tojson | safe } }
+        labels: {{ weekly_labels | tojson | safe }},
+        data: {{ weekly_data | tojson | safe }}
     }
     };
 
     document.addEventListener('DOMContentLoaded', function () {
         try {
+            // -- Chart References --
+            let memberChart = null;
+
+            // -- Chart Logic --
             if (chartData.dau.data && document.getElementById('dauChart')) {
                 ChartUtils.createLineChart('dauChart', chartData.dau.labels, chartData.dau.data, 'DAU', '#8b5cf6', '#ec4899');
             }
             if (chartData.growth.joins && document.getElementById('memberGrowthChart')) {
-                new Chart(document.getElementById('memberGrowthChart'), {
-                    type: 'bar',
-                    data: {
-                        labels: chartData.growth.labels,
-                        datasets: [
-                            { label: 'Joins', data: chartData.growth.joins, backgroundColor: '#10b981' },
-                            { label: 'Leaves', data: chartData.growth.leaves, backgroundColor: '#ef4444' }
-                        ]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } }
+                const ctx = document.getElementById('memberGrowthChart');
+
+                // Initialize with 'total' if specified or default to 'joins'
+                // The HTML buttons default to 'total' as active usually, let's check class
+
+                const createGrowthChart = (type) => {
+                    if (memberChart) memberChart.destroy();
+
+                    if (type === 'total') {
+                        memberChart = ChartUtils.createLineChart('memberGrowthChart', chartData.growth.labels, chartData.growth.total, 'Celkem členů', '#3b82f6', '#06b6d4');
+                    } else {
+                        memberChart = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: chartData.growth.labels,
+                                datasets: [
+                                    { label: 'Přírůstky', data: chartData.growth.joins, backgroundColor: '#10b981', borderRadius: 4 },
+                                    { label: 'Odchody', data: chartData.growth.leaves, backgroundColor: '#ef4444', borderRadius: 4 }
+                                ]
+                            },
+                            options: {
+                                ...ChartUtils.premiumChartOptions,
+                                scales: { x: { stacked: true }, y: { stacked: true }}
+                            }
+                        });
+                    }
+                };
+
+                // Default view
+                createGrowthChart('total');
+
+                // Button Handlers
+                document.querySelectorAll('.chart-toggle[data-chart="growth"]').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        // Switch active class
+                        document.querySelectorAll('.chart-toggle[data-chart="growth"]').forEach(b => b.classList.remove('active'));
+                        e.target.classList.add('active');
+
+                        const type = e.target.dataset.type;
+                        createGrowthChart(type);
+                    });
                 });
             }
             if (chartData.hourly.data && document.getElementById('hourlyActivityChart')) {
@@ -499,9 +689,54 @@
                 });
             }
 
-            // Animate stats
-            const valOnline = {{ realtime_active | default (0) | tojson | safe
+            // Heatmap Rendering
+            const heatmapData = {{ redis_stats.heatmap_data | default ([]) | tojson | safe
         }};
+    const heatmapContainer = document.getElementById('heatmap-container');
+    if (heatmapData.length > 0 && heatmapContainer) {
+        const days = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
+        const maxVal = {{ redis_stats.heatmap_max | default (1)
+    }};
+
+    heatmapData.forEach((dayData, dayIdx) => {
+        const row = document.createElement('div');
+        row.style.display = 'grid';
+        row.style.gridTemplateColumns = '40px repeat(24, 1fr)';
+        row.style.gap = '4px';
+        row.style.alignItems = 'center';
+
+        // Day Label
+        const label = document.createElement('div');
+        label.textContent = days[dayIdx];
+        label.style.fontSize = '0.7rem';
+        label.style.color = 'var(--text-secondary)';
+        row.appendChild(label);
+
+        // Hour Cells
+        dayData.forEach(val => {
+            const cell = document.createElement('div');
+            cell.style.borderRadius = '2px';
+            cell.style.height = '100%';
+
+            // Color intensity
+            const intensity = val > 0 ? (val / maxVal) : 0;
+            const alpha = Math.max(0.1, intensity); // Min opacity for visible cells if > 0
+
+            if (val === 0) {
+                cell.style.background = 'rgba(255,255,255,0.03)';
+            } else {
+                cell.style.background = `rgba(139, 92, 246, ${alpha})`; // Primary color
+                cell.title = `Msg: ${val}`;
+                // Tooltip can be enhanced later
+            }
+            row.appendChild(cell);
+        });
+        heatmapContainer.appendChild(row);
+    });
+            }
+
+    // Animate stats
+    const valOnline = {{ realtime_active | default (0) | tojson | safe }};
     const valMembers = {{ total_members | default (0) | tojson | safe }};
     const valDau = {{ avg_dau | default (0) | tojson | safe }};
     const valChurn = {{ churn_rate | default (0) | tojson | safe }};

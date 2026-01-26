@@ -45,8 +45,12 @@
                             <div style="display: flex; align-items: center; gap: 12px;">
                                 <div class="avatar-wrapper">
                                     {% if u.avatar %}
+                                    {% if u.avatar.startswith('http') %}
+                                    <img src="{{ u.avatar }}" alt="{{ u.username }}">
+                                    {% else %}
                                     <img src="https://cdn.discordapp.com/avatars/{{ u.user_id }}/{{ u.avatar }}.png"
                                         alt="{{ u.username }}">
+                                    {% endif %}
                                     {% else %}
                                     <div class="avatar-placeholder">{{ u.username[0]|upper }}</div>
                                     {% endif %}

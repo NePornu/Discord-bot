@@ -18,21 +18,35 @@ class Levels(commands.Cog):
         # but for high-throughput messaging we might want a local reference if possible, 
         # or just use get_redis_client() every time.
         
-    def _calculate_level(self, xp: int) -> int:
-        # Formula: XP = 5 * (lvl ^ 2) + 50 * lvl + 100
-        # This is difficult to inverse precisely for level from XP without iteration or quadratic formula.
-        # Quadratic: 5x^2 + 50x + (100 - XP) = 0
-        # x = (-b + sqrt(b^2 - 4ac)) / 2a
-        # a=5, b=50, c=100-XP
-        if xp < 100: return 0
-        a, b, c = 5, 50, 100 - xp
+    async def _get_formula(self):
+        r = await get_redis_client()
+        conf = await r.hgetall("config:xp_formula")
+        return (
+            int(conf.get("a", 50)),
+            int(conf.get("b", 200)), 
+            int(conf.get("c", 100)),
+            int(conf.get("min", 15)),
+            int(conf.get("max", 25)),
+            int(conf.get("voice_min", 5)),
+            int(conf.get("voice_max", 10))
+        )
+
+    async def _calculate_level(self, xp: int) -> int:
+        # Formula: XP = A * (lvl ^ 2) + B * lvl + C
+        # Quadratic: Ax^2 + Bx + (C - XP) = 0
+        a, b, c_base, _, _, _, _ = await self._get_formula()
+        
+        if xp < c_base: return 0
+        c = c_base - xp
+        
         d = (b**2) - (4*a*c)
         if d < 0: return 0
         level = (-b + math.sqrt(d)) / (2*a)
         return int(level)
 
-    def _xp_for_level(self, level: int) -> int:
-        return 5 * (level ** 2) + 50 * level + 100
+    async def _xp_for_level(self, level: int) -> int:
+        a, b, c, _, _, _, _ = await self._get_formula()
+        return a * (level ** 2) + b * level + c
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -50,7 +64,12 @@ class Levels(commands.Cog):
             return # On cooldown
             
         # 2. Award XP
-        xp_gain = random.randint(15, 25)
+        # Fetch formula config first
+        _, _, _, min_xp, max_xp, _, _ = await self._get_formula()
+        
+        if min_xp > max_xp: min_xp, max_xp = max_xp, min_xp
+        xp_gain = random.randint(min_xp, max_xp)
+        
         xp_key = f"levels:xp:{gid}" # Sorted Set: Member=UID, Score=TotalXP
         
         # Increment
@@ -60,9 +79,9 @@ class Levels(commands.Cog):
         await r.setex(cooldown_key, 60, "1")
         
         # 3. Check Level Up
-        current_level = self._calculate_level(int(new_xp))
+        current_level = await self._calculate_level(int(new_xp))
         prev_xp = int(new_xp) - xp_gain
-        prev_level = self._calculate_level(prev_xp)
+        prev_level = await self._calculate_level(prev_xp)
         
         if current_level > prev_level:
             # Level Up!
@@ -86,15 +105,15 @@ class Levels(commands.Cog):
         
         score = await r.zscore(xp_key, str(uid))
         total_xp = int(score) if score else 0
-        level = self._calculate_level(total_xp)
+        level = await self._calculate_level(total_xp)
         
         # Rank position
         rank = await r.zrevrank(xp_key, str(uid))
         rank_display = f"#{rank + 1}" if rank is not None else "N/A"
         
         # Next level progress
-        next_level_xp = self._xp_for_level(level + 1)
-        prev_level_xp = self._xp_for_level(level) if level > 0 else 0
+        next_level_xp = await self._xp_for_level(level + 1)
+        prev_level_xp = await self._xp_for_level(level) if level > 0 else 0
         
         # Ensure progress bar logic handles negative/0 correctly
         # Needed for current level progress: (Current - PrevBase) / (NextBase - PrevBase)
@@ -127,11 +146,77 @@ class Levels(commands.Cog):
             
         desc = []
         for i, (uid, xp) in enumerate(top_users, 1):
-            level = self._calculate_level(int(xp))
+            level = await self._calculate_level(int(xp))
             desc.append(f"**{i}.** <@{uid}> — **Lvl {level}** ({int(xp)} XP)")
             
         e = discord.Embed(title="🏆 XP Leaderboard", description="\n".join(desc), color=discord.Color.gold())
         await itx.response.send_message(embed=e)
+
+    async def cog_load(self):
+        self.voice_xp_loop.start()
+
+    async def cog_unload(self):
+        self.voice_xp_loop.cancel()
+
+    @tasks.loop(minutes=1)
+    async def voice_xp_loop(self):
+        """Award XP to users in voice channels every minute."""
+        try:
+            # 1. Fetch Config
+            _, _, _, _, _, voice_min, voice_max = await self._get_formula()
+            
+            # If disabled or invalid config
+            if voice_max <= 0: return
+
+            r = await get_redis_client()
+            
+            # 2. Iterate Guilds
+            for guild in self.bot.guilds:
+                xp_key = f"levels:xp:{guild.id}"
+                
+                # 3. Iterate Voice Channels
+                for vc in guild.voice_channels:
+                    # Skip AFK channel?
+                    if guild.afk_channel and vc.id == guild.afk_channel.id:
+                        continue
+                        
+                    # award to members
+                    for member in vc.members:
+                        if member.bot: continue
+                        
+                        # Check mute/deaf if strict? For now, just presence.
+                        # if member.voice.self_deaf or member.voice.deaf: continue
+                        
+                        gain = random.randint(voice_min, voice_max)
+                        await r.zincrby(xp_key, gain, str(member.id))
+                        
+                        # Check Level Up (Silent? Or notify?)
+                        # Calculating level every minute for every user might be heavy if massive server.
+                        # But Redis ZSCORE is fast.
+                        
+                        # We need previous XP to know if they levelled up.
+                        # zincrby returns the NEW score.
+                        new_xp = await r.zscore(xp_key, str(member.id)) # Actually zincrby returns new score in float
+                        new_xp = int(float(new_xp)) # ensure int
+                        
+                        prev_xp = new_xp - gain
+                        
+                        # Helper methods are async now
+                        cur_lvl = await self._calculate_level(new_xp)
+                        prev_lvl = await self._calculate_level(prev_xp)
+                        
+                        if cur_lvl > prev_lvl:
+                            # Notify in some channel? 
+                            # Voice level ups are awkward to notify. Maybe DM? Or system channel?
+                            # For now, let's skip notification to avoid spam, or finding where to send it.
+                            pass
+
+        except Exception as e:
+            print(f"Error in voice_xp_loop: {e}")
+
+    @voice_xp_loop.before_loop
+    async def before_voice_loop(self):
+        await self.bot.wait_until_ready()
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Levels(bot))
