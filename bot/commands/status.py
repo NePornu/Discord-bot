@@ -5,13 +5,13 @@ import asyncio
 from typing import Dict, Tuple, Optional, Literal
 import logging
 
-# Nastavení loggeru
+
 logger = logging.getLogger('status_cog')
 
 class StatusCog(commands.Cog):
     """Cog pro odesílání aktualizací stavu služby."""
     
-    # Typy pro anotace
+    
     StatusType = Literal["online", "údržba", "plánovaná_údržba", "výpadek", 
                          "částečný_výpadek", "snížený_výkon", "nestabilní", 
                          "omezená_funkčnost", "vyšetřujeme", "monitoring", "vyřešeno"]
@@ -20,7 +20,7 @@ class StatusCog(commands.Cog):
         """Inicializace StatusCog."""
         self.bot = bot
         
-        # Mapa stavů na (emoji, barva embedu)
+        
         self.status_map: Dict[StatusType, Tuple[str, int]] = {
             "online":                ("✅", 0x00FF00),
             "údržba":                ("🛠️", 0xFFA500),
@@ -35,7 +35,7 @@ class StatusCog(commands.Cog):
             "vyřešeno":              ("✔️", 0x00CC00),
         }
         
-        # Číselné kódy pro rychlý výběr stavu
+        
         self.code_map: Dict[str, StatusType] = {
             "1": "online",
             "2": "údržba",
@@ -50,8 +50,8 @@ class StatusCog(commands.Cog):
             "11": "vyřešeno",
         }
         
-        # Konstanty pro přehlednost
-        self.ERROR_TIMEOUT = 60  # Čas v sekundách před smazáním chybové zprávy
+        
+        self.ERROR_TIMEOUT = 60  
 
     async def cog_check(self, ctx: commands.Context) -> bool:
         """Lokální kontrola pro příkaz - obchází některé globální kontroly."""
@@ -71,17 +71,17 @@ class StatusCog(commands.Cog):
 
     async def _send_error(self, ctx: commands.Context, message: str) -> None:
         """Odešle chybovou zprávu a nastaví její smazání."""
-        # Smaže původní příkaz okamžitě
+        
         await self._delete_message(ctx.message)
         
-        # Odešle a po čase smaže chybovou zprávu
+        
         error_msg = await ctx.send(message)
         asyncio.create_task(self._delayed_delete(error_msg, self.ERROR_TIMEOUT))
 
     @commands.command(name="status")
     @commands.has_permissions(manage_messages=True)
     @commands.cooldown(1, 10, commands.BucketType.user)
-    @commands.check(lambda ctx: True)  # Bypass pro globální kontrolu
+    @commands.check(lambda ctx: True)  
     async def status(self, ctx: commands.Context, code_or_state: Optional[str] = None, 
                      služba: Optional[str] = None, *, podrobnosti: Optional[str] = None) -> None:
         """
@@ -95,20 +95,20 @@ class StatusCog(commands.Cog):
             !status online API "Všechny endpointy jsou funkční"
             !status výpadek Database "Databáze není dostupná"
         """
-        # Kontrola povinných parametrů
+        
         if code_or_state is None or služba is None:
             return await self._send_error(
                 ctx, 
                 "❌ Chybí povinné parametry. Použití: `!status [kód|stav] [název služby] (volitelné: podrobnosti)`"
             )
 
-        # Zpracování vstupu
+        
         key = code_or_state.lower()
         
-        # Převod číselného kódu na stav
+        
         status = self.code_map.get(key, key)
         
-        # Kontrola platnosti stavu
+        
         if status not in self.status_map:
             codes = ", ".join(f"{k}:{v}" for k, v in self.code_map.items())
             states = ", ".join(self.status_map.keys())
@@ -118,10 +118,10 @@ class StatusCog(commands.Cog):
             )
 
         try:
-            # Smazání původního příkazu před odesláním odpovědi
+            
             await self._delete_message(ctx.message)
             
-            # Sestavení a odeslání embedu
+            
             emoji, color = self.status_map[status]
             embed = self._create_status_embed(ctx, status, služba, podrobnosti, emoji, color)
             await ctx.send(embed=embed)
@@ -154,14 +154,14 @@ class StatusCog(commands.Cog):
         """Zpracování chyb při použití příkazu status."""
         error_message = self._get_error_message(error)
         
-        # Logování chyby
+        
         if not isinstance(error, (commands.MissingPermissions, commands.CommandOnCooldown)):
             logger.error(f"Error in status command: {error}", exc_info=True)
         
-        # Smazání původního příkazu okamžitě
+        
         await self._delete_message(ctx.message)
         
-        # Odeslání a pozdější smazání chybové zprávy
+        
         error_msg = await ctx.send(error_message)
         asyncio.create_task(self._delayed_delete(error_msg, self.ERROR_TIMEOUT))
 

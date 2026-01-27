@@ -1,5 +1,5 @@
-# commands/emojirole.py
-# -*- coding: utf-8 -*-
+
+
 from __future__ import annotations
 
 import re
@@ -25,11 +25,11 @@ class ChallengeConfig:
     channel_id: int | None = None
     emojis: List[str] = field(default_factory=list)
 
-    # UX chování
+    
     react_ok: bool = True
     reply_on_success: bool = True
 
-    # zprávy, ze kterých se náhodně vybírá po úspěchu
+    
     success_messages: List[str] = field(default_factory=lambda: [
         "Vítej ve výzvě! ✅",
         "Hotovo — jsi zapsán/a. 💪",
@@ -54,9 +54,9 @@ class ChallengeConfig:
         "You're in! 🔓",
     ])
 
-    # logika
+    
     allow_extra_chars: bool = True
-    require_all: bool = True  # vyžadovat všechny emojis v kombinaci
+    require_all: bool = True  
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -153,7 +153,7 @@ def _message_contains_all_targets(content: str, targets: list[str]) -> bool:
         t = t.strip()
         if not t:
             continue
-        # unicode emoji — substring
+        
         if not (t.startswith(":") and t.endswith(":")) and not (t.startswith("<") and t.endswith(">")):
             ok = t in content
         else:
@@ -207,7 +207,7 @@ class ChallengeCog(commands.Cog):
             return True
         return False
 
-    # ------------ Slash /challenge ------------
+    
 
     challenge = app_commands.Group(
         name="challenge",
@@ -332,7 +332,7 @@ class ChallengeCog(commands.Cog):
         else:
             await itx.response.send_message("ℹ️ Nebyla nalezena žádná konfigurace.", ephemeral=True)
 
-    # ------------ Prefix *challenge ------------
+    
 
     @commands.command(name="challenge")
     @commands.has_permissions(administrator=True)
@@ -456,15 +456,15 @@ class ChallengeCog(commands.Cog):
             mention_author=False,
         )
 
-    # ------------ Listener: reaguj na zprávy ------------
+    
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        # ignoruj bota, DM a systémové
+        
         if message.author.bot or not message.guild or not message.content:
             return
 
-        # Zde je optimalizace: čteme z RAM (self.get_config), ne z disku!
+        
         cfg = self.get_config(message.guild.id)
         if not cfg or not cfg.role_id or not cfg.channel_id or not cfg.emojis:
             return
@@ -473,13 +473,13 @@ class ChallengeCog(commands.Cog):
 
         content = message.content
 
-        # splněno?
+        
         hit = _message_contains_all_targets(content, cfg.emojis) if cfg.require_all else any(
             _message_contains_all_targets(content, [e]) for e in cfg.emojis
         )
 
         if hit:
-            # reakce checkmarkem + role + přihlášková zpráva
+            
             if cfg.react_ok:
                 try:
                     await message.add_reaction("✅")
@@ -501,9 +501,9 @@ class ChallengeCog(commands.Cog):
                     pass
             return
 
-        # nesplněno – ignorujeme zprávy bez kombinace
+        
 
-    # ---------- úklid při unloadu ----------
+    
     def cog_unload(self):
         try:
             self.bot.tree.remove_command(self.challenge.name, type=self.challenge.type)
@@ -516,9 +516,9 @@ class ChallengeCog(commands.Cog):
             pass
 
 
-# ---------- setup: registrace cogu + slash group ----------
+
 async def setup(bot: commands.Bot):
-    from config import config  # kvůli GUILD_ID (pokud používáš per-guild sync)
+    from config import config  
     cog = ChallengeCog(bot)
     await bot.add_cog(cog)
 
@@ -526,7 +526,7 @@ async def setup(bot: commands.Bot):
     if guild_id:
         guild_obj = discord.Object(id=int(guild_id))
         try:
-            # Force sync pro main guild (rychlejší vývoj)
+            
             bot.tree.add_command(cog.challenge, guild=guild_obj)
         except app_commands.CommandAlreadyRegistered:
             pass

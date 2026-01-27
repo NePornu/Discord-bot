@@ -16,15 +16,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-# =======================
-#  KANÁLY NATVRDO
-# =======================
-CHANNEL_MAIN_LOG_ID = 1404416148077809705     # všeobecné logy
-CHANNEL_PROFILE_LOG_ID = 1404734262485450772  # profilové změny (opravené ID)
 
-# =======================
-#  Cesty + logging
-# =======================
+
+
+CHANNEL_MChytréN_LOG_ID = 1404416148077809705     
+CHANNEL_PROFILE_LOG_ID = 1404734262485450772  
+
+
+
+
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 LOG_CONFIG_FILE = DATA_DIR / "log_config.json"
@@ -33,9 +33,9 @@ CACHE_FILE = DATA_DIR / "member_cache.json"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LogCog")
 
-# =======================
-#  Datové struktury
-# =======================
+
+
+
 @dataclass
 class LogConfig:
     enabled: bool = True
@@ -54,7 +54,7 @@ class LogConfig:
     log_integrations: bool = True
     log_automod: bool = True
     log_applications: bool = True
-    log_presence: bool = False  # může být spamové
+    log_presence: bool = False  
     ignored_channels: Set[int] = None
     ignored_users: Set[int] = None
 
@@ -142,9 +142,9 @@ class MemberCache:
     def get_cached(self, user_id: int) -> Optional[Dict[str, Any]]:
         return self.cache.get(user_id)
 
-# =======================
-#  Utility
-# =======================
+
+
+
 def ts(dt: Optional[datetime] = None, style: str = "f") -> str:
     dt = dt or datetime.now(timezone.utc)
     if dt.tzinfo is None:
@@ -202,9 +202,9 @@ def format_permissions(perms: discord.Permissions) -> str:
         return "Žádná oprávnění"
     return ", ".join(enabled[:10]) + (f" (+{len(enabled)-10} dalších)" if len(enabled) > 10 else "")
 
-# =======================
-#  Fronta posílání
-# =======================
+
+
+
 class LogQueue:
     def __init__(self, max_size: int = 500):
         self.q: List[Tuple[int, discord.Embed, Optional[List[discord.File]]]] = []
@@ -221,7 +221,7 @@ class LogQueue:
             return
         self.processing = True
         try:
-            batch_size = 15  # zpracuj více najednou
+            batch_size = 15  
             processed = 0
             while self.q and processed < batch_size:
                 ch_id, emb, files = self.q.pop(0)
@@ -230,8 +230,8 @@ class LogQueue:
                     try:
                         await ch.send(embed=emb, files=files or [])
                     except discord.HTTPException as e:
-                        if e.status == 429:  # rate limit
-                            # vrať zpět do fronty
+                        if e.status == 429:  
+                            
                             self.q.insert(0, (ch_id, emb, files))
                             await asyncio.sleep(5)
                             break
@@ -244,45 +244,45 @@ class LogQueue:
         finally:
             self.processing = False
 
-# =======================
-#  Cog
-# =======================
+
+
+
 class LogCog(commands.Cog):
     """Kompletní logging se směrováním do 2 kanálů."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.cfgs = load_log_configs()
-        self.cache = MemberCache(bot) # Pass bot instance
+        self.cache = MemberCache(bot) 
         self.queue = LogQueue()
         self.stats = defaultdict(int)
         self.started_at = datetime.now(timezone.utc)
         self._synced_once = False
 
-        # cooldowny pro zprávy
+        
         self.message_cd: Dict[int, datetime] = {}
         self.bulk_cd: Dict[int, datetime] = {}
         self.reaction_cd: Dict[int, datetime] = {}
 
-        # background tasks
+        
         self._queue_worker.start()
         self._cache_saver.start()
         self._housekeeping.start()
 
     async def ensure_channels_exist(self):
         """Zajistí, že log kanály existují"""
-        main_channel = self.bot.get_channel(CHANNEL_MAIN_LOG_ID)
+        main_channel = self.bot.get_channel(CHANNEL_MChytréN_LOG_ID)
         profile_channel = self.bot.get_channel(CHANNEL_PROFILE_LOG_ID)
         
         if not main_channel:
-            logger.warning(f"Hlavní log kanál {CHANNEL_MAIN_LOG_ID} neexistuje!")
+            logger.warning(f"Hlavní log kanál {CHANNEL_MChytréN_LOG_ID} neexistuje!")
         
         if not profile_channel:
             logger.warning(f"Profilový log kanál {CHANNEL_PROFILE_LOG_ID} neexistuje!")
             
         return main_channel, profile_channel
 
-    # ===== Helpers =====
+    
     def cfg(self, gid: int) -> LogConfig:
         return self.cfgs.get(str(gid), LogConfig())
 
@@ -308,19 +308,19 @@ class LogCog(commands.Cog):
         return str(pfx)
 
     def to_main(self, embed: discord.Embed, files: Optional[List[discord.File]] = None):
-        self.queue.add(CHANNEL_MAIN_LOG_ID, embed, files)
+        self.queue.add(CHANNEL_MChytréN_LOG_ID, embed, files)
         self.stats["logs_sent"] += 1
 
     def to_profile(self, embed: discord.Embed, files: Optional[List[discord.File]] = None):
         self.queue.add(CHANNEL_PROFILE_LOG_ID, embed, files)
         self.stats["logs_sent"] += 1
 
-    # ===== Tasks =====
-    @tasks.loop(seconds=0.5)  # rychlejší zpracování
+    
+    @tasks.loop(seconds=0.5)  
     async def _queue_worker(self):
         await self.queue.process(self.bot)
 
-    @tasks.loop(minutes=3)  # častější ukládání
+    @tasks.loop(minutes=3)  
     async def _cache_saver(self):
         await self.cache.save()
 
@@ -337,7 +337,7 @@ class LogCog(commands.Cog):
         self._housekeeping.cancel()
         self.bot.loop.create_task(self.cache.save())
 
-    # ===== Slash commands =====
+    
     log_group = app_commands.Group(name="log", description="Nastavení logování")
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -355,7 +355,7 @@ class LogCog(commands.Cog):
         main_ch, profile_ch = await self.ensure_channels_exist()
         
         e.add_field(name="Prefix", value=self._prefix_text(), inline=True)
-        e.add_field(name="Hlavní log", value=f"<#{CHANNEL_MAIN_LOG_ID}>" if main_ch else "❌ Neexistuje", inline=True)
+        e.add_field(name="Hlavní log", value=f"<#{CHANNEL_MChytréN_LOG_ID}>" if main_ch else "❌ Neexistuje", inline=True)
         e.add_field(name="Profilový log", value=f"<#{CHANNEL_PROFILE_LOG_ID}>" if profile_ch else "❌ Neexistuje", inline=True)
         
         on = "✅" if cfg.enabled else "❌"
@@ -376,7 +376,7 @@ class LogCog(commands.Cog):
         if enabled: e.add_field(name="✅ Zapnuto", value=enabled, inline=False)
         if disabled: e.add_field(name="❌ Vypnuto", value=disabled, inline=False)
         
-        # statistiky
+        
         uptime = human_delta(datetime.now(timezone.utc) - self.started_at)
         e.add_field(name="📊 Statistiky", 
                    value=f"Odesláno logů: {self.stats['logs_sent']}\nUptime: {uptime}\nFronta: {len(self.queue.q)}", 
@@ -425,7 +425,7 @@ class LogCog(commands.Cog):
         emoji = "✅" if enabled else "❌"
         await itx.response.send_message(f"{emoji} `{status}` {'ZAPNUTO' if enabled else 'VYPNUTO'}", ephemeral=True)
 
-    # ===== Lifecycle =====
+    
     @commands.Cog.listener()
     async def on_ready(self):
         if not self._synced_once:
@@ -438,7 +438,7 @@ class LogCog(commands.Cog):
             
         await self.ensure_channels_exist()
         
-        # naplníme cache
+        
         for g in self.bot.guilds:
             for m in g.members:
                 self.cache.update_member(m)
@@ -449,7 +449,7 @@ class LogCog(commands.Cog):
     async def on_error(self, event: str, *args, **kwargs):
         logger.error(f"Chyba v eventu {event}: {traceback.format_exc()}")
 
-    # ===== GUILD UPDATE =====
+    
     @commands.Cog.listener()
     async def on_guild_update(self, before: discord.Guild, after: discord.Guild):
         cfg = self.cfg(after.id)
@@ -500,7 +500,7 @@ class LogCog(commands.Cog):
             e.add_field(name="ID", value=str(after.id), inline=True)
             self.to_main(e)
 
-    # ===== KANÁLY =====
+    
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
         cfg = self.cfg(channel.guild.id)
@@ -572,7 +572,7 @@ class LogCog(commands.Cog):
         if hasattr(before, "slowmode_delay") and hasattr(after, "slowmode_delay") and before.slowmode_delay != after.slowmode_delay:
             changes.append(f"**Slowmode:** `{before.slowmode_delay}s` → `{after.slowmode_delay}s`")
 
-        # Overwrites změny
+        
         if before.overwrites != after.overwrites:
             b_targets = {getattr(t, "id", t) for t in before.overwrites}
             a_targets = {getattr(t, "id", t) for t in after.overwrites}
@@ -581,7 +581,7 @@ class LogCog(commands.Cog):
             kept = a_targets & b_targets
 
             perm_changes = []
-            # vytvořené / odebrané
+            
             for t in after.overwrites:
                 tid = getattr(t, "id", None)
                 if tid in created:
@@ -591,7 +591,7 @@ class LogCog(commands.Cog):
                 if tid in removed:
                     perm_changes.append(f"• **Overwrites odebrány** pro {fmt_target(t)}")
 
-            # změny u ponechaných cílů
+            
             for t in after.overwrites:
                 tid = getattr(t, "id", None)
                 if tid in kept:
@@ -618,7 +618,7 @@ class LogCog(commands.Cog):
             e.add_field(name="Typ", value=type(after).__name__, inline=True)
             self.to_main(e)
 
-    # ===== VLÁKNA =====
+    
     @commands.Cog.listener()
     async def on_thread_create(self, thread: discord.Thread):
         cfg = self.cfg(thread.guild.id)
@@ -696,7 +696,7 @@ class LogCog(commands.Cog):
         e.add_field(name="ID", value=str(thread.id), inline=True)
         self.to_main(e)
 
-    # ===== ROLE =====
+    
     @commands.Cog.listener()
     async def on_guild_role_create(self, role: discord.Role):
         cfg = self.cfg(role.guild.id)
@@ -758,7 +758,7 @@ class LogCog(commands.Cog):
             e.add_field(name="ID", value=str(after.id), inline=True)
             self.to_main(e)
 
-    # ===== EMOJI & STICKERS =====
+    
     @commands.Cog.listener()
     async def on_guild_emojis_update(self, guild: discord.Guild, before: List[discord.Emoji], after: List[discord.Emoji]):
         cfg = self.cfg(guild.id)
@@ -823,7 +823,7 @@ class LogCog(commands.Cog):
             emb.add_field(name="Celkem stickers", value=str(len(after)), inline=True)
             self.to_main(emb)
 
-    # ===== WEBHOOKS =====
+    
     @commands.Cog.listener()
     async def on_webhooks_update(self, channel: discord.abc.GuildChannel):
         g = getattr(channel, "guild", None)
@@ -842,7 +842,7 @@ class LogCog(commands.Cog):
             pass
         self.to_main(e)
 
-    # ===== INVITES =====
+    
     @commands.Cog.listener()
     async def on_invite_create(self, invite: discord.Invite):
         g = invite.guild
@@ -877,7 +877,7 @@ class LogCog(commands.Cog):
             e.add_field(name="Použito", value=f"{invite.uses}×", inline=True)
         self.to_main(e)
 
-    # ===== STAGE & SCHEDULED EVENTS =====
+    
     @commands.Cog.listener()
     async def on_stage_instance_create(self, stage: discord.StageInstance):
         cfg = self.cfg(stage.guild.id)
@@ -1004,7 +1004,7 @@ class LogCog(commands.Cog):
         e.set_author(name=str(user), icon_url=user.display_avatar.url)
         self.to_main(e)
 
-    # ===== MEMBERS / PROFILE (FIXED) =====
+    
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         cfg = self.cfg(member.guild.id)
@@ -1024,20 +1024,20 @@ class LogCog(commands.Cog):
         e.add_field(name="Bot", value="✅" if member.bot else "❌", inline=True)
         e.add_field(name="Celkem členů", value=str(member.guild.member_count), inline=True)
         
-        # systémový člen check
+        
         if member.system:
             e.add_field(name="Systémový účet", value="✅", inline=True)
             
-        # mention všech rolí které dostal při vstupu
-        if member.roles[1:]:  # bez @everyone
+        
+        if member.roles[1:]:  
             e.add_field(name="Auto-role", value=" ".join(r.mention for r in member.roles[1:][:5]), inline=False)
             
         e.set_thumbnail(url=member.display_avatar.url)
         
-        # zjisti pozvánku (pokud možno)
+        
         try:
             invites = await member.guild.invites()
-            # zde bys musel trackovat předchozí stav pozvánek, zatím jen info
+            
             e.add_field(name="Pozvánky serveru", value=f"{len(invites)} aktivních", inline=True)
         except discord.Forbidden:
             pass
@@ -1052,13 +1052,13 @@ class LogCog(commands.Cog):
         if member.id in cfg.ignored_users:
             return
 
-        # audit log check pro kick/ban
+        
         kicked_by = None
         banned = False
         reason = None
         
         try:
-            # check ban first
+            
             try:
                 ban_info = await member.guild.fetch_ban(member)
                 banned = True
@@ -1066,7 +1066,7 @@ class LogCog(commands.Cog):
                 pass
                 
             if not banned:
-                # check kick
+                
                 async for entry in member.guild.audit_logs(action=discord.AuditLogAction.kick, limit=10):
                     if entry.target.id == member.id and (datetime.now(timezone.utc) - entry.created_at) < timedelta(seconds=60):
                         kicked_by = entry.user
@@ -1076,7 +1076,7 @@ class LogCog(commands.Cog):
             pass
 
         if banned:
-            # Ban se loguje samostatně
+            
             return
         elif kicked_by:
             e = self._embed("🥾 Kick", f"{member.mention} (`{member}`)", color=0xED4245)
@@ -1115,27 +1115,27 @@ class LogCog(commands.Cog):
         self.cache.update_member(after)
 
         changes = []
-        profile_changes = []  # separátně pro profilový kanál
+        profile_changes = []  
         
-        # PROFILOVÉ ZMĚNY (do profile kanálu)
+        
         if before.nick != after.nick:
             profile_changes.append(f"**Přezdívka:** `{before.nick or 'Žádná'}` → `{after.nick or 'Žádná'}`")
         
         if before.display_name != after.display_name and before.nick == after.nick:
             profile_changes.append(f"**Zobrazované jméno:** `{before.display_name}` → `{after.display_name}`")
 
-        # ROLE ZMĚNY (do main kanálu)
+        
         added_roles, removed_roles = role_diff(before.roles, after.roles)
         if added_roles:
             changes.append("**Přidané role:** " + " ".join(r.mention for r in added_roles[:10]))
         if removed_roles:
             changes.append("**Odebrané role:** " + " ".join(r.mention for r in removed_roles[:10]))
 
-        # MODERAČNÍ ZMĚNY (do main kanálu)
+        
         if hasattr(before, "timed_out_until") and before.timed_out_until != after.timed_out_until:
             if after.timed_out_until:
                 changes.append(f"**Timeout do:** {ts(after.timed_out_until)}")
-                # pokus o audit log
+                
                 try:
                     async for entry in after.guild.audit_logs(action=discord.AuditLogAction.member_update, limit=5):
                         if entry.target.id == after.id and (datetime.now(timezone.utc) - entry.created_at) < timedelta(seconds=30):
@@ -1149,30 +1149,30 @@ class LogCog(commands.Cog):
             else:
                 changes.append("**Timeout zrušen**")
 
-        # pending member verification
+        
         if hasattr(before, 'pending') and hasattr(after, 'pending') and before.pending != after.pending:
             if after.pending:
                 changes.append("**Status:** čeká na schválení")
             else:
                 changes.append("**Status:** schválen")
 
-        # ODESLÁNÍ LOGŮ
+        
         if profile_changes:
             e = self._embed("👤 Profilová změna", f"{after.mention}\n\n" + "\n".join(profile_changes))
             e.set_thumbnail(url=after.display_avatar.url)
             e.add_field(name="ID", value=str(after.id), inline=True)
             e.add_field(name="Server", value=after.guild.name, inline=True)
-            self.to_profile(e)  # PROFILOVÝ KANÁL
+            self.to_profile(e)  
             
         if changes:
             e = self._embed("⚙️ Člen upraven", f"{after.mention}\n\n" + "\n".join(changes))
             e.set_thumbnail(url=after.display_avatar.url)
             e.add_field(name="ID", value=str(after.id), inline=True)
-            self.to_main(e)  # HLAVNÍ KANÁL
+            self.to_main(e)  
 
     @commands.Cog.listener()
     async def on_user_update(self, before: discord.User, after: discord.User):
-        # GLOBÁLNÍ PROFILOVÉ ZMĚNY - posíláme do profile kanálu pro každý server kde je člen
+        
         profile_changes = []
         
         if before.name != after.name:
@@ -1191,7 +1191,7 @@ class LogCog(commands.Cog):
         if not profile_changes:
             return
 
-        # pro každý společný server pošli do profile kanálu
+        
         for guild in self.bot.guilds:
             member = guild.get_member(after.id)
             if not member:
@@ -1208,13 +1208,13 @@ class LogCog(commands.Cog):
             e.add_field(name="Server", value=guild.name, inline=True)
             if after.global_name:
                 e.add_field(name="Zobrazuje se jako", value=after.global_name, inline=True)
-            self.to_profile(e)  # PROFILOVÝ KANÁL
+            self.to_profile(e)  
 
-    # ===== PRESENCE (VOLITELNÉ) =====
+    
     @commands.Cog.listener()
     async def on_presence_update(self, before: discord.Member, after: discord.Member):
         cfg = self.cfg(after.guild.id)
-        if not (cfg.enabled and cfg.log_presence):  #默认vypnuto
+        if not (cfg.enabled and cfg.log_presence):  
             return
         if after.id in cfg.ignored_users or after.bot:
             return
@@ -1231,7 +1231,7 @@ class LogCog(commands.Cog):
             a_emoji = status_emojis.get(after.status, "❓")
             changes.append(f"**Status:** {b_emoji} {before.status} → {a_emoji} {after.status}")
 
-        # activity změny (velmi omezené aby nebyl spam)
+        
         if before.activity != after.activity and after.activity:
             if isinstance(after.activity, discord.Game):
                 changes.append(f"**Hra:** 🎮 {after.activity.name}")
@@ -1240,8 +1240,8 @@ class LogCog(commands.Cog):
             elif isinstance(after.activity, discord.CustomActivity) and after.activity.name:
                 changes.append(f"**Vlastní status:** {after.activity.name}")
 
-        if changes and len(changes) == 1 and "Status:" in changes[0]:  # jen status změny
-            # cooldown pro presence aby nebyl spam
+        if changes and len(changes) == 1 and "Status:" in changes[0]:  
+            
             now = datetime.now(timezone.utc)
             last = self.reaction_cd.get(f"presence_{after.id}")
             if last and (now - last) < timedelta(minutes=5):
@@ -1250,9 +1250,9 @@ class LogCog(commands.Cog):
             
             e = self._embed("👋 Status změna", f"{after.mention}\n\n" + "\n".join(changes))
             e.set_author(name=str(after), icon_url=after.display_avatar.url)
-            self.to_profile(e)  # do profile kanálu
+            self.to_profile(e)  
 
-    # ===== MODERATION =====
+    
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User):
         cfg = self.cfg(guild.id)
@@ -1263,7 +1263,7 @@ class LogCog(commands.Cog):
         e.add_field(name="ID", value=str(user.id), inline=True)
         e.add_field(name="Bot", value="✅" if user.bot else "❌", inline=True)
         
-        # audit log
+        
         try:
             async for entry in guild.audit_logs(action=discord.AuditLogAction.ban, limit=10):
                 if entry.target.id == user.id and (datetime.now(timezone.utc) - entry.created_at) < timedelta(seconds=60):
@@ -1301,7 +1301,7 @@ class LogCog(commands.Cog):
         e.set_thumbnail(url=user.display_avatar.url)
         self.to_main(e)
 
-    # ===== AUTOMOD =====
+    
     @commands.Cog.listener()
     async def on_automod_rule_create(self, rule):
         cfg = self.cfg(rule.guild.id)
@@ -1363,7 +1363,7 @@ class LogCog(commands.Cog):
         e.add_field(name="Akce", value=str(execution.action.type), inline=True)
         self.to_main(e)
 
-    # ===== MESSAGES (OPTIMALIZOVANÉ) =====
+    
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
         if not message.guild or message.author.bot:
@@ -1374,7 +1374,7 @@ class LogCog(commands.Cog):
         if message.channel.id in cfg.ignored_channels or message.author.id in cfg.ignored_users:
             return
             
-        # cooldown
+        
         now = datetime.now(timezone.utc)
         last = self.message_cd.get(message.channel.id)
         if last and (now - last) < timedelta(seconds=1.5):
@@ -1401,7 +1401,7 @@ class LogCog(commands.Cog):
             for att in message.attachments[:5]:
                 size_mb = round(att.size / 1024 / 1024, 2) if att.size else 0
                 info.append(f"📎 `{att.filename}` ({size_mb} MB)")
-                # zachraň soubory menší než 8MB
+                
                 if att.size and att.size < 8 * 1024 * 1024:
                     try:
                         data = await att.read()
@@ -1458,7 +1458,7 @@ class LogCog(commands.Cog):
             top = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:7]
             e.add_field(name="Top autoři", value="\n".join(f"{a.mention}: {c}" for a, c in top), inline=False)
             
-        # časový rozsah
+        
         times = [m.created_at for m in messages if m.created_at]
         if times:
             oldest = min(times)
@@ -1502,7 +1502,7 @@ class LogCog(commands.Cog):
         e.set_author(name=str(after.author), icon_url=after.author.display_avatar.url)
         self.to_main(e)
 
-    # ===== REACTIONS =====
+    
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
         g = reaction.message.guild
@@ -1514,7 +1514,7 @@ class LogCog(commands.Cog):
         if reaction.message.channel.id in cfg.ignored_channels or user.id in cfg.ignored_users:
             return
             
-        # cooldown pro reakce
+        
         now = datetime.now(timezone.utc)
         key = f"reaction_{reaction.message.id}_{user.id}"
         last = self.reaction_cd.get(key)
@@ -1574,7 +1574,7 @@ class LogCog(commands.Cog):
             
         self.to_main(e)
 
-    # ===== VOICE (ROZŠÍŘENÉ) =====
+    
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         cfg = self.cfg(member.guild.id)
@@ -1587,7 +1587,7 @@ class LogCog(commands.Cog):
         emoji = "🔊"
         color = 0x5865F2
         
-        # Kanál změny
+        
         if before.channel != after.channel:
             if before.channel is None and after.channel:
                 changes.append(f"**Připojil se do:** {after.channel.mention}")
@@ -1599,21 +1599,21 @@ class LogCog(commands.Cog):
                 changes.append(f"**Přesun:** {before.channel.mention} → {after.channel.mention}")
                 emoji, color = "🔄", 0xFEE75C
                 
-        # Pouze pokud je stále připojen
+        
         if after.channel:
-            # Server moderace
+            
             if before.mute != after.mute: 
                 changes.append(f"**Server mute:** {'ztišen' if after.mute else 'odtišen'}")
             if before.deaf != after.deaf: 
                 changes.append(f"**Server deaf:** {'ohlušen' if after.deaf else 'odhlušen'}")
                 
-            # Self moderace
+            
             if before.self_mute != after.self_mute: 
                 changes.append(f"**Self mute:** {'zap' if after.self_mute else 'vyp'}")
             if before.self_deaf != after.self_deaf: 
                 changes.append(f"**Self deaf:** {'zap' if after.self_deaf else 'vyp'}")
                 
-            # Stream/video
+            
             if before.self_stream != after.self_stream:
                 changes.append(f"**Stream:** {'začal streamovat' if after.self_stream else 'skončil stream'}"); 
                 if after.self_stream: emoji = "📺"
@@ -1621,11 +1621,11 @@ class LogCog(commands.Cog):
                 changes.append(f"**Kamera:** {'zapnul kameru' if after.self_video else 'vypnul kameru'}"); 
                 if after.self_video: emoji = "📹"
                 
-            # Suppress (stage channel)
+            
             if hasattr(before, 'suppress') and hasattr(after, 'suppress') and before.suppress != after.suppress:
                 changes.append(f"**Stage suppress:** {'potlačen' if after.suppress else 'nepotlačen'}")
                 
-            # Request to speak (stage channel)
+            
             if hasattr(before, 'requested_to_speak_at') and hasattr(after, 'requested_to_speak_at'):
                 if before.requested_to_speak_at != after.requested_to_speak_at:
                     if after.requested_to_speak_at:
@@ -1646,7 +1646,7 @@ class LogCog(commands.Cog):
                     
             self.to_main(e)
 
-    # ===== INTEGRATIONS =====
+    
     @commands.Cog.listener()
     async def on_integration_create(self, integration):
         cfg = self.cfg(integration.guild.id)
@@ -1686,7 +1686,7 @@ class LogCog(commands.Cog):
         e.add_field(name="ID", value=str(integration.id), inline=True)
         self.to_main(e)
 
-    # ===== APLIKACE COMMANDS =====
+    
     @commands.Cog.listener()
     async def on_app_command_completion(self, interaction: discord.Interaction, command: discord.app_commands.Command):
         if not interaction.guild:
@@ -1702,10 +1702,10 @@ class LogCog(commands.Cog):
         e.add_field(name="Kanál", value=interaction.channel.mention if interaction.channel else "DM", inline=True)
         e.add_field(name="Příkaz", value=f"`/{command.name}`", inline=True)
         
-        # parametry příkazu
+        
         if hasattr(interaction, 'data') and 'options' in interaction.data:
             options = []
-            for opt in interaction.data['options'][:5]:  # max 5 parametrů
+            for opt in interaction.data['options'][:5]:  
                 options.append(f"`{opt['name']}`: {opt.get('value', 'N/A')}")
             if options:
                 e.add_field(name="Parametry", value="\n".join(options), inline=False)
@@ -1714,14 +1714,14 @@ class LogCog(commands.Cog):
         e.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
         self.to_main(e)
 
-    # ===== AUDIT LOG EVENTS (ROZŠÍŘENÉ) =====
+    
     @commands.Cog.listener()
     async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry):
         cfg = self.cfg(entry.guild.id)
         if not (cfg.enabled and cfg.log_moderation):
             return
             
-        # pouze některé akce které nejsou pokryty jinde
+        
         interesting_actions = {
             discord.AuditLogAction.message_delete: "🗑️ Moderace - zpráva smazána",
             discord.AuditLogAction.message_bulk_delete: "🗑️ Moderace - bulk delete",
@@ -1748,7 +1748,7 @@ class LogCog(commands.Cog):
         e.add_field(name="Čas", value=ts(entry.created_at), inline=True)
         e.add_field(name="ID", value=str(entry.id), inline=True)
         
-        # specifické detaily podle typu akce
+        
         if entry.action == discord.AuditLogAction.member_prune and hasattr(entry, 'extra'):
             if hasattr(entry.extra, 'delete_member_days'):
                 e.add_field(name="Dny neaktivity", value=str(entry.extra.delete_member_days), inline=True)
@@ -1757,14 +1757,14 @@ class LogCog(commands.Cog):
                 
         self.to_main(e)
 
-    # ===== ERROR HANDLING =====
+    
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
         cfg = self.cfg(ctx.guild.id) if ctx.guild else LogConfig()
         if not (cfg.enabled and cfg.log_moderation):
             return
             
-        # loguj pouze závažnější chyby
+        
         if isinstance(error, (commands.CommandNotFound, commands.CheckFailure)):
             return
             
@@ -1779,7 +1779,7 @@ class LogCog(commands.Cog):
         e.set_author(name=str(ctx.author), icon_url=ctx.author.display_avatar.url)
         self.to_main(e)
 
-    # ===== ADDITIONAL UTILITY COMMANDS =====
+    
     @log_group.command(name="ignore", description="Přidá/odebere kanál nebo uživatele z ignorování")
     @app_commands.describe(
         target_type="Co ignorovat",
@@ -1834,12 +1834,12 @@ class LogCog(commands.Cog):
         e.add_field(name="Odesláno logů", value=str(self.stats["logs_sent"]), inline=True)
         e.add_field(name="Fronta", value=f"{len(self.queue.q)}/{self.queue.max}", inline=True)
         
-        # cache statistiky
+        
         e.add_field(name="Cache členů", value=str(len(self.cache.cache)), inline=True)
         e.add_field(name="Aktivních serverů", value=str(len([gid for gid, cfg in self.cfgs.items() if cfg.enabled])), inline=True)
         e.add_field(name="Celkem serverů", value=str(len(self.bot.guilds)), inline=True)
         
-        # cooldown statistiky
+        
         active_cooldowns = len([cd for cd in self.message_cd.values() if (datetime.now(timezone.utc) - cd) < timedelta(minutes=5)])
         e.add_field(name="Aktivní cooldowny", value=str(active_cooldowns), inline=True)
         
@@ -1851,13 +1851,13 @@ class LogCog(commands.Cog):
     @log_group.command(name="test", description="Testovací zpráva do logů")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def test_log(self, itx: discord.Interaction):
-        # test main log
+        
         e1 = self._embed("🧪 Test hlavního logu", "Toto je testovací zpráva do hlavního log kanálu", color=0x00FF00)
         e1.add_field(name="Iniciátor", value=itx.user.mention, inline=True)
         e1.add_field(name="Čas", value=ts(), inline=True)
         self.to_main(e1)
         
-        # test profile log
+        
         e2 = self._embed("🧪 Test profilového logu", "Toto je testovací zpráva do profilového log kanálu", color=0x00FF00)
         e2.add_field(name="Iniciátor", value=itx.user.mention, inline=True)
         e2.add_field(name="Čas", value=ts(), inline=True)

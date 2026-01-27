@@ -20,16 +20,16 @@
     </div>
 </div>
 
-<!-- Hidden Widgets Drawer -->
+
 <div id="hidden-drawer" class="hidden-drawer"
     style="display: none; margin-bottom: 30px; background: var(--bg-secondary); padding: 20px; border-radius: 16px; border: 2px dashed var(--glass-border);">
-    <h3 style="margin-bottom: 15px; color: var(--text-secondary);">Skryté widgety (přetáhněte zpět pro zobrazení)</h3>
+    <h3 style="margin-bottom: 15px; color: var(--text-secondary);">Skryté moduly (přetáhněte zpět pro zobrazení)</h3>
     <div id="hidden-widgets-grid" class="grid">
-        <!-- Hidden items go here -->
+
     </div>
 </div>
 
-<!-- Macros for Widgets -->
+
 {% macro render_widget(id) %}
 {% if id == 'card_pred_members' %}
 <div class="card" data-id="card_pred_members">
@@ -158,7 +158,7 @@
 'chart_new_returning', 'chart_voice', 'chart_channels'] %}
 {% set active_order = widget_order if widget_order else default_order %}
 
-<!-- Find hidden widgets -->
+
 {% set hidden_widgets = [] %}
 {% for def_id in default_order %}
 {% if def_id not in active_order %}
@@ -166,20 +166,20 @@
 {% endif %}
 {% endfor %}
 
-<!-- Main Grid -->
+
 {% set saved_spans = request.session.get('dashboard_spans', {}) %}
 <div id="predictions-grid" class="grid">
     {% for widget_id in active_order %}
-    {# Determine initial span #}
+
     {% set default_span = 1 %}
     {% if widget_id in ['chart_main_pred', 'chart_activity_forecast', 'chart_dau_pred', 'widget_mau',
     'widget_stability'] %}{% set default_span = 2 %}{% endif %}
     {% set span_val = saved_spans.get(widget_id, default_span) %}
 
-    <div class="widget-wrapper span-{{ span_val }}" data-id="{{ widget_id }}" data-span="{{ span_val }}"
+    <div class="widget-wrapper span-{{span_val}}" data-id="{{widget_id}}" data-span="{{span_val}}"
         style="position: relative; display: flex; flex-direction: column;">
 
-        <!-- Resize Controls -->
+
         <div class="resize-controls"
             style="display: none; position: absolute; top: 8px; right: 8px; z-index: 100; gap: 4px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
             <button class="resize-btn action-decrease" title="Zúžit"
@@ -198,32 +198,32 @@
             </button>
         </div>
 
-        <!-- The Widget -->
+
         <style>
             .widget-wrapper .card {
                 height: 100% !important;
                 margin: 0 !important;
             }
         </style>
-        {{ render_widget(widget_id) }}
+        {{render_widget(widget_id)}}
     </div>
     {% endfor %}
 </div>
 
-<!-- Hidden Bucket -->
+
 <div style="display:none;">
     <div id="hidden-bucket">
         {% for widget_id in hidden_widgets %}
-        {# Determine initial span for hidden ones too #}
+
         {% set default_span = 1 %}
         {% if widget_id in ['chart_main_pred', 'chart_activity_forecast', 'chart_dau_pred', 'widget_mau',
         'widget_stability', 'chart_voice', 'chart_channels'] %}{% set default_span = 2 %}{% endif %}
         {% set span_val = saved_spans.get(widget_id, default_span) %}
 
-        <div class="widget-wrapper span-{{ span_val }}" data-id="{{ widget_id }}" data-span="{{ span_val }}"
+        <div class="widget-wrapper span-{{span_val}}" data-id="{{widget_id}}" data-span="{{span_val}}"
             style="position: relative; display: flex; flex-direction: column;">
 
-            <!-- Resize Controls -->
+
             <div class="resize-controls"
                 style="display: none; position: absolute; top: 8px; right: 8px; z-index: 100; gap: 4px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(8px);">
                 <button class="resize-btn action-decrease" title="Zúžit"
@@ -242,14 +242,14 @@
                 </button>
             </div>
 
-            <!-- The Widget -->
+
             <style>
                 .widget-wrapper .card {
                     height: 100% !important;
                     margin: 0 !important;
                 }
             </style>
-            {{ render_widget(widget_id) }}
+            {{render_widget(widget_id)}}
         </div>
         {% endfor %}
     </div>

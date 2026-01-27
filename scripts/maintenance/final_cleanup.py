@@ -4,18 +4,18 @@ path = '/root/discord-bot/web/frontend/templates/index.html'
 with open(path, 'r', encoding='utf-8') as f:
     content = f.read()
 
-# 1. Fix split tags { { and } }
+
 content = re.sub(r'\{\s+\{', '{{', content)
 content = re.sub(r'\}\s+\}', '}}', content)
 
-# 2. Fix space in default (0)
+
 content = content.replace('default (0)', 'default(0)')
 
-# 3. Fix any accidental line breaks inside tags (common after auto-fixes)
-# This is tricky, but let's target the valOnline one specifically if it's broken
+
+
 content = re.sub(r'const valOnline = \{\{ realtime_active \| default\(0\) \| tojson\n\s+\}\};', 'const valOnline = {{ realtime_active | default(0) | tojson }};', content)
 
-# 4. General cleanup of any lingering bad identifers like "labe ls" or "s afe"
+
 content = content.replace('labe ls:', 'labels:')
 content = content.replace('| s afe', '| safe')
 content = content.replace('| t ojson', '| tojson')

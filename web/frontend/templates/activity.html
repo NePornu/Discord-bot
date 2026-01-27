@@ -156,7 +156,7 @@
     }
 </style>
 
-<!-- Header & Filters -->
+
 <div
     style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 32px; flex-wrap: wrap; gap: 20px;">
     <div>
@@ -189,10 +189,10 @@
 </div>
 {% endif %}
 
-<!-- KPI Cards -->
+
 <div
     style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 32px;">
-    <!-- Card 1 -->
+    
     <div class="glass-card">
         <div class="stat-label">Active Staff</div>
         <div class="stat-value">{{ active_staff_count }}</div>
@@ -204,7 +204,7 @@
         </div>
     </div>
 
-    <!-- Card 2 -->
+    
     <div class="glass-card">
         <div class="stat-label">Total Hours (Filter)</div>
         <div class="stat-value">
@@ -219,7 +219,7 @@
         </div>
     </div>
 
-    <!-- Card 3 -->
+    
     <div class="glass-card">
         <div class="stat-label">Top Metric</div>
         <div class="stat-value" style="font-size: 2rem;">{{ top_action }}</div>
@@ -229,7 +229,7 @@
     </div>
 </div>
 
-<!-- Main Activity Chart -->
+
 <div class="glass-card" style="margin-bottom: 32px; padding: 32px;">
     <div style="display: flex; justify-content: space-between; margin-bottom: 24px;">
         <h3 style="font-size: 1.25rem; font-weight: 700;">Activity Trend</h3>
@@ -244,7 +244,7 @@
     </div>
 </div>
 
-<!-- Leaderboard -->
+
 <div class="glass-card">
     <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 24px;">Top Contributors</h3>
 
@@ -299,7 +299,7 @@
                                 {% endif %}
                         </span>
                     </div>
-                    <!-- Progres bar relative to max (simulated max=User1) -->
+                    
                     {% set max_score = leaderboard[0].weighted_h | default(100) %}
                     {% set pct = (user.weighted_h / max_score * 100) if max_score > 0 else 0 %}
                     <div

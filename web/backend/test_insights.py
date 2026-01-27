@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import sys
 import os
 
-# Add the backend directory to the path so we can import utils
+
 sys.path.append(os.path.join(os.getcwd()))
 
 from utils import generate_security_insights
@@ -15,7 +15,7 @@ class TestSecurityInsights(unittest.TestCase):
             'verification_level': 2,
             'mfa_level': 1,
             'explicit_filter': 2,
-            'churn_rate': 20.0,  # High churn
+            'churn_rate': 20.0,  
             'participation_rate': 15,
             'reply_ratio': 60,
             'voice_hours_per_dau': 0.5
@@ -30,7 +30,7 @@ class TestSecurityInsights(unittest.TestCase):
             'verification_level': 2,
             'mfa_level': 1,
             'explicit_filter': 2,
-            'churn_rate': 35.0,  # Exodus
+            'churn_rate': 35.0,  
             'participation_rate': 15,
             'reply_ratio': 60,
             'voice_hours_per_dau': 0.5
@@ -41,7 +41,7 @@ class TestSecurityInsights(unittest.TestCase):
 
     def test_low_mod_score_insight(self):
         metrics = {
-            'mod_ratio': 50,  # Low score
+            'mod_ratio': 50,  
             'users_per_mod': 150,
             'verification_level': 2,
             'mfa_level': 1,
@@ -62,7 +62,7 @@ class TestSecurityInsights(unittest.TestCase):
             'mfa_level': 1,
             'explicit_filter': 2,
             'churn_rate': 2.0,
-            'participation_rate': 5,  # Low participation
+            'participation_rate': 5,  
             'reply_ratio': 60,
             'voice_hours_per_dau': 0.5
         }
@@ -78,7 +78,7 @@ class TestSecurityInsights(unittest.TestCase):
             'explicit_filter': 2,
             'churn_rate': 2.0,
             'participation_rate': 15,
-            'reply_ratio': 10,  # Low reply ratio
+            'reply_ratio': 10,  
             'voice_hours_per_dau': 0.5
         }
         insights = generate_security_insights(metrics)

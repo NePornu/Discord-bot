@@ -1,5 +1,5 @@
-# commands/purge.py
-# -*- coding: utf-8 -*-
+
+
 from __future__ import annotations
 
 import asyncio
@@ -76,7 +76,7 @@ class PurgeCog(commands.Cog):
         before_id = parse_message_ref(before)
         after_id = parse_message_ref(after)
 
-        # Připrav filtrační funkci
+        
         word_lc = (word or "").lower()
 
         def check_msg(msg: discord.Message) -> bool:
@@ -92,14 +92,14 @@ class PurgeCog(commands.Cog):
                 return False
             return True
 
-        # Upravit parametry průchodu historie
+        
         kwargs = {}
         if before_id:
             kwargs["before"] = discord.Object(id=before_id)
         if after_id:
             kwargs["after"] = discord.Object(id=after_id)
 
-        # 1) Najdi přesně amount kandidátů (max ~2000 zpráv k prohledání)
+        
         candidates: List[discord.Message] = []
         found = 0
         scanned = 0
@@ -114,7 +114,7 @@ class PurgeCog(commands.Cog):
         if not candidates:
             return await itx.followup.send("ℹ️ Nenašel jsem žádné zprávy odpovídající filtrům.", ephemeral=True)
 
-        # 2) Dry-run náhled
+        
         if dry_run:
             preview = "\n".join(
                 f"- {m.id} • {m.author.display_name}: {m.content[:60].replace('`','´')}{'…' if len(m.content) > 60 else ''}"
@@ -131,37 +131,37 @@ class PurgeCog(commands.Cog):
             )
             return await itx.followup.send(text, ephemeral=True)
 
-        # 3) Reálné mazání – rozdělíme na <14 dní (bulk) a >=14 dní (po jedné)
+        
         recent: List[discord.Message] = []
         older: List[discord.Message] = []
         for m in candidates:
             (older if is_older_than_14d(m) else recent).append(m)
 
         deleted_total = 0
-        # Bulk delete recent (Discord smaže max 100 naráz; máme <= amount <= 100)
+        
         if recent:
             try:
                 deleted = await channel.delete_messages(recent)
-                # delete_messages může vrátit None (závisí na verzi); fallback na len(recent)
+                
                 deleted_total += len(deleted) if isinstance(deleted, list) else len(recent)
             except discord.Forbidden:
                 return await itx.followup.send("❌ Nemám oprávnění mazat zprávy (bulk).", ephemeral=True)
             except discord.HTTPException as e:
                 return await itx.followup.send(f"❌ Chyba při bulk mazání: {e}", ephemeral=True)
 
-        # Individuální mazání starých
+        
         for m in older:
             try:
                 await m.delete()
                 deleted_total += 1
-                await asyncio.sleep(0.3)  # šetrně proti rate-limitům
+                await asyncio.sleep(0.3)  
             except discord.Forbidden:
                 return await itx.followup.send("❌ Nemám oprávnění smazat některé starší zprávy.", ephemeral=True)
             except discord.HTTPException:
-                # pokračuj, i kdyby jedna selhala
+                
                 continue
 
-        # 4) Log do CONSOLE_CHANNEL_ID (pokud je k dispozici)
+        
         console_id = getattr(self.bot, "CONSOLE_CHANNEL_ID", None)
         if console_id and reason:
             try:
@@ -207,7 +207,7 @@ class PurgeCog(commands.Cog):
         after: Optional[str] = None,
         hide: Optional[bool] = True,
     ):
-        # Přesměruj na run s dry_run=True
+        
         await self.purge_run.callback(
             self,
             itx,

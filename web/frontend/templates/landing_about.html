@@ -1,6 +1,6 @@
 {% extends "landing_base.html" %}
 
-{% block title %}O nás | Ultimate Discord Analytics{% endblock %}
+{% block title %}O nás | Metricord{% endblock %}
 
 {% block content %}
 <style>
@@ -320,7 +320,7 @@
     </div>
 </div>
 
-<!-- REAL STATS SECTION -->
+
 <div class="stats-grid">
     <div class="stat-item">
         <h3>{{ stats.servers|default('1') }}</h3>
@@ -331,7 +331,7 @@
         <p>Sledovaných uživatelů</p>
     </div>
     <div class="stat-item">
-        <!-- We use Messages instead of fake uptime -->
+
         <h3>{{ stats.messages|default('---') }}</h3>
         <p>Analyzovaných zpráv</p>
     </div>
@@ -339,7 +339,7 @@
 
 <div class="section-header">
     <h2>Filozofie Projektu</h2>
-    <p>Na čem stavím vývoj Ultimate Analytics.</p>
+    <p>Na čem stavím vývoj Metricord.</p>
 </div>
 
 <div class="values-grid">
@@ -363,7 +363,7 @@
     </div>
 </div>
 
-<!-- NEW: Tech Stack Section -->
+
 <div class="section-header">
     <h2>Pod kapotou</h2>
     <p>Moderní technologie, které pohánějí váš dashboard.</p>
@@ -384,65 +384,20 @@
         </div>
         <div class="tech-item">
             <i class="fas fa-chart-pie" style="color: #8b5cf6;"></i>
-            <span>AI Analytics</span>
+            <span>Analytics</span>
         </div>
     </div>
 </div>
 
-<!-- NEW: Roadmap Section -->
-<div class="section-header">
-    <h2>Vize a Plány</h2>
-    <p>Kam směřujeme v roce 2026.</p>
-</div>
-<div class="roadmap-section">
-    <div class="roadmap-grid">
-        <div class="roadmap-card">
-            <span class="roadmap-tag">Q1 2026</span>
-            <h3>Pokročilá AI</h3>
-            <p style="color:var(--text-muted);">Vylepšení prediktivních modelů pro přesnější odhady růstu a detekci
-                anomálií.</p>
-        </div>
-        <div class="roadmap-card">
-            <span class="roadmap-tag">Q2 2026</span>
-            <h3>Custom Dashboardy</h3>
-            <p style="color:var(--text-muted);">Možnost sestavit si vlastní dashboard widgety přesně podle potřeb
-                adminů.</p>
-        </div>
-        <div class="roadmap-card">
-            <span class="roadmap-tag">Q3 2026</span>
-            <h3>Veřejné Profily</h3>
-            <p style="color:var(--text-muted);">Sdílitelné stránky se statistikami pro propagaci vašeho serveru.</p>
-        </div>
-    </div>
-</div>
 
-<div class="section-header">
-    <h2>O Autorovi</h2>
-</div>
 
-<div class="author-wrapper">
-    <div class="author-image">
-        <i class="fas fa-user-astronaut"></i>
-    </div>
-    <div class="author-content">
-        <h3>Solo Developer</h3>
-        <span class="author-role">Creator & Maintainer</span>
-        <p class="author-bio">
-            Jsem nezávislý vývojář a nadšenec do Discord botů. Ultimate Analytics vznikl jako můj osobní projekt ("pet
-            project"),
-            kterému věnuji svůj čas po večerech a víkendech. Mým cílem není konkurovat obřím korporátům, ale vytvořit
-            nástroj, který bude radost používat a který skutečně pomůže komunitám růst.
-        </p>
-    </div>
-</div>
 
-<!-- NEW: FAQ Section -->
 
 <div style="text-align: center; margin-top: 100px;">
     <h3>Chcete být součástí cesty?</h3>
     <p style="color: var(--text-muted); margin-bottom: 30px;">Připojte se na náš Discord a sledujte vývoj z první řady.
     </p>
-    <a href="#" class="nav-btn">Připojit se na Discord</a>
+    <a href="https://discord.gg/35yeT32Knf" class="nav-btn" target="_blank">Připojit se na Discord</a>
 </div>
 
 {% endblock %}

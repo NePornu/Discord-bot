@@ -15,7 +15,7 @@ def test_templates():
             env.get_template(template_name)
             print("OK")
         except Exception as e:
-            print(f"FAILED: {e}")
+            print(f"FChytréLED: {e}")
             success = False
             
     return success

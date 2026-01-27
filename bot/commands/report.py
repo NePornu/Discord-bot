@@ -1,5 +1,5 @@
-# commands/report.py
-# -*- coding: utf-8 -*-
+
+
 from __future__ import annotations
 
 import discord
@@ -11,15 +11,15 @@ from datetime import datetime, date, timedelta, time, timezone
 import os
 import calendar
 
-# Zajištění správné timezony (Europe/Prague)
+
 try:
     from zoneinfo import ZoneInfo
     PRAGUE_TZ = ZoneInfo("Europe/Prague")
 except Exception:
-    # Fallback pokud není zoneinfo dostupné (např. starší python bez tzdata)
+    
     PRAGUE_TZ = timezone(timedelta(hours=1))
 
-# České názvy měsíců
+
 CZECH_MONTHS = [
     "leden", "únor", "březen", "duben", "květen", "červen",
     "červenec", "srpen", "září", "říjen", "listopad", "prosinec"
@@ -29,7 +29,7 @@ class ServerReport(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-        # Setup data folder
+        
         self.data_folder = os.path.join(os.path.dirname(__file__), '..', 'data')
         os.makedirs(self.data_folder, exist_ok=True)
 
@@ -42,13 +42,13 @@ class ServerReport(commands.Cog):
         self.member_data = {}
         self.active_data = {}
         
-        # Příznak pro sledování změn (optimalizace ukládání)
+        
         self._data_dirty = False
 
         self.load_member_data()
         self.load_active_data()
         
-        # Spuštění tasků
+        
         self.daily_report_check.start()
         self.periodic_save.start()
 
@@ -58,7 +58,7 @@ class ServerReport(commands.Cog):
         self.periodic_save.cancel()
         self.save_all_data()
 
-    # ====== DATA MANAGEMENT ======
+    
     def load_member_data(self):
         try:
             with open(self.member_file, 'r', encoding='utf-8') as f:
@@ -69,7 +69,7 @@ class ServerReport(commands.Cog):
     def load_active_data(self):
         try:
             with open(self.active_file, 'r', encoding='utf-8') as f:
-                # Načteme a sety převedeme z listů zpět na sety
+                
                 data = json.load(f)
                 self.active_data = {k: set(v) for k, v in data.items()}
         except (FileNotFoundError, json.JSONDecodeError):
@@ -80,7 +80,7 @@ class ServerReport(commands.Cog):
             json.dump(self.member_data, f, ensure_ascii=False, indent=4)
 
     def save_active_data(self):
-        # Pro uložení musíme sety převést na listy
+        
         serializable = {k: list(v) for k, v in self.active_data.items()}
         with open(self.active_file, 'w', encoding='utf-8') as f:
             json.dump(serializable, f, ensure_ascii=False, indent=4)
@@ -98,7 +98,7 @@ class ServerReport(commands.Cog):
         """Pravidelné ukládání dat (každých 5 minut), aby se neukládalo při každé zprávě."""
         self.save_all_data()
 
-    # ====== EVENT LISTENERS (SBĚR DAT) ======
+    
     
     def _get_today_prague_str(self) -> str:
         """Vrátí dnešní datum v ISO formátu (YYYY-MM-DD) podle Europe/Prague."""
@@ -115,14 +115,14 @@ class ServerReport(commands.Cog):
 
         today = self._get_today_prague_str()
         
-        # Inicializace setu pro dnešní den, pokud neexistuje
+        
         if today not in self.active_data:
             self.active_data[today] = set()
 
         if message.author.id not in self.active_data[today]:
             self.active_data[today].add(message.author.id)
             self._data_dirty = True
-            # Neukládáme hned, řeší to periodic_save
+            
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -144,19 +144,19 @@ class ServerReport(commands.Cog):
         self.member_data[month_key]['leaves'] += 1
         self._data_dirty = True
 
-    # ====== AUTOMATICKÝ MĚSÍČNÍ REPORT ======
+    
     
     @tasks.loop(time=time(hour=0, minute=5, tzinfo=timezone.utc)) 
-    # Poznámka: loop time v discord.py je typicky v UTC. 
-    # Chceme-li report hned po půlnoci našeho času, musíme to zohlednit.
-    # Jednodušší je nechat kontrolu běžet a uvnitř ověřit, zda je 1. den v měsíci.
+    
+    
+    
     async def daily_report_check(self):
-        # Získáme aktuální čas v Praze
+        
         now_prague = datetime.now(PRAGUE_TZ)
         
-        # Kontrola proběhne jen 1. dne v měsíci
-        # (Abychom se vyhnuli vícenásobnému odeslání, checkneme, zda už nebyl poslán,
-        #  ale jelikož je to loop 1x denně, stačí check na den).
+        
+        
+        
         if now_prague.day != 1:
             return
             
@@ -167,7 +167,7 @@ class ServerReport(commands.Cog):
     async def before_daily_report(self):
         await self.bot.wait_until_ready()
 
-    # ====== LOGIKA REPORTU ======
+    
 
     def _period_from_year_month(self, year: int | None, month: int | None):
         """
@@ -178,18 +178,18 @@ class ServerReport(commands.Cog):
         now = datetime.now(PRAGUE_TZ)
         
         if year and month:
-            # Specifický měsíc
+            
             start_date = date(year, month, 1)
-            # Poslední den měsíce: (první den dalšího měsíce) - 1 den
+            
             next_month = start_date.replace(day=28) + timedelta(days=4)
             end_date = next_month - timedelta(days=next_month.day)
         else:
-            # Default: Minulý měsíc (od prvního do posledního dne)
-            # První den tohoto měsíce
+            
+            
             first_this_month = now.date().replace(day=1)
-            # Poslední den minulého měsíce
+            
             end_date = first_this_month - timedelta(days=1)
-            # První den minulého měsíce
+            
             start_date = end_date.replace(day=1)
 
         month_idx = start_date.month - 1
@@ -215,21 +215,21 @@ class ServerReport(commands.Cog):
             if ctx: await ctx.send("❌ Nelze najít cílový server.")
             return None
 
-        # 1. Členové (Joins/Leaves)
+        
         month_key = start_prev.strftime('%Y-%m')
         stats = self.member_data.get(month_key, {'joins': 0, 'leaves': 0})
         new_members = stats.get('joins', 0)
         leaves = stats.get('leaves', 0)
-        current_total = guild.member_count  # Aktuální stav (v okamžiku generování)
+        current_total = guild.member_count  
 
-        # 2. Aktivita (DAU, MAU)
+        
         daily_counts = []
         mau_set = set()
         
-        # Iterujeme přes všechny dny v rozsahu
-        # (Jistota, že vezmeme jen data z daného měsíce)
+        
+        
         delta = end_prev - start_prev
-        days_in_month = delta.days + 1  # Počet dní v měsíci (např. 30, 31, 28)
+        days_in_month = delta.days + 1  
         
         for i in range(days_in_month):
             check_date = start_prev + timedelta(days=i)
@@ -238,19 +238,19 @@ class ServerReport(commands.Cog):
             users_that_day = self.active_data.get(day_str, set())
             count = len(users_that_day)
             
-            # Přidáme do DAU listu i nuly? 
-            # Pokud chceme "Průměrné DAU za měsíc", musíme počítat i dny s 0 aktivitou.
+            
+            
             daily_counts.append(count)
             mau_set.update(users_that_day)
 
-        # Výpočet průměru: Součet aktivních lidí / Počet dní v měsíci
-        # (Předtím to bylo děleno jen počtem 'aktivních' dní, což zkreslovalo nahoru)
+        
+        
         avg_dau = sum(daily_counts) / days_in_month if days_in_month > 0 else 0
         mau = len(mau_set)
         
         ratio = f"{(avg_dau / mau * 100):.2f}%" if mau > 0 else 'N/A'
 
-        # 3. Další statistiky (Snapshot aktuálního stavu)
+        
         bots = sum(1 for m in guild.members if m.bot)
         humans = current_total - bots
         online = sum(1 for m in guild.members if m.status != discord.Status.offline)
@@ -258,12 +258,12 @@ class ServerReport(commands.Cog):
         voice_channels = len(guild.voice_channels)
         roles = len(guild.roles)
 
-        # Příprava Embedu
+        
         embed_title = f"Server Report — {month_name_cz} {title_year}"
         generated_str = now.strftime('%d.%m.%Y %H:%M')
 
-        # Embed timestamp musí být v UTC pro správné zobrazení u klienta, nebo prostě now.
-        # discord.Embed timestamp očekává datetime objekt.
+        
+        
         embed = discord.Embed(
             title=embed_title,
             timestamp=datetime.now(timezone.utc),
@@ -291,7 +291,7 @@ class ServerReport(commands.Cog):
         )
         embed.set_footer(text=footer_text)
 
-        # Odeslání
+        
         if send_message:
             channel = target_channel or (guild.get_channel(self.report_channel_id) if self.report_channel_id else None)
             if channel:
@@ -301,7 +301,7 @@ class ServerReport(commands.Cog):
 
         return embed
 
-    # ====== SLASH COMMANDS ======
+    
     report_group = app_commands.Group(name="report", description="Serverové měsíční reporty")
 
     @report_group.command(name="run", description="Odešle report do určeného kanálu (nebo default).")
@@ -329,7 +329,7 @@ class ServerReport(commands.Cog):
             year=year,
             month=month,
             target_channel=channel,
-            send_message=True  # Zde chceme odeslat
+            send_message=True  
         )
         
         if embed:
@@ -355,7 +355,7 @@ class ServerReport(commands.Cog):
         if not itx.guild or itx.guild.id != self.guild_id:
             return await itx.followup.send("🔒 Tento příkaz lze použít jen na hlavním serveru.", ephemeral=True)
 
-        # Klíčové: send_message=False
+        
         embed = await self.send_report(
             ctx=None, 
             year=year, 
@@ -373,8 +373,8 @@ class ServerReport(commands.Cog):
     @app_commands.checks.has_permissions(manage_guild=True)
     async def report_reload(self, itx: Interaction):
         await itx.response.defer(ephemeral=True)
-        self.save_all_data() # Uložit co máme v paměti
-        self.load_member_data() # Načíst znovu
+        self.save_all_data() 
+        self.load_member_data() 
         self.load_active_data()
         await itx.followup.send("🔄 Data uložena a znovu načtena z disku.", ephemeral=True)
 

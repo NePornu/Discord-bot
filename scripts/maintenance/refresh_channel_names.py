@@ -27,22 +27,22 @@ async def refresh_names():
 
     print("Fetching ALL channels via Raw API...")
     try:
-        # 1. Fetch Channels (includes Forums, Categories, Voice, etc.)
-        # GET /guilds/{guild.id}/channels
+        
+        
         channels_data = await client.http.request(Route('GET', '/guilds/{guild_id}/channels', guild_id=guild_id))
         print(f"Raw API returned {len(channels_data)} channels.")
         
         for c in channels_data:
             c_id = c['id']
             c_name = c.get('name', f"Channel {c_id}")
-            # Cache it
+            
             pipe.hset(f"channel:info:{c_id}", mapping={"name": c_name})
             count += 1
             
-        # 2. Fetch Active Threads
-        # GET /guilds/{guild.id}/threads/active
+        
+        
         threads_data = await client.http.request(Route('GET', '/guilds/{guild_id}/threads/active', guild_id=guild_id))
-        # Response has 'threads' key
+        
         active_threads = threads_data.get('threads', [])
         print(f"Raw API returned {len(active_threads)} active threads.")
         
@@ -52,16 +52,16 @@ async def refresh_names():
             pipe.hset(f"channel:info:{t_id}", mapping={"name": t_name})
             count += 1
             
-        # 3. Fetch Archived Threads (Public)
-        # This is expensive, so we iterate known text/forum channels
+        
+        
         print("Fetching Archived Threads (this might take a while)...")
-        target_types = [0, 5, 15] # Text, News, Forum
+        target_types = [0, 5, 15] 
         parent_ids = [c['id'] for c in channels_data if c['type'] in target_types]
         
         for pid in parent_ids:
             try:
-                # GET /channels/{channel_id}/threads/archived/public
-                # We interpret this carefully
+                
+                
                 archived_data = await client.http.request(Route('GET', '/channels/{channel_id}/threads/archived/public', channel_id=pid))
                 threads = archived_data.get('threads', [])
                 if threads:
@@ -72,22 +72,22 @@ async def refresh_names():
                         pipe.hset(f"channel:info:{t_id}", mapping={"name": t_name})
                         count += 1
             except Exception as e:
-                # Ignore 404 or 403 or 429 (sleep safely if needed?)
-                # If 429, we should sleep, but client.http handles some ratelimits?
-                # Let's just print error and continue
+                
+                
+                
                 pass
             
-            # Small delay to be nice
+            
             await asyncio.sleep(0.1)
             
     except Exception as e:
         print(f"HTTPErr: {e}")
 
-    # Refresh Members (Cache logic is fine for members usually, but let's be safe)
-    # 1.7.3 guild.members might be partial.
-    # Raw request for members is complex (pagination). 
-    # Let's trust cache for members for now, as 503 seems reasonable? 
-    # Or stick with existing logic for members.
+    
+    
+    
+    
+    
     print("Caching members from lib cache...")
     guild = client.get_guild(guild_id)
     if guild:

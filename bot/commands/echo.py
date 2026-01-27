@@ -1,5 +1,5 @@
-# commands/echo.py
-# -*- coding: utf-8 -*-
+
+
 from __future__ import annotations
 
 import re
@@ -25,18 +25,18 @@ class EchoCog(commands.Cog):
         
         channel_input = channel_input.strip()
         
-        # <#123456> mention
+        
         match = CHANNEL_MENTION_RE.search(channel_input)
         if match:
             ch = guild.get_channel(int(match.group(1)))
             return ch if isinstance(ch, discord.TextChannel) else None
         
-        # Čisté ID
+        
         if channel_input.isdigit():
             ch = guild.get_channel(int(channel_input))
             return ch if isinstance(ch, discord.TextChannel) else None
         
-        # Název kanálu
+        
         for ch in guild.text_channels:
             if ch.name.lower() == channel_input.lower():
                 return ch
@@ -83,7 +83,7 @@ class EchoCog(commands.Cog):
         """Hlavní echo příkaz."""
         is_slash = ctx.interaction is not None
         
-        # Validace
+        
         if not text.strip():
             if is_slash:
                 await ctx.send("❌ Text nemůže být prázdný.", ephemeral=True)
@@ -91,19 +91,19 @@ class EchoCog(commands.Cog):
                 await ctx.send("❌ Text nemůže být prázdný.", delete_after=3)
             return
         
-        # Najdi cílový kanál
+        
         target = self._get_channel(ctx.guild, channel)
         
-        # Stáhni přílohy
+        
         if is_slash:
             files = await self._download_files(file1, file2, file3)
         else:
             files = await self._download_files(*ctx.message.attachments)
         
-        # Mentions
+        
         mentions = discord.AllowedMentions.none() if no_mentions else discord.AllowedMentions.all()
         
-        # === PREFIX PŘÍKAZ ===
+        
         if not is_slash:
             dest = target or ctx.channel
             try:
@@ -115,14 +115,14 @@ class EchoCog(commands.Cog):
                 await ctx.send(f"❌ Chyba: {e}", delete_after=5)
             return
         
-        # === SLASH PŘÍKAZ ===
+        
         try:
             if target and target.id != ctx.channel.id:
-                # Pošli do jiného kanálu
+                
                 await target.send(text, files=files, allowed_mentions=mentions)
                 await ctx.send(f"✅ Odesláno do {target.mention}", ephemeral=True)
             else:
-                # Pošli do aktuálního kanálu
+                
                 await ctx.send(text, files=files, allowed_mentions=mentions, ephemeral=hide)
         except discord.Forbidden:
             await ctx.send("❌ Nemám oprávnění do tohoto kanálu.", ephemeral=True)
@@ -151,30 +151,30 @@ class EchoCog(commands.Cog):
         file3: Optional[discord.Attachment] = None,
     ):
         """Standalone /say příkaz."""
-        # Validace
+        
         if not text.strip():
             await itx.response.send_message("❌ Text nemůže být prázdný.", ephemeral=True)
             return
         
-        # Defer kvůli stahování souborů
+        
         await itx.response.defer(ephemeral=hide)
         
-        # Najdi kanál
+        
         target = self._get_channel(itx.guild, channel)
         
-        # Stáhni soubory
+        
         files = await self._download_files(file1, file2, file3)
         
-        # Mentions
+        
         mentions = discord.AllowedMentions.none() if no_mentions else discord.AllowedMentions.all()
         
         try:
             if target and target.id != itx.channel_id:
-                # Do jiného kanálu
+                
                 await target.send(text, files=files, allowed_mentions=mentions)
                 await itx.followup.send(f"✅ Odesláno do {target.mention}", ephemeral=True)
             else:
-                # Do aktuálního kanálu
+                
                 await itx.followup.send(text, files=files, allowed_mentions=mentions, ephemeral=hide)
         except discord.Forbidden:
             await itx.followup.send("❌ Nemám oprávnění.", ephemeral=True)

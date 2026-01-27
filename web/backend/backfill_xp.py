@@ -7,8 +7,8 @@ import random
 sys.path.append('/root/discord-bot')
 from shared.redis_client import REDIS_URL
 
-# Function to calculate level from XP (inverse of 5x^2 + 50x + 100)
-# This isn't needed for writing XP, but useful for verification
+
+
 def get_level(xp):
     if xp < 100: return 0
     a, b, c = 5, 50, 100 - xp
@@ -24,11 +24,11 @@ async def backfill_xp():
     xp_key = f"levels:xp:{guild_id}"
     print(f"Starting XP backfill for Guild {guild_id}...")
     
-    # Clear existing XP to avoid double counting if run multiple times (optional, but safer for "backfill")
-    # Actually, let's NOT clear, just overwrite/add. 
-    # But if we want a clean state from events, we should probably clear first or use ZSCORE to check.
-    # User said "backfill", implying filling missing data. 
-    # Safe approach: Calculate total from events and set that as the new score.
+    
+    
+    
+    
+    
     
     cursor = "0"
     processed_users = 0
@@ -36,7 +36,7 @@ async def backfill_xp():
     async for key in r.scan_iter(match=f"events:msg:{guild_id}:*"):
         uid = key.split(":")[-1]
         
-        # Fetch all message timestamps
+        
         msgs = await r.zrange(key, 0, -1, withscores=True)
         
         total_xp = 0
@@ -45,7 +45,7 @@ async def backfill_xp():
         for _, score in msgs:
             ts = float(score)
             
-            # Cooldown Logic: 60 seconds
+            
             if ts - last_xp_time >= 60:
                 gain = random.randint(15, 25)
                 total_xp += gain

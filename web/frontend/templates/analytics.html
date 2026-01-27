@@ -6,11 +6,11 @@
 {% set layout = request.session.get('dashboard_layout', {}) %}
 {% macro is_visible(key) %}{{ layout.get(key, True) }}{% endmacro %}
 
-<!-- Toolbar -->
+
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
     <div>
-        <h1 class="title">Advanced Analytics</h1>
-        <p style="color: var(--text-secondary);">Channel stats, leaderboards, and insights</p>
+        <h1 class="title">Metricord Analytics</h1>
+        <p style="color: var(--text-secondary);">Statistiky kanálů, žebříčky a postřehy</p>
     </div>
 
     <div style="display: flex; gap: 12px; align-items: center;">
@@ -54,7 +54,7 @@
     </form>
 </div>
 
-<!-- Macros for Widgets -->
+
 {% set all_widgets = [
 ('wow_card', '📈 Trends (WoW)'),
 ('mom_card', '📊 Trends (MoM)'),
@@ -66,7 +66,7 @@
 ('voice_stats', '🎙️ Voice Stats'),
 ('traffic', '🚦 Traffic'),
 ('trend_analysis', '📈 Growth Trend'),
-('engagement', '🎯 Engagement'),
+('engagement', '🎯 Community Score'),
 ('export', '📤 Export Tools'),
 ('insights', '💡 Insights'),
 ('growth_chart', '📈 Member Growth'),
@@ -88,7 +88,7 @@
 {% elif id == 'traffic' %}{{ render_traffic() }}
 {% elif id == 'trend_analysis' %}{{ render_trend() }}
 {% elif id == 'engagement' %}{{ render_engagement() }}
-{# Export removed #}
+
 {% elif id == 'insights' %}{{ render_insights() }}
 {% elif id == 'growth_chart' %}{{ render_growth() }}
 {% elif id == 'hourly_chart' %}{{ render_hourly() }}
@@ -261,7 +261,7 @@
 
 {% macro render_engagement() %}
 <div class="card widget-item" data-id="engagement">
-    <h3 style="margin-bottom: 16px;">🎯 Zapojení</h3>
+    <h3 style="margin-bottom: 16px;">🎯 Community Score</h3>
     <div style="display: flex; align-items: center; gap: 24px;">
         <div
             style="width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; background: conic-gradient(#8b5cf6 0deg, #8b5cf6 var(--engagement-deg, 0deg), var(--bg-tertiary) var(--engagement-deg, 0deg)); border-radius: 50%;">
@@ -390,21 +390,21 @@
 {% endif %}
 {% endmacro %}
 
-<!-- Hidden Widgets Drawer (Visible only in Edit Mode) -->
+
 <div id="hidden-drawer"
     style="display: none; background: rgba(0,0,0,0.3); border: 2px dashed var(--glass-border); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
     <h3 style="margin-bottom: 12px; color: var(--text-secondary);">🚫 Skryté widgety (Přetáhněte zpět pro zobrazení)
     </h3>
     <div id="hidden-widgets-grid" class="grid">
-        <!-- Populated via JS -->
+
     </div>
 </div>
 
-<!-- Main Dashboard Grid -->
+
 {% set saved_spans = request.session.get('dashboard_spans', {}) %}
 <div id="analytics-grid" class="grid" style="min-height: 200px;">
     {% for widget_id in active_order %}
-    {# Determine initial span #}
+
     {% set default_span = 1 %}
     {% if widget_id in ['peak_analysis', 'top_channels', 'growth_chart', 'hourly_chart', 'weekday_chart',
     'trend_analysis', 'leaderboard', 'xp_leaderboard'] %}{% set default_span = 2 %}{% endif %}
@@ -413,7 +413,7 @@
     <div class="widget-wrapper span-{{ span_val }}" data-id="{{ widget_id }}" data-span="{{ span_val }}"
         style="position: relative; display: flex; flex-direction: column;">
 
-        <!-- Resize Controls -->
+
         <div class="resize-controls"
             style="display: none; position: absolute; top: 8px; right: 8px; z-index: 100; gap: 4px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
             <button class="resize-btn action-decrease" title="Zúžit"
@@ -432,7 +432,7 @@
             </button>
         </div>
 
-        <!-- The Widget -->
+
         <style>
             .widget-wrapper .card {
                 height: 100% !important;
@@ -444,7 +444,7 @@
     {% endfor %}
 </div>
 
-<!-- Hidden Bucket -->
+
 {% set hidden_widgets = [] %}
 {% for wid, wname in all_widgets %}
 {% if wid not in active_order %}
@@ -455,7 +455,7 @@
 <div style="display:none;">
     <div id="hidden-bucket">
         {% for widget_id in hidden_widgets %}
-        {# Determine initial span #}
+
         {% set default_span = 1 %}
         {% if widget_id in ['peak_analysis', 'top_channels', 'growth_chart', 'hourly_chart', 'weekday_chart',
         'trend_analysis', 'leaderboard', 'xp_leaderboard'] %}{% set default_span = 2 %}{% endif %}
@@ -464,7 +464,7 @@
         <div class="widget-wrapper span-{{ span_val }}" data-id="{{ widget_id }}" data-span="{{ span_val }}"
             style="position: relative; display: flex; flex-direction: column;">
 
-            <!-- Resize Controls -->
+
             <div class="resize-controls"
                 style="display: none; position: absolute; top: 8px; right: 8px; z-index: 100; gap: 4px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(8px);">
                 <button class="resize-btn action-decrease" title="Zúžit"
@@ -483,7 +483,7 @@
                 </button>
             </div>
 
-            <!-- The Widget -->
+
             <style>
                 .widget-wrapper .card {
                     height: 100% !important;

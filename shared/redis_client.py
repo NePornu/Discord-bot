@@ -1,13 +1,13 @@
-# shared/redis_client.py
-# Centralized Redis connection management
+
+
 import os
 import redis.asyncio as redis
 
-# Default Redis URL - use IP for host compatibility (dashboard runs outside Docker)
-# Docker containers can also reach this IP via the bridge network
+
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://172.22.0.2:6379/0")
 
-# Connection pool (singleton)
+
 _pool = None
 
 async def get_redis() -> redis.Redis:

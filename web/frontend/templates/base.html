@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NePornu Bot Dashboard</title>
+    <title>Metricord | Dashboard</title>
     <link rel="stylesheet" href="/static/css/style.css?v=2.7">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="/static/js/chart.js"></script>
@@ -12,19 +12,19 @@
 </head>
 
 <body>
-    <!-- Mobile Menu Toggle -->
+
     <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle menu">
         <span></span>
         <span></span>
         <span></span>
     </button>
 
-    <!-- Mobile Overlay -->
+
     <div class="mobile-overlay" id="mobileOverlay"></div>
 
     <div class="sidebar" id="sidebar">
         <div class="brand">
-            <i class="fas fa-robot fa-lg" style="margin-right: 10px;"></i> Bot Dashboard
+            <i class="fas fa-chart-bar" style="margin-right: 10px; color: var(--accent);"></i> Metricord
         </div>
         <nav>
             <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">
@@ -71,10 +71,10 @@
                 </div>
             </div>
 
-            <!-- Server Widget -->
+
             <div class="user-widget-section mt-3">
                 {% if sidebar_guild_name %}
-                <!-- Active Server State -->
+
                 <div class="server-active-card">
                     <div class="server-active-icon">
                         {% if sidebar_guild_icon %}
@@ -92,7 +92,7 @@
                     </div>
                 </div>
                 {% else %}
-                <!-- Empty State -->
+
                 <a href="/select-server" class="btn-connect-server">
                     <div class="connect-icon"><i class="fas fa-plus"></i></div>
                     <span class="connect-text">Vybrat server</span>
@@ -113,7 +113,7 @@
         </div>
     </div>
 
-    <!-- Mobile Menu JavaScript -->
+
     <script>
         (function () {
             const toggle = document.getElementById('mobileMenuToggle');

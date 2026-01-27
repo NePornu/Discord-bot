@@ -9,18 +9,18 @@ from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 import math
 
-# =====================================================================
-#   CONFIG & CONSTANTS
-# =====================================================================
+
+
+
 DB_DIR = "data"
 DB_FILE = "calendar.db"
 DB_PATH = os.path.join(DB_DIR, DB_FILE)
 TZ = ZoneInfo("Europe/Prague")
 ITEMS_PER_PAGE = 20
 
-# =====================================================================
-#   HELPERS
-# =====================================================================
+
+
+
 def parse_date(value: str) -> date:
     v = value.strip()
     if "." in v:
@@ -42,9 +42,9 @@ def create_progress_bar(count: int, max_count: int, length: int = 10) -> str:
     filled = int((count / max_count) * length)
     return "█" * filled + "░" * (length - filled)
 
-# =====================================================================
-#   DATABASE LAYER
-# =====================================================================
+
+
+
 class CalendarDB:
     @staticmethod
     async def init():
@@ -207,9 +207,9 @@ class CalendarDB:
             days_stats = await cursor.fetchall() 
             return total_users, days_stats
 
-# =====================================================================
-#   PUBLIC VIEW (STRÁNKOVANÁ)
-# =====================================================================
+
+
+
 class PublicDayButton(discord.ui.Button):
     def __init__(self, cid: int, day: int, label: str, emoji: str):
         if not emoji or emoji == "None" or emoji == "": emoji = None
@@ -257,7 +257,7 @@ class PublicDayButton(discord.ui.Button):
                     content += "\n⚠ Nepodařilo se přidat roli."
 
             try:
-                # Získání session z cogu
+                
                 cog = interaction.client.get_cog("AdventCalendar")
                 session = cog.session if cog else None
                 
@@ -315,9 +315,9 @@ class PublicCalendarView(discord.ui.View):
         else:
             await interaction.response.defer()
 
-# =====================================================================
-#   ADMIN MODALS & VIEWS
-# =====================================================================
+
+
+
 class SelectDayModal(discord.ui.Modal):
     def __init__(self, parent_view, max_days):
         super().__init__(title="Vybrat den k úpravě")
@@ -447,9 +447,9 @@ class NewCalendarModal(discord.ui.Modal, title="Nový Kalendář"):
         await CalendarDB.update_message_id(cid, msg.id)
         await interaction.followup.send(f"✅ Vytvořeno (ID: {cid}). Spusť `/calendar_admin` pro úpravy.")
 
-# =====================================================================
-#   DELETE CONFIRMATIONS
-# =====================================================================
+
+
+
 class DeleteConfirmView(discord.ui.View):
     def __init__(self, cid, cal_name, bot):
         super().__init__(timeout=60)
@@ -512,9 +512,9 @@ class BulkDeleteView(discord.ui.View):
         embed = discord.Embed(title="🗑 Hotovo", description=f"Úspěšně smazáno **{count}** kalendářů.", color=discord.Color.red())
         await interaction.edit_original_response(embed=embed, view=None)
 
-# =====================================================================
-#   ADMIN DASHBOARD
-# =====================================================================
+
+
+
 class AdminDashboardView(discord.ui.View):
     def __init__(self, bot):
         super().__init__(timeout=None)
@@ -537,12 +537,12 @@ class AdminDashboardView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"Chyba: {e}", ephemeral=True)
 
-    # --- ROW 1: Nové tlačítko pro výběr dne ---
+    
     @discord.ui.button(label="🔎 Vybrat den", style=discord.ButtonStyle.primary, row=1, disabled=True)
     async def btn_select_day(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SelectDayModal(self, self.cal_data['num_days']))
 
-    # --- ROW 2: Tlačítka úprav ---
+    
     @discord.ui.button(label="Obsah", emoji="📝", style=discord.ButtonStyle.secondary, row=2, disabled=True)
     async def btn_edit_content(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = await CalendarDB.get_day(self.selected_cid, self.selected_day)
@@ -558,7 +558,7 @@ class AdminDashboardView(discord.ui.View):
         data = await CalendarDB.get_day(self.selected_cid, self.selected_day)
         await interaction.response.send_modal(EditImageModal(self, self.selected_cid, self.selected_day, data))
 
-    # --- ROW 3: Akce ---
+    
     @discord.ui.button(label="Refresh", emoji="🔄", style=discord.ButtonStyle.success, row=3, disabled=True)
     async def btn_refresh_public(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
@@ -568,7 +568,7 @@ class AdminDashboardView(discord.ui.View):
                 msg = await channel.fetch_message(self.cal_data['message_id'])
                 days = await CalendarDB.list_days(self.selected_cid)
                 embed = discord.Embed(title=f"🗓 {self.cal_data['name']}", description=f"Start: **{parse_date(self.cal_data['start_date']).strftime('%d.%m.%Y')}**", color=discord.Color.gold())
-                # Reset na stranu 0 při refreshi
+                
                 await msg.edit(embed=embed, view=PublicCalendarView(self.selected_cid, days, page=0))
                 await interaction.followup.send("✅ Veřejná zpráva aktualizována.", ephemeral=True)
             except:
@@ -601,8 +601,8 @@ class AdminDashboardView(discord.ui.View):
     async def update_view(self, interaction: discord.Interaction, use_followup=False):
         for child in self.children:
             if isinstance(child, discord.ui.Button):
-                # ZDE BYLA CHYBA: child.emoji může být None.
-                # Musíme nejprve zkontrolovat, zda emoji existuje.
+                
+                
                 if child.emoji and child.emoji.name in ["📝", "🎨", "🖼"]:
                     child.disabled = self.selected_day is None
                 elif child.label == "🔎 Vybrat den":
@@ -610,7 +610,7 @@ class AdminDashboardView(discord.ui.View):
                 else:
                     child.disabled = self.selected_cid is None
 
-        # Odstraníme starý select menu pro dny, pokud tam zbyl (z předchozí verze)
+        
         items_to_remove = [c for c in self.children if isinstance(c, discord.ui.Select) and c.row == 1]
         for item in items_to_remove:
             self.remove_item(item)
@@ -650,9 +650,9 @@ class AdminDashboardView(discord.ui.View):
         else:
             await interaction.edit_original_response(embed=embed, view=self)
 
-# =====================================================================
-#   MAIN COG
-# =====================================================================
+
+
+
 class AdventCalendar(commands.Cog):
     def __init__(self, bot):
         self.bot = bot

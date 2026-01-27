@@ -78,38 +78,38 @@ class VyzvaCog(commands.Cog):
         try:
             await ctx.message.delete()
 
-            # Kontrola oprávnění – pouze administrátor
+            
             if not ctx.author.guild_permissions.administrator:
                 msg = await ctx.send("⛔ Tento příkaz může použít pouze administrátor serveru.")
                 await asyncio.sleep(10)
                 await msg.delete()
                 return
 
-            # Zpracování argumentů
+            
             if channel is None or channel == "-":
                 channel = ctx.channel
             vypis = vypis.lower() != "false"
             filtr = None if filtr == "-" else filtr
             mode = mode.lower() if mode else "days"
             
-            # Pro zpětnou kompatibilitu - pokud je interval ve skutečnosti název role
+            
             if mode != "weekly" and isinstance(interval, str):
                 odmeny = (str(interval),) + odmeny
                 interval = 7
             
             odmeny = [o for o in odmeny if o != "-"]
 
-            # Určení počtu intervalů pro weekly mód a Safety Cutoff
+            
             now = datetime.now()
             cutoff_date = None
             
             if mode == "weekly":
-                max_intervals = 12  # Kontrolujeme maximálně 12 intervalů zpětně
-                # Bezpečnostní limit: nepotřebujeme starší zprávy než max_intervals * interval
+                max_intervals = 12  
+                
                 days_needed = (max_intervals + 2) * interval
                 cutoff_date = now - timedelta(days=days_needed)
             else:
-                # Pro ostatní módy (days, fotosum) dáme hard limit 1 rok (safety break)
+                
                 cutoff_date = now - timedelta(days=365)
 
             status_message = await ctx.send(
@@ -117,25 +117,25 @@ class VyzvaCog(commands.Cog):
                 f"🕒 Limit historie: zprávy novější než {cutoff_date.strftime('%d.%m.%Y')}..."
             )
 
-            # Sběr aktivity uživatelů podle módu
+            
             if mode == "days":
                 user_dict = defaultdict(set)
             elif mode == "fotosum":
                 user_dict = defaultdict(int)
             elif mode == "weekly":
-                user_dict = defaultdict(set)  # user_id -> set of interval_numbers
+                user_dict = defaultdict(set)  
             else:
                 await status_message.edit(content="❌ Neplatný mód! Použijte: days, fotosum nebo weekly")
                 return
 
-            # after=cutoff_date zajistí, že nejdeme do pravěku (Discord API vrátí jen novější)
+            
             count_scanned = 0
             async for message in channel.history(limit=None, after=cutoff_date):
                 count_scanned += 1
                 if message.author.bot:
                     continue
                     
-                # Filtrování zpráv
+                
                 if filtr:
                     if filtr.lower() == "photo":
                         if not message.attachments or not any(
@@ -151,13 +151,13 @@ class VyzvaCog(commands.Cog):
                 elif mode == "fotosum":
                     user_dict[message.author.id] += 1
                 elif mode == "weekly":
-                    # Výpočet čísla intervalu (0 = aktuální interval, 1 = předchozí, atd.)
+                    
                     days_ago = (now - message.created_at).days
                     interval_number = days_ago // interval
-                    if interval_number < max_intervals:  # Omezení na rozumný počet intervalů
+                    if interval_number < max_intervals:  
                         user_dict[message.author.id].add(interval_number)
 
-            # Pro fotosum musí být zadán filtr 'photo'
+            
             if mode == "fotosum" and filtr != "photo":
                 await status_message.edit(content="❌ Pro fotosum musí být filtr photo!")
                 return
@@ -167,7 +167,7 @@ class VyzvaCog(commands.Cog):
 
             for user_id, value in user_dict.items():
                 if mode == "weekly":
-                    # Pro weekly mód počítáme po sobě jdoucí intervaly od začátku
+                    
                     score = self._count_consecutive_intervals(value)
                 else:
                     score = len(value) if mode == "days" else value
@@ -178,7 +178,7 @@ class VyzvaCog(commands.Cog):
                         f"👤 {user.display_name} – **{score} {self._get_score_unit(mode, interval)}**"
                     )
                     
-                    # Udělování rolí dle nastavení
+                    
                     for i in range(0, len(odmeny), 2):
                         try:
                             threshold = int(odmeny[i])
@@ -191,7 +191,7 @@ class VyzvaCog(commands.Cog):
                         except (ValueError, IndexError):
                             continue
 
-            # Výpis reportu do kanálu
+            
             if vypis:
                 activity_report_text = "\n".join(activity_report)
                 if len(activity_report_text) > 2000:
@@ -204,7 +204,7 @@ class VyzvaCog(commands.Cog):
                 else:
                     await ctx.send(activity_report_text)
 
-            # Výpis výsledků
+            
             if results:
                 await ctx.send("\n".join(results))
             elif odmeny:
@@ -258,7 +258,7 @@ class VyzvaCog(commands.Cog):
         sorted_intervals = sorted(intervals)
         consecutive_count = 0
         
-        # Začínáme od 0 (aktuální interval) a postupujeme po sobě jdoucími
+        
         for i in range(min(sorted_intervals), max(sorted_intervals) + 1):
             if i in intervals:
                 consecutive_count += 1

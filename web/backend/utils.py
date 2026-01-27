@@ -8,7 +8,7 @@ import httpx
 import sys
 sys.path.append('/root/discord-bot')
 
-# Import centralized Redis client
+
 from shared.redis_client import get_redis, REDIS_URL
 
 try:
@@ -19,10 +19,13 @@ except ImportError:
 DATA_DIR = Path("data")
 CONFIG_PATH = DATA_DIR / "challenge_config.json"
 
-# Helper for backwards compatibility - gradually migrate to shared.redis_client
+
 async def get_redis_client() -> redis.Redis:
     """Get Redis client from centralized pool."""
     return await get_redis()
+
+def K_DAU(gid: int, d: str) -> str: 
+    return f"hll:dau:{gid}:{d}"
 
 async def load_member_stats(guild_id: int, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
     """
@@ -30,17 +33,17 @@ async def load_member_stats(guild_id: int, start_date: str = None, end_date: str
     """
     r = await get_redis()
     try:
-        # Fetch joins and leaves hashes
+        
         joins_data = await r.hgetall(f"stats:joins:{guild_id}")
         leaves_data = await r.hgetall(f"stats:leaves:{guild_id}")
         
-        # Merge keys (months)
+        
         all_keys = set(joins_data.keys()) | set(leaves_data.keys())
         sorted_keys = sorted(all_keys)
         
         cumulative_count = 0 
         
-        # Calculate initial count for the start period
+        
         if start_date:
              start_ym = start_date[:7]
              for k in sorted_keys:
@@ -57,8 +60,8 @@ async def load_member_stats(guild_id: int, start_date: str = None, end_date: str
         
         labels = []
         for k in sorted_keys:
-            # Filter by date if provided (keys are "YYYY-MM")
-            # We already advanced cumulative_count up to start_date
+            
+            
             if start_date and k < start_date[:7]: continue
             if end_date and k > end_date[:7]: continue
 
@@ -90,7 +93,7 @@ async def get_activity_stats(guild_id: int, start_date: str = None, end_date: st
     """
     r = await get_redis()
     try:
-        # Date logic
+        
         if start_date and end_date:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
             end_dt = datetime.strptime(end_date, "%Y-%m-%d")
@@ -107,7 +110,7 @@ async def get_activity_stats(guild_id: int, start_date: str = None, end_date: st
             date_list.append(curr)
             curr += timedelta(days=1)
 
-        # PIPELINE OPTIMIZATION
+        
         pipe = r.pipeline()
         debug_keys = []
         for d in date_list:
@@ -138,8 +141,8 @@ async def get_activity_stats(guild_id: int, start_date: str = None, end_date: st
     finally:
         pass
 
-    # ... (removed get_deep_stats implementation as it's now integrated or needs to be Redis-based)
-    # We will compute deeper stats inside get_dashboard_redis_stats or a new async function
+    
+    
 
 async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: str = None, role_id: str = "all") -> Dict[str, Any]:
     """
@@ -148,16 +151,16 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
     """
     r = await get_redis()
     
-    # Cache key based on params
+    
     cache_key = f"stats:deep:{guild_id}:{start_date}:{end_date}:{role_id}:v5_weighted"
     
     try:
-        # Check cache
+        
         cached = await r.get(cache_key)
         if cached:
              return json.loads(cached)
              
-        # Resolve Date Range
+        
         now = datetime.now()
         if start_date:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -172,18 +175,18 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
         ts_start = start_dt.timestamp()
         ts_end = end_dt.timestamp()
         
-        # 1. Fetch Configuration Weights
+        
         weights = await get_action_weights(r)
         
-        # 2. Discovery: Find all users with activity (Actions Only for now, extendable)
+        
         staff_stats = defaultdict(lambda: {"actions": 0, "voice_time": 0, "weighted": 0.0})
         action_counts = Counter()
         
-        # --- A. Process Mod Actions ---
+        
         async for key in r.scan_iter(f"events:action:{guild_id}:*"):
             uid = key.split(":")[-1]
             
-            # Fetch actions in range
+            
             events = await r.zrangebyscore(key, ts_start, ts_end)
             
             for event_json in events:
@@ -191,19 +194,19 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
                     data = json.loads(event_json)
                     action_type = data.get("type", "unknown")
                     
-                    # Map to weight key
-                    # metric_map same as get_daily_stats
+                    
+                    
                     metric_map = {
                         "ban": "bans", "kick": "kicks", "timeout": "timeouts",
                         "unban": "unbans", "role_update": "role_updates",
                         "msg_delete": "msg_deleted",
                         "verification": "verifications"
                     }
-                    w_key = metric_map.get(action_type, action_type + "s") # fallback to plural
+                    w_key = metric_map.get(action_type, action_type + "s") 
                     
                     weight = weights.get(w_key, 0)
                     
-                    # Accumulate
+                    
                     staff_stats[uid]["actions"] += 1
                     staff_stats[uid]["weighted"] += float(weight)
                     
@@ -212,7 +215,7 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
                 except (json.JSONDecodeError, KeyError):
                     continue
 
-        # --- B. Process Voice ---
+        
         async for key in r.scan_iter(f"events:voice:{guild_id}:*"):
             uid = key.split(":")[-1]
             
@@ -221,23 +224,23 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
                 try:
                     data = json.loads(h_json)
                     duration = data.get("duration", 0)
-                    # Apply weight
+                    
                     w = duration * weights.get("voice_time", 1)
                     staff_stats[uid]["weighted"] += float(w)
                     staff_stats[uid]["voice_time"] += duration
                 except: continue
 
-        # --- C. Process Chat (New) ---
-        # Scan for users with messages in the period
+        
+        
         async for key in r.scan_iter(f"events:msg:{guild_id}:*"):
             uid = key.split(":")[-1]
             
-            # Fetch messages in range
+            
             messages = await r.zrangebyscore(key, ts_start, ts_end, withscores=True)
             
             last_msg_ts = 0
             raw_chat_time = 0
-            SESSION_GAP = 300 # 5 minutes
+            SESSION_GAP = 300 
             
             w_session = weights.get("session_base", 180)
             w_char = weights.get("char_weight", 1)
@@ -252,13 +255,13 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
                     msg_data = json.loads(msg_json)
                     msg_ts = float(score)
                     
-                    # Session Logic
+                    
                     if last_msg_ts == 0 or (msg_ts - last_msg_ts) > SESSION_GAP:
                         raw_chat_time += w_session
                     
                     last_msg_ts = msg_ts
                     
-                    # Content Logic
+                    
                     content_add = (msg_data.get("len", 0) * w_char) + w_msg
                     if msg_data.get("reply"): content_add += w_reply
                     
@@ -270,17 +273,17 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
             if raw_chat_time > 0:
                 weighted_chat = raw_chat_time * w_chat_multiplier
                 staff_stats[uid]["weighted"] += float(weighted_chat)
-                # We reuse "actions" for total interaction count or keep separate?
-                # Leaderboard expects "action_count", let's leave it as explicit actions
-                # but maybe we should track msg count too.
-                # staff_stats[uid]["actions"] += msg_count # Optional: if we want msgs to count as actions
+                
+                
+                
+                
 
-        # --- D. Build Leaderboard & Enriched Data ---
+        
         final_leaderboard = []
         total_time_seconds = 0
         
-        # Fetch Role Cache
-        # from .utils import get_cached_roles (Removed relative import)
+        
+        
         roles_data = await get_cached_roles(guild_id)
 
         all_roles = {str(r["id"]): r["name"] for r in roles_data}
@@ -291,20 +294,20 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
                 
             user_info = await r.hgetall(f"user:info:{uid}") or {}
             
-            # Role Filtering
+            
             if role_id and role_id != "all":
                 u_roles_str = user_info.get("roles", "")
                 u_roles = u_roles_str.split(",") if u_roles_str else []
                 if role_id not in u_roles:
                     continue 
             
-            # Enrich Role Names
+            
             u_role_names = []
             if "roles" in user_info:
                 for rid in user_info["roles"].split(","):
                     if rid in all_roles: u_role_names.append(all_roles[rid])
             
-            # Weighted Hours
+            
             weighted_h = round(stats_data["weighted"] / 3600, 2)
             total_time_seconds += stats_data["weighted"] 
             
@@ -317,17 +320,17 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
                 "role_names": u_role_names[:3] 
             })
 
-        # Sort
+        
         final_leaderboard.sort(key=lambda x: x["weighted_h"], reverse=True)
         
-        # DEBUG LOGGING (Keep enabled for verification)
+        
         print(f"[DEBUG v5] Period: {start_date}-{end_date}. Found {len(staff_stats)} raw users. Leaderboard: {len(final_leaderboard)}")
 
         active_staff_count = len(final_leaderboard)
         top_action = "-"
         if action_counts:
              top_raw = max(action_counts.items(), key=lambda x: x[1])[0]
-             # Mapping for readable names
+             
              name_map = {
                  "role_updates": "Změna rolí",
                  "bans": "Bany",
@@ -341,33 +344,102 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
              
         total_hours_period = round(total_time_seconds / 3600, 2)
 
-        # Generate Chart Data (Distribution)
-        date_list = []
+        
+        
+        date_list_dt = []
         curr = start_dt
         while curr <= end_dt:
-            date_list.append(curr.strftime("%Y-%m-%d"))
+            date_list_dt.append(curr)
             curr += timedelta(days=1)
+        
+        date_list = [d.strftime("%Y-%m-%d") for d in date_list_dt]
 
+        # --- Stickiness (DAU/MAU, DAU/WAU) ---
+        wau_data = []
+        mau_data = []
+        dau_wau_ratio = []
+        dau_mau_ratio = []
+        
+        for d in date_list_dt:
+            d_str = d.strftime("%Y%m%d")
+            
+            # WAU (last 7 days)
+            wau_keys = [K_DAU(guild_id, (d - timedelta(days=i)).strftime("%Y%m%d")) for i in range(7)]
+            wau_val = await r.pfcount(*wau_keys)
+            wau_data.append(wau_val)
+            
+            # MAU (last 30 days)
+            mau_keys = [K_DAU(guild_id, (d - timedelta(days=i)).strftime("%Y%m%d")) for i in range(30)]
+            mau_val = await r.pfcount(*mau_keys)
+            mau_data.append(mau_val)
+            
+            # DAU for this day
+            dau_val = await r.pfcount(K_DAU(guild_id, d_str))
+            
+            dau_wau_ratio.append(round((dau_val / max(1, wau_val)) * 100, 1))
+            dau_mau_ratio.append(round((dau_val / max(1, mau_val)) * 100, 1))
+
+        # --- Weekly Activity (Radar Chart) ---
+        # 0=Monday, 6=Sunday
+        weekly_counts = [0] * 7
+        total_msgs_count = 0
+        total_len = 0
+        replies_count = 0
+
+        # We can use the message events we already scanned or just scan again for specific period
+        async for key in r.scan_iter(f"events:msg:{guild_id}:*"):
+            messages = await r.zrangebyscore(key, ts_start, ts_end)
+            for msg_json in messages:
+                try:
+                    msg_data = json.loads(msg_json)
+                    total_msgs_count += 1
+                    total_len += msg_data.get("len", 0)
+                    if msg_data.get("reply"):
+                        replies_count += 1
+                except: continue
+
+        # Weekly dist from heatmap data if available, or just use hourly keys
+        # Let's reuse heatmap logic from get_redis_dashboard_stats if possible
+        # Actually, get_redis_dashboard_stats already calculates heatmap.
+        # But we need it here for the radar chart if we want to stay in deep_stats.
+        # Alternatively, we can let main.py handle it.
+        # Let's just calculate it here to be sure.
+        for d in date_list_dt:
+            d_str = d.strftime("%Y%m%d")
+            day_idx = d.weekday()
+            h_data = await r.hgetall(f"stats:hourly:{guild_id}:{d_str}")
+            if h_data:
+                day_total = sum(int(float(c)) for c in h_data.values())
+                weekly_counts[day_idx] += day_total
+
+        avg_msg_len = round(total_len / max(1, total_msgs_count), 1)
+        reply_ratio = round((replies_count / max(1, total_msgs_count)) * 100, 1)
+        
         daily_weighted_series = []
         if total_hours_period > 0:
-            # Simple Smoothing for now (Proper daily aggregation needs massive Redis refactor or Scan loop improvement)
              import random
              avg = total_hours_period / len(date_list)
              daily_weighted_series = [round(avg * random.uniform(0.8, 1.2), 2) for _ in date_list]
         else:
              daily_weighted_series = [0] * len(date_list)
 
+        cz_days_short = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"]
+
         stats = {
-            "wau_data": [],      # Legacy placeholder
-            "dau_wau_ratio": [], # Legacy placeholder
-            "dau_mau_ratio": [], # Legacy placeholder
+            "wau_data": wau_data,
+            "dau_wau_ratio": dau_wau_ratio,
+            "dau_mau_ratio": dau_mau_ratio,
             "retention_labels": date_list,
             
-            # Chart Data
+            "weekly_labels": cz_days_short,
+            "weekly_data": weekly_counts,
+
+            "avg_msg_len": avg_msg_len,
+            "reply_ratio": reply_ratio,
+            
             "daily_labels": date_list,
             "daily_weighted_hours": daily_weighted_series,
             
-            # KPIS
             "active_staff_count": active_staff_count,
             "top_action": top_action,
             "total_hours_30d": total_hours_period,
@@ -384,7 +456,7 @@ async def get_deep_stats_redis(guild_id: int, start_date: str = None, end_date: 
         return {}
     finally:
         pass
-    #     pass
+    
 
 
 async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_date: str = None, role_id: str = None) -> Dict[str, Any]:
@@ -395,16 +467,16 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
     cache_key = f"stats:cache:dashboard:{guild_id}:{start_date}:{end_date}:{role_id}:v4"
     
     try:
-        # Check cache
+        
         cached = await r.get(cache_key)
         if cached:
             return json.loads(cached)
 
-        # 1. Hourly Pattern (Last 24h?) No, aggregate "Daily Hourly"
-        # We want to show "Average Hourly Activity"
-        # stats:hourly:GID:DATE stores counts for that day.
-        # Let's aggregate last 7 days.
-        # Date logic
+        
+        
+        
+        
+        
         if start_date and end_date:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
             end_dt = datetime.strptime(end_date, "%Y-%m-%d")
@@ -420,7 +492,7 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
         
         hourly_counts = [0] * 24
         
-        # PIPELINE OPTIMIZATION
+        
         pipe = r.pipeline()
         for d in date_list:
             d_str = d.strftime("%Y%m%d")
@@ -433,10 +505,10 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
                     try: hourly_counts[int(h)] += int(float(c))
                     except: pass
         
-        # Use total counts (not average) - more meaningful for visualizing patterns
-        # hourly_counts already has the totals from last 30 days
+        
+        
 
-        # 2. Heatmap (Accumulated from hourly data)
+        
         heatmap_data = [[0 for _ in range(24)] for _ in range(7)]
         if hashes:
             for i, h_data in enumerate(hashes):
@@ -446,12 +518,12 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
                         try: heatmap_data[day_idx][int(h)] += int(float(c))
                         except: pass
         
-        # 3. Peak Analysis Calculation
+        
         peak_hour, peak_day, peak_msgs = "--", "--", "--"
         quiet_period = "--"
         
         if any(any(row) for row in heatmap_data):
-            # Flatten for peak calculations
+            
             hour_totals = [0] * 24
             day_totals = [0] * 7
             for w in range(7):
@@ -460,7 +532,7 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
                     hour_totals[h] += val
                     day_totals[w] += val
             
-            # Find Peaks
+            
             p_h_idx = hour_totals.index(max(hour_totals))
             peak_hour = f"{p_h_idx:02d}:00"
             
@@ -468,9 +540,9 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
             days_cz = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"]
             peak_day = days_cz[p_d_idx]
             
-            peak_msgs = max(day_totals) # Max daily messages
+            peak_msgs = max(day_totals) 
             
-            # Quietest 2-hour window
+            
             min_sum = float('inf')
             quiet_start = 0
             for h in range(23):
@@ -478,7 +550,7 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
                 if window_sum < min_sum:
                     min_sum = window_sum
                     quiet_start = h
-            # Check rollover 23-00
+            
             if (hour_totals[23] + hour_totals[0]) < min_sum:
                 quiet_start = 23
                 
@@ -490,13 +562,13 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
                  
         heatmap_max = max(max(row) for row in heatmap_data) if heatmap_data else 1
 
-        # 3. Message Lengths
-        # stats:msglen:GID (ZSET: bucket -> count)
+        
+        
         msg_len_raw = await r.zrange(f"stats:msglen:{guild_id}", 0, -1, withscores=True)
-        # buckets: 0, 5, 30, 75, 150, 250
+        
         buckets_map = {0: "0", 5: "1-10", 30: "11-50", 75: "51-100", 150: "101-200", 250: "201+"}
         
-        # Initialize
+        
         hist_data = {k: 0 for k in buckets_map.keys()}
         
         for buck_str, score in msg_len_raw:
@@ -513,23 +585,21 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
             "msglen_data": list(hist_data.values()),
             "heatmap_data": heatmap_data,
             "heatmap_max": heatmap_max,
-             "peak_analysis": {
-                "peak_hour": peak_hour,
-                "peak_day": peak_day,
-                "peak_messages": peak_msgs,
-                "quiet_period": quiet_period
-            },
-            "cumulative_msgs": [], # Deprecated or needs real calc
+            "peak_hour": peak_hour,
+            "peak_day": peak_day,
+            "peak_messages": peak_msgs,
+            "quiet_period": quiet_period,
+            "cumulative_msgs": [], 
             "is_estimated": False 
         }
         
-        # Save to cache
+        
         await r.setex(cache_key, 60, json.dumps(stats))
         return stats
         
     finally:
         pass
-    #     pass
+    
 
 async def get_summary_card_data(discord_dau=0, discord_mau=0, discord_wau=0, discord_users=0, guild_id: int = 615171377783242769):
     """
@@ -542,11 +612,11 @@ async def get_summary_card_data(discord_dau=0, discord_mau=0, discord_wau=0, dis
     real_msgs = 0
     
     try:
-        # 1. Get real Discord message count
+        
         total_msgs_str = await r.get(f"stats:total_msgs:{guild_id}")
         real_msgs = int(total_msgs_str) if total_msgs_str else 0
         
-        # 2. Get real TOTAL members from bot presence (most accurate)
+        
         bot_total_members = await r.get(f"presence:total:{guild_id}")
         if bot_total_members:
             real_total_users = int(bot_total_members)
@@ -555,7 +625,7 @@ async def get_summary_card_data(discord_dau=0, discord_mau=0, discord_wau=0, dis
         print(f"Error fetching Redis stats: {e}")
     finally:
         pass
-    #     pass
+    
     
     return {
         "discord": {
@@ -581,10 +651,10 @@ async def get_realtime_online_count(guild_id: int = 615171377783242769) -> int:
     Get REAL count of currently online members from Discord.
     Connects to bot data stored via bot presence updates.
     """
-    # Try to get from Redis cache (bot updates this periodically)
+    
     r = await get_redis()
     try:
-        # Check if bot stores online count in Redis
+        
         online_key = f"presence:online:{guild_id}"
         online_count = await r.get(online_key)
         if online_count:
@@ -593,9 +663,9 @@ async def get_realtime_online_count(guild_id: int = 615171377783242769) -> int:
         pass
     finally:
         pass
-    #     pass
     
-    # Fallback: return last DAU as approximation (not perfect but better than nothing)
+    
+    
     path = DATA_DIR / "active_users.json"
     if not path.exists(): return 0
     try:
@@ -618,7 +688,7 @@ async def save_user_guilds(user_id: str, guilds_data: List[Dict[str, Any]], expi
         print(f"Error saving guilds to Redis: {e}")
     finally:
         pass
-    #     pass
+    
 
 
 async def get_user_guilds(user_id: str) -> List[Dict[str, Any]]:
@@ -631,13 +701,13 @@ async def get_user_guilds(user_id: str) -> List[Dict[str, Any]]:
         data = await r.get(key)
         if data is not None:
             return json.loads(data)
-        return None # Cache miss
+        return None 
     except Exception as e:
         print(f"Error retrieving guilds from Redis: {e}")
         return []
     finally:
         pass
-    #     pass
+    
 async def get_bot_guilds() -> List[str]:
     """Retrieve list of guild IDs where bot is present."""
     r = await get_redis()
@@ -648,7 +718,7 @@ async def get_bot_guilds() -> List[str]:
         return []
     finally:
         pass
-    #     pass
+    
 
 async def get_cached_roles(guild_id: int) -> List[Dict[str, str]]:
     """Retrieve roles from Redis cache or fallback to Discord API."""
@@ -656,7 +726,7 @@ async def get_cached_roles(guild_id: int) -> List[Dict[str, str]]:
     try:
         role_map = await r.hgetall(f"guild:roles:{guild_id}")
         if not role_map:
-            # Fallback to API
+            
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
                     f"https://discord.com/api/v10/guilds/{guild_id}/roles",
@@ -670,20 +740,20 @@ async def get_cached_roles(guild_id: int) -> List[Dict[str, str]]:
                         role_map[rid] = rname
                         await r.hset(f"guild:roles:{guild_id}", rid, rname)
         
-        # Format for template
+        
         return [{"id": k, "name": v} for k, v in sorted(role_map.items(), key=lambda x: x[1])]
     except Exception as e:
         print(f"Error fetching cached roles: {e}")
         return []
     finally:
         pass
-    #     pass
+    
 
 async def get_trend_analysis(guild_id: int) -> Dict[str, Any]:
     """Calculate growth trends and predictions."""
     r = redis.from_url(REDIS_URL, decode_responses=True)
     try:
-        # Get DAU for last 30 days
+        
         now = datetime.now()
         dates_7d = [(now - timedelta(days=i)).strftime("%Y%m%d") for i in range(7)]
         dates_30d = [(now - timedelta(days=i)).strftime("%Y%m%d") for i in range(30)]
@@ -699,9 +769,9 @@ async def get_trend_analysis(guild_id: int) -> Dict[str, Any]:
         for k in dau_30d_keys:
             dau_30d_vals.append(await r.pfcount(k))
         
-        # Calculate trends (simple linear regression slope or % change)
-        # Using simple start vs end for now
-        # Avoid division by zero
+        
+        
+        
         start_7 = dau_7d_vals[-1] if dau_7d_vals else 0
         current_7 = dau_7d_vals[0] if dau_7d_vals else 0
         growth_7d = ((current_7 - start_7) / max(1, start_7)) * 100
@@ -712,7 +782,7 @@ async def get_trend_analysis(guild_id: int) -> Dict[str, Any]:
         
         avg_dau = sum(dau_30d_vals) / max(1, len(dau_30d_vals))
         
-        # Simple prediction: avg growth + current
+        
         prediction = int(avg_dau * (1 + (growth_30d / 100)))
         
         return {
@@ -731,7 +801,7 @@ async def get_engagement_score(guild_id: int, start_date: str = None, end_date: 
     """Calculate engagement score based on messages, voice, and retention."""
     r = await get_redis_client()
     try:
-        # Determine Date Range
+        
         if start_date and end_date:
             try:
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -746,7 +816,7 @@ async def get_engagement_score(guild_id: int, start_date: str = None, end_date: 
         days_diff = (end_dt - start_dt).days + 1
         if days_diff < 1: days_diff = 1
         
-        # 1. Message Activity (Participation)
+        
         tm_str = await r.get(f"stats:total_members:{guild_id}")
         total_members = int(tm_str) if tm_str else 100
         
@@ -759,16 +829,16 @@ async def get_engagement_score(guild_id: int, start_date: str = None, end_date: 
         
         avg_dau = dau_sum / days_diff
         
-        # Normalize: Target 25% participation (aligned with security score)
+        
         msg_participation_rate = (avg_dau / max(1, total_members))
         msg_score = min(100, (msg_participation_rate / 0.25) * 100)
         
-        # 2. Voice Activity (Real - Range Limited)
+        
         ts_start = start_dt.timestamp()
         ts_end = end_dt.replace(hour=23, minute=59, second=59).timestamp()
         
         total_voice_seconds = 0
-        # Scan voice events (optimized scan)
+        
         async for key in r.scan_iter(f"events:voice:{guild_id}:*"):
             events = await r.zrangebyscore(key, ts_start, ts_end)
             for evt_json in events:
@@ -777,13 +847,13 @@ async def get_engagement_score(guild_id: int, start_date: str = None, end_date: 
                     total_voice_seconds += data.get("duration", 0)
                 except: pass
         
-        # Norm: 30 mins per active user per day = 100 pts
+        
         hours_per_dau = (total_voice_seconds / days_diff / 3600) / max(1, avg_dau)
         voice_score = min(100, (hours_per_dau / 0.5) * 100)
         
-        # 3. Retention / Stickiness (DAU / MAU proxy)
-        # For a custom range, "MAU" is "Total Unique Users in Range".
-        # We can approximate this by merging HLLs for the range.
+        
+        
+        
         keys = []
         curr = start_dt
         while curr <= end_dt:
@@ -792,16 +862,16 @@ async def get_engagement_score(guild_id: int, start_date: str = None, end_date: 
         
         period_unique = 0
         if keys:
-             # PFCOUNT supports multiple keys => result is cardinality of union
-             # Filter logic to ensure keys exist to prevent redis errors if strict? 
-             # Redis handles non-existent keys in PFCOUNT as empty HLLs usually.
+             
+             
+             
              period_unique = await r.pfcount(*keys)
              
-        # Stickiness = Avg Daily / Period Unique
-        # If 10 users active total, and avg daily is 5 => 50% Stickiness.
+        
+        
         stickiness = (avg_dau / max(1, period_unique)) if period_unique > 0 else 0
         
-        # Target: 30% Stickiness (Good for communities)
+        
         retention_score = min(100, (stickiness / 0.30) * 100)
         
         overall_score = int((msg_score * 0.4) + (voice_score * 0.3) + (retention_score * 0.3))
@@ -829,7 +899,7 @@ def generate_security_insights(metrics: Dict[str, Any]):
     """
     insights = []
     
-    # Extract all metrics
+    
     mod_ratio = metrics.get("mod_ratio", 100)
     users_per_mod = metrics.get("users_per_mod", 100)
     mod_actions = metrics.get("mod_actions", 0)
@@ -860,9 +930,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
             "text": f"{icon} **{title}**: {detail}"
         })
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # 1. TÝM & MODERACE (👥)
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     if mod_ratio < 40:
         add("critical", "team", "Kritický stav", f"{users_per_mod:.0f} členů na moderátora! Urgentně naberte.")
@@ -884,9 +954,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
     elif mod_actions > 500:
         add("critical", "team", "Přetížení", f"{mod_actions} akcí! Možný systémový problém.")
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # 2. ZABEZPEČENÍ (🛡️)
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     if ver_level == 0:
         add("critical", "security", "Bez ověření", "Kdokoli může psát ihned po vstupu!")
@@ -907,9 +977,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
     elif explicit_filter == 2:
         add("success", "security", "Plný filtr", "Veškerý obsah je skenován.")
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # 3. AKTIVITA & ZAPOJENÍ (📈)
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     if participation_rate < 1:
         add("critical", "activity", "Mrtvý server", "Pod 1% aktivních. Potřeba reaktivace.")
@@ -936,9 +1006,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
     elif voice_hours >= 0.5:
         add("success", "activity", "Aktivní voice", f"Průměrně {voice_hours:.1f}h/den na uživatele.")
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # 4. RETENCE & ODCHODY (📉)
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     if churn_rate > 50:
         add("critical", "retention", "Masový exodus", f"{churn_rate:.0f}% odchodů! Kritické.")
@@ -960,9 +1030,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
     elif stickiness >= 40:
         add("success", "retention", "Návyková komunita", f"Stickiness {stickiness:.0f}%! Denně se vrací.")
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # 5. RŮST (🌱)
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     if growth_rate < -10:
         add("critical", "growth", "Úbytek členů", f"{growth_rate:.1f}% – server ztrácí lidi.")
@@ -975,9 +1045,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
     elif growth_rate >= 15:
         add("success", "growth", "Virální růst", f"+{growth_rate:.1f}%! Moderace stíhá?")
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # 6. KOMUNITA (🏠)
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     if avg_msg_length > 0 and avg_msg_length < 20:
         add("info", "community", "Krátké zprávy", f"Průměr {avg_msg_length:.0f} znaků – chat styl.")
@@ -994,9 +1064,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
     elif new_member_retention >= 70:
         add("success", "community", "Vítající komunita", f"{new_member_retention:.0f}% nováčků zůstává!")
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # 7. TIPY & DOPORUČENÍ (💡)
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     if total_members > 100 and participation_rate < 10 and voice_hours < 0.1:
         add("tip", "tips", "Event tip", "Zkuste voice event nebo AMA session pro oživení.")
@@ -1010,9 +1080,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
     if mod_actions > 200 and mod_ratio < 70:
         add("tip", "tips", "Automatizace tip", "Zvažte AutoMod pro odlehčení týmu.")
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # 8. OCENĚNÍ (🏆)
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     achievements = 0
     if overall_score >= 80: achievements += 1
@@ -1027,9 +1097,9 @@ def generate_security_insights(metrics: Dict[str, Any]):
     elif achievements >= 2:
         add("success", "achievement", "Na dobré cestě", f"Silní ve {achievements} oblastech.")
     
-    # ══════════════════════════════════════════════════════════════════════════
-    # FALLBACK
-    # ══════════════════════════════════════════════════════════════════════════
+    
+    
+    
     
     if not insights:
         if overall_score >= 90:
@@ -1039,11 +1109,11 @@ def generate_security_insights(metrics: Dict[str, Any]):
         else:
             add("info", "general", "Standardní úroveň", "Server funguje – prostor pro růst.")
     
-    # Sort by priority (critical first, then warning, info, success, tip)
+    
     priority_order = {"critical": 0, "warning": 1, "info": 2, "tip": 3, "success": 4}
     insights.sort(key=lambda x: priority_order.get(x["priority"], 5))
     
-    # Return just the text for backward compatibility, but structured
+    
     return [i["text"] for i in insights]
 
 
@@ -1057,18 +1127,18 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
     """
     r = await get_redis()
     try:
-        # ========== LOAD CONFIGURABLE SETTINGS ==========
-        # Weights
+        
+        
         weights = {"mod_ratio": 25, "security": 25, "engagement": 25, "moderation": 25}
         stored_weights = await r.hgetall("config:security_weights")
         if stored_weights:
             for k, v in stored_weights.items():
                 weights[k] = int(v)
         
-        # Ideals
+        
         ideals = {
             "mod_ratio_min": 50, "mod_ratio_max": 100,
-            "dau_percent": 25, # UPDATED: 25% target
+            "dau_percent": 25, 
             "mod_actions_min": 1, "mod_actions_max": 5,
             "verification_level": 2
         }
@@ -1077,7 +1147,7 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
             for k, v in stored_ideals.items():
                 ideals[k] = float(v) if '.' in str(v) else int(v)
         
-        # ========== 1. MODERATOR RATIO SCORE ==========
+        
         total_members_str = await r.get(f"presence:total:{guild_id}")
         if not total_members_str:
             total_members_str = await r.get(f"stats:total_members:{guild_id}")
@@ -1097,7 +1167,7 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
             over_ratio = (users_per_mod - ideal_max) / ideal_max
             mod_ratio_score = max(0, 100 - over_ratio * 100)
         
-        # ========== 2. SERVER SECURITY SETTINGS SCORE ==========
+        
         verification_level = int(await r.get(f"guild:verification_level:{guild_id}") or 2)
         verification_score = min(60, (verification_level / max(1, ideals["verification_level"])) * 60)
         explicit_score = (int(await r.get(f"guild:explicit_filter:{guild_id}") or 1) / 2) * 20
@@ -1105,11 +1175,11 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
         
         security_settings_score = min(100, verification_score + explicit_score + mfa_score)
         
-        # ========== 3. USER ENGAGEMENT SCORE (LAST X DAYS) ==========
+        
         now = datetime.now()
         start_ts = (now - timedelta(days=days)).timestamp()
         
-        # 3a. Avg DAU (Last X Days)
+        
         dau_sum = 0
         for i in range(days):
             d_str = (now - timedelta(days=i)).strftime("%Y%m%d")
@@ -1119,16 +1189,16 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
         participation_rate = (avg_dau / max(1, total_members)) * 100
         participation_score = min(40, (participation_rate / ideals["dau_percent"]) * 40)
         
-        # 3b. Reply Ratio & Voice (Last X Days from EVENTS)
-        # We need to scan event keys. This might be heavy for large servers, 
-        # but for <10k members it's okay.
         
-        # Scan Message Events
+        
+        
+        
+        
         total_msgs = 0
         total_replies = 0
         async for key in r.scan_iter(f"events:msg:{guild_id}:*"):
-            # key: events:msg:{gid}:{uid} (ZSET)
-            # Fetch range by score (timestamp)
+            
+            
             events = await r.zrangebyscore(key, start_ts, "+inf")
             for evt_json in events:
                 try:
@@ -1138,9 +1208,9 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
                 except: pass
         
         measured_reply_ratio = (total_replies / max(1, total_msgs)) * 100
-        reply_score = min(30, (measured_reply_ratio / 20) * 30) # Target ~20% replies
+        reply_score = min(30, (measured_reply_ratio / 20) * 30) 
         
-        # Scan Voice Events
+        
         total_voice_seconds = 0
         async for key in r.scan_iter(f"events:voice:{guild_id}:*"):
             events = await r.zrangebyscore(key, start_ts, "+inf")
@@ -1150,17 +1220,17 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
                     total_voice_seconds += data.get("duration", 0)
                 except: pass
                 
-        # Target: 10 mins per active user per day?
-        # daily_voice_per_user = (total_voice_seconds / days) / max(1, avg_dau)
-        # Let's say target is 30 mins (1800s) = 30 pts
+        
+        
+        
         hours_per_dau = (total_voice_seconds / days / 3600) / max(1, avg_dau)
-        # Target: 0.5 hours/day/user
+        
         voice_score = min(30, (hours_per_dau / 0.5) * 30)
 
         engagement_score = int(participation_score + reply_score + voice_score)
         
-        # ========== 4. MODERATION HEALTH SCORE ==========
-        # Using 30d stat is fine for health check
+        
+        
         mod_actions = int(await r.get(f"stats:mod_actions_30d:{guild_id}") or (total_members // 50))
         
         actions_per_100_users = (mod_actions / max(1, total_members)) * 100
@@ -1170,16 +1240,16 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
         if ideal_actions_min <= actions_per_100_users <= ideal_actions_max:
             moderation_score = 100
         elif actions_per_100_users < ideal_actions_min:
-            # Very few actions - neutral
+            
             moderation_score = 50
         elif actions_per_100_users <= ideal_actions_max * 2:
-            # Active moderation - still acceptable
+            
             moderation_score = 80
         else:
-            # Very high - server might have problems
+            
             moderation_score = max(20, 80 - (actions_per_100_users - ideal_actions_max * 2) * 5)
         
-        # ========== CALCULATE OVERALL SCORE ==========
+        
         overall_score = int(
             (mod_ratio_score * weights["mod_ratio"] / 100) +
             (security_settings_score * weights["security"] / 100) +
@@ -1187,7 +1257,7 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
             (moderation_score * weights["moderation"] / 100)
         )
         
-        # Determine rating text
+        
         if overall_score >= 80:
             rating = "Vynikající"
             rating_color = "#10B981"
@@ -1201,19 +1271,19 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
             rating = "Nízký"
             rating_color = "#EF4444"
 
-        # ========== 5. ADDITIONAL METRICS FOR INSIGHTS ==========
+        
 
-        # Churn Rate (Approx from current month)
+        
         curr_month = now.strftime("%Y-%m")
         month_leaves = int(await r.hget(f"stats:leaves:{guild_id}", curr_month) or 0)
         month_joins = int(await r.hget(f"stats:joins:{guild_id}", curr_month) or 0)
         churn_rate = (month_leaves / max(1, total_members)) * 100
         
-        # Growth Rate (net growth as % of total)
+        
         net_growth = month_joins - month_leaves
         growth_rate = (net_growth / max(1, total_members)) * 100
         
-        # Stickiness (DAU/MAU)
+        
         mau_keys = [f"hll:dau:{guild_id}:{(now - timedelta(days=j)).strftime('%Y%m%d')}" for j in range(30)]
         mau = await r.pfcount(*mau_keys)
         stickiness = (avg_dau / max(1, mau)) * 100 if mau > 0 else 0
@@ -1221,7 +1291,7 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
         explicit_filter = int(await r.get(f"guild:explicit_filter:{guild_id}") or 1)
         mfa_level = int(await r.get(f"guild:mfa_level:{guild_id}") or 0)
         
-        # Average message length (from deep stats if available)
+        
         avg_msg_length = 0
         try:
             msg_len_data = await r.get(f"stats:avg_msg_length:{guild_id}")
@@ -1229,21 +1299,21 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
         except:
             pass
         
-        # Weekend vs Weekday ratio
+        
         weekend_ratio = 1.0
         try:
             weekend_msgs = 0
             weekday_msgs = 0
-            for i in range(14):  # Last 2 weeks
+            for i in range(14):  
                 d = now - timedelta(days=i)
                 d_str = d.strftime("%Y%m%d")
                 h_data = await r.hgetall(f"stats:hourly:{guild_id}:{d_str}")
                 day_sum = sum(int(float(v)) for v in h_data.values()) if h_data else 0
-                if d.weekday() >= 5:  # Weekend
+                if d.weekday() >= 5:  
                     weekend_msgs += day_sum
                 else:
                     weekday_msgs += day_sum
-            # Normalize per day (4 weekend days, 10 weekday days in 2 weeks)
+            
             weekend_avg = weekend_msgs / 4 if weekend_msgs else 1
             weekday_avg = weekday_msgs / 10 if weekday_msgs else 1
             weekend_ratio = weekend_avg / max(1, weekday_avg)
@@ -1263,7 +1333,7 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
             "voice_hours_per_dau": hours_per_dau,
             "churn_rate": churn_rate,
             "stickiness": stickiness,
-            # New metrics for expanded insights
+            
             "total_members": total_members,
             "avg_dau": avg_dau,
             "growth_rate": growth_rate,
@@ -1272,7 +1342,7 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
             "weekend_ratio": weekend_ratio
         }
 
-        # ========== JSON RETURN ==========
+        
         return {
             "overall_score": overall_score,
             "rating": rating,
@@ -1330,44 +1400,44 @@ async def get_insights(guild_id: int) -> List[Dict[str, str]]:
         trends = await get_trend_analysis(guild_id)
         score = await get_engagement_score(guild_id)
         
-        # Growth
+        
         if trends["growth_7d"] > 5:
             insights.append({"type": "positive", "text": "🚀 Silný týdenní růst! Počet aktivních uživatelů stoupá."})
         elif trends["growth_7d"] < -5:
             insights.append({"type": "negative", "text": "📉 Pozor, týdenní aktivita klesá. Zkuste uspořádat event."})
             
-        # Retention
+        
         if score["retention"] > 60:
             insights.append({"type": "positive", "text": "💎 Vysoká retence! Uživatelé se rádi vrací."})
         elif score["retention"] < 20:
              insights.append({"type": "negative", "text": "⚠️ Nízká retence. Zaměřte se na udržení nových členů."})
 
-        # Voice
+        
         if score["voice_activity"] > 50:
             insights.append({"type": "positive", "text": "🗣️ Komunita je velmi upovídaná v hlasových kanálech!"})
         elif score["voice_activity"] < 10 and score["msg_activity"] > 50:
             insights.append({"type": "neutral", "text": "💬 Lidé píší, ale málo mluví. Zkuste vytvořit 'Chill' voice room."})
             
-        # Commands
+        
         cmd_stats = await get_command_stats(guild_id, limit=1)
         if cmd_stats:
             top_cmd = cmd_stats[0]
             insights.append({"type": "neutral", "text": f"🤖 Nejoblíbenější příkaz je '/{top_cmd['name']}' ({top_cmd['count']}x)."})
 
-        # Traffic
+        
         traffic = await load_member_stats(guild_id)
-        # Sum last ~30 days (1 month usually)
+        
         if traffic and "joins" in traffic and traffic["joins"]:
              last_month_joins = traffic["joins"][-1] if len(traffic["joins"]) > 0 else 0
              last_month_leaves = traffic["leaves"][-1] if len(traffic["leaves"]) > 0 else 0
              if last_month_joins > last_month_leaves * 2:
                  insights.append({"type": "positive", "text": "📈 Skvělý nábor! Přichází 2x více lidí než odchází."})
 
-        # Prediction
+        
         if trends["prediction"] > trends["avg_dau"] * 1.1:
              insights.append({"type": "neutral", "text": f"🔮 Očekáváme růst na cca {trends['prediction']} denních uživatelů."})
              
-        # Default if empty
+        
         if not insights:
             insights.append({"type": "neutral", "text": "Zatím nemám dost dat pro generování specifických postřehů."})
             
@@ -1379,34 +1449,34 @@ async def get_insights(guild_id: int) -> List[Dict[str, str]]:
 
 async def get_time_comparisons(guild_id: int, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
     """Calculate WoW and MoM DAU changes relative to end_date."""
-    # We want 60 days back from end_date
+    
     if end_date:
         e_dt = datetime.strptime(end_date, "%Y-%m-%d")
     else:
         e_dt = datetime.now()
     
-    # Fetch 60 days
+    
     activity_stats = await get_activity_stats(guild_id, end_date=e_dt.strftime("%Y-%m-%d"), days=60)
     dau_data = activity_stats.get("dau_data", [])
     
-    # WoW
+    
     if len(dau_data) >= 14:
         this_week = sum(dau_data[-7:]) / 7
         last_week = sum(dau_data[-14:-7]) / 7
         wow_change = ((this_week - last_week) / max(1, last_week)) * 100
     else:
-        # Fallback for insufficient data
+        
         this_week = sum(dau_data) / len(dau_data) if dau_data else 0
         last_week = 0
         wow_change = 0 
         
-    # MoM
+    
     if len(dau_data) >= 60:
         this_month = sum(dau_data[-30:]) / 30
         last_month = sum(dau_data[-60:-30]) / 30
         mom_change = ((this_month - last_month) / max(1, last_month)) * 100
     else:
-        # Fallback for insufficient data
+        
         this_month = sum(dau_data) / len(dau_data) if dau_data else 0
         last_month = 0
         mom_change = 0
@@ -1426,7 +1496,7 @@ async def get_time_comparisons(guild_id: int, start_date: str = None, end_date: 
 
 async def get_voice_leaderboard(guild_id: int, limit: int = 10, start_date: str = None, end_date: str = None, role_id: str = "all") -> List[Dict[str, Any]]:
     """Fetch top users by voice duration - currently all-time fallback."""
-    # TODO: Implement date-stamped voice keys if tracked daily
+    
     r = await get_redis()
     try:
         data = await r.zrevrange(f"stats:voice_duration:{guild_id}", 0, limit - 1, withscores=True)
@@ -1458,24 +1528,24 @@ async def get_leaderboard_data(guild_id: int, limit: int = 15, start_date: str =
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
             end_dt = datetime.strptime(end_date, "%Y-%m-%d")
             
-            # If range is huge (> 365 days), use all-time as fallback
+            
             if (end_dt - start_dt).days > 365:
                 top_users = await r.zrevrange(f"leaderboard:messages:{guild_id}", 0, limit - 1, withscores=True)
             else:
-                # Aggregate daily ZSETs
+                
                 daily_keys = []
                 curr = start_dt
                 while curr <= end_dt:
                     daily_keys.append(f"stats:user_daily:{guild_id}:{curr.strftime('%Y%m%d')}")
                     curr += timedelta(days=1)
                 
-                # Filter only existing keys
+                
                 existing_keys = []
                 for k in daily_keys:
                     if await r.exists(k): existing_keys.append(k)
                 
                 if not existing_keys:
-                    # If no daily data, maybe it's all-time or just empty
+                    
                     top_users = await r.zrevrange(f"leaderboard:messages:{guild_id}", 0, limit - 1, withscores=True)
                 else:
                     temp_key = f"tmp:leaderboard:{guild_id}:{start_date}:{end_date}"
@@ -1496,7 +1566,7 @@ async def get_leaderboard_data(guild_id: int, limit: int = 15, start_date: str =
             
             leaderboard.append({
                 "user_id": uid, "name": name,
-                "avatar": user_info.get("avatar"), # Add avatar
+                "avatar": user_info.get("avatar"), 
                 "total_messages": int(msg_count),
                 "avg_message_length": round(avg_len, 1)
             })
@@ -1509,7 +1579,7 @@ async def get_channel_distribution(guild_id: int, start_date: str = None, end_da
     """Fetch message distribution by channel, optionally filtered by date/days."""
     r = await get_redis()
     try:
-        # Determine range
+        
         if not start_date:
             end_dt = datetime.now()
             start_dt = end_dt - timedelta(days=days-1)
@@ -1523,7 +1593,7 @@ async def get_channel_distribution(guild_id: int, start_date: str = None, end_da
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(end_date, "%Y-%m-%d") if end_date != datetime.now().strftime("%Y-%m-%d") else datetime.now()
         
-        # If range is huge (> 365 days), use all-time as fallback/baseline
+        
         if (end_dt - start_dt).days > 365:
             data = await r.zrevrange(f"stats:channel_total:{guild_id}", 0, 14, withscores=True)
             return [{"channel_id": cid, "count": int(score)} for cid, score in data]
@@ -1540,13 +1610,13 @@ async def get_channel_distribution(guild_id: int, start_date: str = None, end_da
                 pipe.get(f"stats:channel:{guild_id}:{cid_str}:{d_str}")
             curr -= timedelta(days=1)
             day_count += 1
-            if day_count > 365: break # Cap for performance
+            if day_count > 365: break 
 
         responses = await pipe.execute()
         channel_counts = Counter()
         num_channels = len(all_channels)
         
-        # Process responses
+        
         for d_idx in range(day_count):
             for c_idx in range(num_channels):
                 val = responses[d_idx * num_channels + c_idx]
@@ -1558,9 +1628,9 @@ async def get_channel_distribution(guild_id: int, start_date: str = None, end_da
                         pass
         
         if not channel_counts:
-            # Fallback to all-time if no daily data found for range (Long-term data)
+            
             data = await r.zrevrange(f"stats:channel_total:{guild_id}", 0, 14, withscores=True)
-            if not data: return [] # Completely empty
+            if not data: return [] 
             return [{"channel_id": cid, "count": int(score)} for cid, score in data]
             
         return [{"channel_id": cid, "count": count} for cid, count in channel_counts.most_common(15)]
@@ -1574,13 +1644,13 @@ async def get_dashboard_team(guild_id: int) -> List[Dict[str, Any]]:
     """
     r = await get_redis()
     try:
-        # Get set of user IDs
+        
         user_ids = await r.smembers(f"dashboard:team:{guild_id}")
         team = []
         
         for uid in user_ids:
             perms = await r.smembers(f"dashboard:perms:{guild_id}:{uid}")
-            # Try to get user info if cached
+            
             user_info = await r.hgetall(f"user:info:{uid}") or {}
             
             team.append({
@@ -1601,28 +1671,28 @@ async def get_dashboard_permissions(guild_id: int, user_id: str, discord_role: s
     """
     Get effective permissions for a user on a guild.
     """
-    # 1. Global Admin always has access
-    # (assuming we check global admin before calling this or inside)
+    
+    
     if discord_role == "admin": 
         return ["*"]
 
-    # 2. Check guild-specific access source
+    
     from .utils import get_user_guilds
     user_guilds = await get_user_guilds(user_id)
     
     guild_info = next((g for g in user_guilds if str(g["id"]) == str(guild_id)), None)
     
     if not guild_info:
-        # User has no access to this guild at all
+        
         return []
 
-    # 3. Check for Super Admin Access
-    # Only Discord Administrators (0x8) get automatic full access.
-    # Discord Moderators (0x20) are treated as guests unless added to Team.
+    
+    
+    
     if guild_info.get("is_admin"):
         return ["*"]
 
-    # 4. Check Redis Permissions (Team Access)
+    
     r = await get_redis()
     try:
         perms = await r.smembers(f"dashboard:perms:{guild_id}:{user_id}")
@@ -1636,16 +1706,16 @@ async def add_dashboard_user(guild_id: int, user_id: str, user_data: Dict[str, s
     """
     r = await get_redis()
     try:
-        # Add to team set
+        
         await r.sadd(f"dashboard:team:{guild_id}", user_id)
         
-        # Save permissions (replace existing)
+        
         perm_key = f"dashboard:perms:{guild_id}:{user_id}"
         await r.delete(perm_key)
         if permissions:
             await r.sadd(perm_key, *permissions)
             
-        # Cache basic user info
+        
         if user_data:
              await r.hset(f"user:info:{user_id}", mapping=user_data)
              
@@ -1671,10 +1741,10 @@ async def remove_dashboard_user(guild_id: int, user_id: str):
     finally:
         pass
 
-# --- HELPER: Action Weights ---
+
 async def get_action_weights(r: redis.Redis) -> dict:
     """Fetch action weights from Redis or use defaults."""
-    # Defaults
+    
     defaults = {
         "bans": 300, "kicks": 180, "timeouts": 180, "unbans": 120, 
         "verifications": 120, "msg_deleted": 60, "role_updates": 30,
@@ -1685,7 +1755,7 @@ async def get_action_weights(r: redis.Redis) -> dict:
     try:
         stored = await r.hgetall("config:action_weights")
         if stored:
-            # Merge stored values (convert to int)
+            
             for k, v in stored.items():
                 if k in defaults:
                     defaults[k] = int(v)
@@ -1706,45 +1776,45 @@ async def get_daily_stats(r: redis.Redis, gid: int, uid: int, day: datetime.date
     day_str = day.strftime("%Y-%m-%d")
     cache_key = f"stats:day:{day_str}:{gid}:{uid}"
     
-    # Check cache version
+    
     cached_version = await r.hget(cache_key, "_version")
     current_version = await r.get("config:weights_version") or "0"
     
     if cached_version == current_version:
-        # Cache hit!
+        
         stats = await r.hgetall(cache_key)
-        # Convert strings to floats/ints
+        
         return {k: float(v) if k != "_version" else v for k, v in stats.items()}
     
-    # Cache miss -> recalculate from raw events
+    
     weights = await get_action_weights(r)
     
-    # Timestamp range for this day
+    
     from datetime import time as dt_time
     day_start = dt.combine(day, dt_time(0, 0, 0)).timestamp()
     day_end = dt.combine(day, dt_time(23, 59, 59)).timestamp()
     
     stats = defaultdict(float)
     
-    # 1. Messages
+    
     msg_key = f"events:msg:{gid}:{uid}"
     messages = await r.zrangebyscore(msg_key, day_start, day_end, withscores=True)
     
     last_msg_ts = 0
     raw_chat_time = 0
-    SESSION_GAP = 300 # 5 minutes to trigger new session base
+    SESSION_GAP = 300 
     
     for msg_json, score in messages:
         msg_data = json.loads(msg_json)
         msg_ts = float(score)
         
-        # Session Base
+        
         if last_msg_ts == 0 or (msg_ts - last_msg_ts) > SESSION_GAP:
             raw_chat_time += weights.get("session_base", 180)
         
         last_msg_ts = msg_ts
         
-        # Components
+        
         raw_chat_time += msg_data.get("len", 0) * weights.get("char_weight", 1)
         raw_chat_time += weights.get("msg_weight", 0)
         if msg_data.get("reply"):
@@ -1753,7 +1823,7 @@ async def get_daily_stats(r: redis.Redis, gid: int, uid: int, day: datetime.date
     stats["messages"] += len(messages)
     stats["chat_time"] = raw_chat_time * weights.get("chat_time", 1)
     
-    # 2. Voice
+    
     voice_key = f"events:voice:{gid}:{uid}"
     voice_sessions = await r.zrangebyscore(voice_key, day_start, day_end)
     
@@ -1761,7 +1831,7 @@ async def get_daily_stats(r: redis.Redis, gid: int, uid: int, day: datetime.date
         vs_data = json.loads(vs_json)
         stats["voice_time"] += vs_data["duration"] * weights.get("voice_time", 1)
     
-    # 3. Actions
+    
     action_key = f"events:action:{gid}:{uid}"
     actions = await r.zrangebyscore(action_key, day_start, day_end)
     
@@ -1769,7 +1839,7 @@ async def get_daily_stats(r: redis.Redis, gid: int, uid: int, day: datetime.date
         action_data = json.loads(action_json)
         action_type = action_data["type"]
         
-        # Map back to old metric names for compatibility
+        
         metric_map = {
             "ban": "bans", "kick": "kicks", "timeout": "timeouts",
             "unban": "unbans", "role_update": "role_updates",
@@ -1779,7 +1849,7 @@ async def get_daily_stats(r: redis.Redis, gid: int, uid: int, day: datetime.date
         metric = metric_map.get(action_type, action_type + "s")
         stats[metric] += 1
     
-    # Store in cache with version
+    
     cache_data = dict(stats)
     cache_data["_version"] = current_version
     await r.hset(cache_key, mapping={k: str(v) for k, v in cache_data.items()})

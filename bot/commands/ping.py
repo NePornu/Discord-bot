@@ -1,5 +1,5 @@
-# commands/ping.py
-# -*- coding: utf-8 -*-
+
+
 from __future__ import annotations
 
 import random
@@ -60,7 +60,7 @@ class Ping(commands.Cog):
         """Hybridní ping příkaz (prefix + slash) s citáty."""
         is_slash = ctx.interaction is not None
 
-        # Měření odezvy
+        
         start_send = time.perf_counter()
         msg = await ctx.send("⏱️ Měřím odezvu…", ephemeral=hide) if is_slash else await ctx.send("⏱️ Měřím odezvu…")
         send_ms = (time.perf_counter() - start_send) * 1000

@@ -19,7 +19,7 @@ async def inspect_events():
     for k in keys:
         uid = k.split(":")[-1]
         print(f"\nUser {uid} ({k}):")
-        # Get first few items
+        
         items = await r.zrange(k, 0, 4, withscores=True)
         for val, score in items:
             print(f"  [{score}] {val}")

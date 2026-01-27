@@ -1,6 +1,6 @@
-// Ultimate Chart.js Configuration - Premium Charts with Gradients
 
-// Create gradient for chart
+
+
 function createGradient(ctx, color1, color2) {
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
     gradient.addColorStop(0, color1);
@@ -8,12 +8,12 @@ function createGradient(ctx, color1, color2) {
     return gradient;
 }
 
-// Premium Chart Defaults
+
 Chart.defaults.color = '#a1a1aa';
 Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
 Chart.defaults.font.family = 'Inter, sans-serif';
 
-// Common chart options with premium styling
+
 const premiumChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -80,12 +80,12 @@ const premiumChartOptions = {
     }
 };
 
-// Create line chart with gradient
+
 function createLineChart(canvasId, labels, data, label, color1 = '#8b5cf6', color2 = '#ec4899') {
     const ctx = document.getElementById(canvasId).getContext('2d');
     const gradient = createGradient(ctx, color1, color2);
 
-    // Fallback for empty data
+
     if (!data || data.length === 0 || data.every(v => v === 0)) {
         ctx.font = '14px Inter';
         ctx.fillStyle = '#71717a';
@@ -117,7 +117,7 @@ function createLineChart(canvasId, labels, data, label, color1 = '#8b5cf6', colo
     });
 }
 
-// Create bar chart with gradient
+
 function createBarChart(canvasId, labels, data, label, color1 = '#8b5cf6', color2 = '#ec4899') {
     const ctx = document.getElementById(canvasId).getContext('2d');
     const gradient = createGradient(ctx, color1, color2);
@@ -146,11 +146,11 @@ function createBarChart(canvasId, labels, data, label, color1 = '#8b5cf6', color
     });
 }
 
-// Create doughnut chart
+
 function createDoughnutChart(canvasId, labels, data, label) {
     const ctx = document.getElementById(canvasId).getContext('2d');
 
-    // Generate colors
+
     const colors = [
         '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6',
         '#6366f1', '#e11d48', '#84cc16', '#06b6d4', '#d946ef'
@@ -193,7 +193,7 @@ function createDoughnutChart(canvasId, labels, data, label) {
     });
 }
 
-// Create multi-dataset chart
+
 function createMultiChart(canvasId, labels, datasets) {
     const ctx = document.getElementById(canvasId).getContext('2d');
 
@@ -237,7 +237,7 @@ function createMultiChart(canvasId, labels, datasets) {
     });
 }
 
-// Animated counter
+
 function animateValue(element, start, end, duration) {
     const range = end - start;
     const increment = range / (duration / 16);
@@ -253,19 +253,19 @@ function animateValue(element, start, end, duration) {
     }, 16);
 }
 
-// Show loading skeleton
+
 function showSkeleton(container) {
     container.innerHTML = '<div class="skeleton" style="height: 100%; border-radius: 12px;"></div>';
 }
 
-// Format number with suffix
+
 function formatNumber(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();
 }
 
-// Export utilities
+
 window.ChartUtils = {
     createGradient,
     createLineChart,

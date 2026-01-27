@@ -8,9 +8,9 @@ def clean_file(path):
     i = 0
     while i < len(lines):
         line = lines[i]
-        # Match "finally:" with optional whitespace and maybe a comment on same line
+        
         if re.match(r"^\s*finally:\s*(#.*)?$", line):
-            # Check next non-empty lines for content
+            
             found_content = False
             for j in range(i + 1, min(i + 5, len(lines))):
                 next_line = lines[j].strip()
@@ -19,14 +19,14 @@ def clean_file(path):
                     break
             
             if not found_content:
-                # Add pass if empty finally
+                
                 indent = re.match(r"^(\s*)", line).group(1)
                 new_lines.append(line)
                 new_lines.append(f"{indent}    pass\n")
                 i += 1
-                # Skip the # await r.close() line if it follows
+                
                 while i < len(lines) and (not lines[i].strip() or lines[i].strip().startswith("# await r.close()")):
-                    new_lines.append(lines[i]) # Keep comments but we added pass
+                    new_lines.append(lines[i]) 
                     i += 1
                 continue
         

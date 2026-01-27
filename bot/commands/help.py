@@ -5,7 +5,7 @@ from typing import List, Optional
 TITLE = "📘 Přehled příkazů a modulů"
 FOOTER = "Nepornu Bot – Help System"
 
-# ---- Obsah stránek (1 embed = 1 modul) ----
+
 PAGE_DATA = [
     {
         "name": "⚙️ Core (bot.py)",
@@ -107,7 +107,7 @@ PAGE_DATA = [
     },
 ]
 
-# ---------------- Paginator View ----------------
+
 class HelpPaginator(discord.ui.View):
     def __init__(self, author: discord.abc.User, pages: List[discord.Embed], start_index: int = 0, timeout: float = 180.0):
         super().__init__(timeout=timeout)
@@ -120,7 +120,7 @@ class HelpPaginator(discord.ui.View):
             discord.SelectOption(label=self._clean_label(embed.title), value=str(i))
             for i, embed in enumerate(self.pages)
         ]
-        self.select_menu.options = options  # type: ignore
+        self.select_menu.options = options  
 
         self._refresh_button_states()
 
@@ -134,21 +134,21 @@ class HelpPaginator(discord.ui.View):
         await interaction.response.edit_message(embed=self.pages[self.index], view=self)
 
     def _refresh_button_states(self):
-        self.prev_button.disabled = (self.index <= 0)  # type: ignore
-        self.next_button.disabled = (self.index >= len(self.pages) - 1)  # type: ignore
+        self.prev_button.disabled = (self.index <= 0)  
+        self.next_button.disabled = (self.index >= len(self.pages) - 1)  
 
     @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
-    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):  # type: ignore
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):  
         self.index = max(0, self.index - 1)
         await self._update(interaction)
 
     @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
-    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):  # type: ignore
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):  
         self.index = min(len(self.pages) - 1, self.index + 1)
         await self._update(interaction)
 
     @discord.ui.button(label="✖ Close", style=discord.ButtonStyle.danger)
-    async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):  # type: ignore
+    async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):  
         if interaction.user.id != self.author.id:
             return await interaction.response.send_message("Zavřít může jen autor nápovědy.", ephemeral=True)
         for child in self.children:
@@ -157,7 +157,7 @@ class HelpPaginator(discord.ui.View):
         self.stop()
 
     @discord.ui.select(placeholder="Přejít na modul…")
-    async def select_menu(self, interaction: discord.Interaction, select: discord.ui.Select):  # type: ignore
+    async def select_menu(self, interaction: discord.Interaction, select: discord.ui.Select):  
         try:
             target = int(select.values[0])
         except Exception:
@@ -174,7 +174,7 @@ class HelpPaginator(discord.ui.View):
             except discord.HTTPException:
                 pass
 
-# ---------------- Cog ----------------
+
 class HelpCustom(commands.Cog):
     """Zobrazí stránkovaný přehled modulů a příkazů."""
 
@@ -224,7 +224,7 @@ class HelpCustom(commands.Cog):
             view.message = msg
 
 async def setup(bot: commands.Bot):
-    # safety: kdyby defaultní help ještě existoval, odstraň
+    
     if "help" in bot.all_commands:
         bot.remove_command("help")
     await bot.add_cog(HelpCustom(bot))

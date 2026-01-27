@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Discord Analytics</title>
+    <title>Metricord</title>
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet">
@@ -141,6 +141,48 @@
         .nav-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+        }
+
+        /* Mobile Menu */
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 1001;
+        }
+
+        .mobile-nav-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: rgba(9, 9, 11, 0.95);
+            backdrop-filter: blur(20px);
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 32px;
+            opacity: 0;
+            pointer-events: none;
+            transition: 0.3s;
+        }
+
+        .mobile-nav-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .mobile-nav-link {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            text-decoration: none;
         }
 
         /* --- Hero Section --- */
@@ -406,11 +448,12 @@
             background: #333;
         }
 
-        /* --- CTA Section --- */
         .cta-section {
             text-align: center;
-            padding: 100px 20px;
-            background: radial-gradient(circle at center, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+            padding: 120px 20px;
+            background: linear-gradient(180deg, var(--bg-dark) 0%, rgba(139, 92, 246, 0.05) 50%, var(--bg-dark) 100%);
+            border-top: 1px solid var(--glass-border);
+            border-bottom: 1px solid var(--glass-border);
         }
 
         .cta-content {
@@ -542,6 +585,10 @@
                 display: none;
             }
 
+            .mobile-menu-btn {
+                display: block;
+            }
+
             .stats-strip {
                 flex-direction: column;
                 gap: 30px;
@@ -560,20 +607,49 @@
     <nav class="navbar">
         <a href="/" class="logo">
             <i class="fa-brands fa-discord" style="color: #5865F2;"></i>
-            Ultimate<span>Analytics</span>
+            Metricord
         </a>
         <div class="nav-links">
+            <a href="/about" class="nav-item">O nás</a>
+            <a href="/support#faq" class="nav-item">FAQ</a>
             <a href="/features" class="nav-item">Funkce</a>
-            <a href="/changelog" class="nav-item">Novinky</a>
-            <a href="/support" class="nav-item">Podpora</a>
-            <a href="/privacy" class="nav-item">Ochrana dat</a>
-            <a href="/terms" class="nav-item">Podmínky</a>
+            <a href="/docs" class="nav-item">Dokumentace</a>
             <a href="/login" class="nav-btn">
                 <i class="fa-brands fa-discord" style="margin-right:8px;"></i> Přihlásit se
             </a>
         </div>
-        <!-- Mobile menu toggle would go here -->
+        <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+            <i class="fa-solid fa-bars"></i>
+        </button>
     </nav>
+
+    <div class="mobile-nav-overlay" id="mobileNav">
+        <a href="/about" class="mobile-nav-link">O nás</a>
+        <a href="/support#faq" class="mobile-nav-link">FAQ</a>
+        <a href="/features" class="mobile-nav-link">Funkce</a>
+        <a href="/docs" class="mobile-nav-link">Dokumentace</a>
+        <a href="/login" class="nav-btn" style="font-size: 1.2rem; padding: 12px 32px;">
+            <i class="fa-brands fa-discord" style="margin-right:8px;"></i> Přihlásit se
+        </a>
+    </div>
+
+    <script>
+        function toggleMobileMenu() {
+            const nav = document.getElementById('mobileNav');
+            const btn = document.querySelector('.mobile-menu-btn i');
+            nav.classList.toggle('active');
+
+            if (nav.classList.contains('active')) {
+                btn.classList.remove('fa-bars');
+                btn.classList.add('fa-times');
+                document.body.style.overflow = 'hidden';
+            } else {
+                btn.classList.add('fa-bars');
+                btn.classList.remove('fa-times');
+                document.body.style.overflow = '';
+            }
+        }
+    </script>
 
     <div class="hero">
         <h1>Kompletní analýza<br><span>Vaší Komunity</span></h1>
@@ -591,13 +667,13 @@
 
         <div class="dashboard-preview">
             <div class="preview-card">
-                <!-- Real Dashboard Screenshot -->
-                <img src="/static/img/dashboard_preview.png" alt="Dashboard Preview" class="preview-img">
+
+                <img src="/static/img/dashboard_2026_v1.png" alt="Metricord Preview" class="preview-img">
             </div>
         </div>
     </div>
 
-    <!-- Stats Strip -->
+
     <div class="stats-strip" id="stats">
         <div class="stat-item">
             <div class="stat-number">{{ stats.messages|default('1.2M') }}</div>
@@ -605,7 +681,7 @@
         </div>
         <div class="stat-item">
             <div class="stat-number">{{ stats.users|default('15K+') }}</div>
-            <div class="stat-label">Aktivních Uživatelů</div>
+            <div class="stat-label">Analyzováno Uživatelů</div>
         </div>
         <div class="stat-item">
             <div class="stat-number">99.9%</div>
@@ -613,7 +689,7 @@
         </div>
     </div>
 
-    <!-- Features -->
+
     <div class="section-title" id="features">
         <h2>Vše co potřebujete</h2>
         <p>Postaveno pro komunitní manažery a majitele serverů.</p>
@@ -652,7 +728,7 @@
         </div>
     </div>
 
-    <!-- Testimonials -->
+
     <div class="section-title">
         <h2>Co říkají uživatelé</h2>
         <p>Důvěřují nám stovky komunit.</p>
@@ -700,7 +776,7 @@
         </div>
     </div>
 
-    <!-- CTA Section -->
+
     <div class="cta-section">
         <div class="cta-content">
             <h2>Připraveni začít?</h2>
@@ -718,15 +794,14 @@
             <div class="footer-brand">
                 <a href="/" class="logo" style="margin-bottom: 16px;">
                     <i class="fa-brands fa-discord" style="color: #5865F2;"></i>
-                    Ultimate<span>Analytics</span>
+                    Metricord
                 </a>
                 <p style="color: var(--text-muted); line-height: 1.6;">
-                    Kompletní analytické řešení pro váš Discord server. Získejte přehled, který vám chyběl.
+                    Metricordké řešení pro váš Discord server. Získejte přehled, který vám chyběl.
                 </p>
                 <div class="social-links">
-                    <a href="#"><i class="fa-brands fa-discord"></i></a>
-                    <a href="#"><i class="fa-brands fa-twitter"></i></a>
-                    <a href="#"><i class="fa-brands fa-github"></i></a>
+                    <a href="https://discord.gg/35yeT32Knf" target="_blank"><i class="fa-brands fa-discord"></i></a>
+                    <a href="https://github.com/metricord" target="_blank"><i class="fa-brands fa-github"></i></a>
                 </div>
             </div>
 
@@ -751,7 +826,7 @@
             </div>
         </div>
         <div class="footer-bottom">
-            <p>&copy; 2026 Ultimate Analytics. Všechna práva vyhrazena.</p>
+            <p>&copy; 2026 Metricord. Všechna práva vyhrazena.</p>
         </div>
     </footer>
 

@@ -10,19 +10,19 @@ sys.path.append('/root/discord-bot')
 from shared.redis_client import REDIS_URL
 import os
 
-# Manual .env load
+
 try:
     with open('/root/discord-bot/.env', 'r') as f:
         for line in f:
             if '=' in line and not line.startswith('#'):
                 k, v = line.strip().split('=', 1)
-                # Remove quotes
+                
                 v = v.strip('"').strip("'")
                 os.environ[k] = v
 except Exception as e:
     print(f"Warning parsing .env: {e}")
 
-# Try to get BOT_TOKEN
+
 try:
     from config.dashboard_secrets import BOT_TOKEN
     if not BOT_TOKEN:
@@ -39,7 +39,7 @@ async def hydrate_users():
     guild_id = 615171377783242769
     xp_key = f"levels:xp:{guild_id}"
     
-    # Get all users in leaderboard (Top users first!)
+    
     users = await r.zrevrange(xp_key, 0, -1)
     print(f"Checking {len(users)} users for missing info (High XP first)...")
     
@@ -48,12 +48,12 @@ async def hydrate_users():
     
     async with httpx.AsyncClient() as client:
         for uid in users:
-            # Check if info exists
+            
             info = await r.hgetall(f"user:info:{uid}")
             if not info or not info.get("username"):
                 missing_count += 1
                 try:
-                    # Fetch from Discord API
+                    
                     print(f"Fetching info for {uid}...", end="", flush=True)
                     resp = await client.get(
                         f"https://discord.com/api/v10/users/{uid}",
@@ -79,8 +79,8 @@ async def hydrate_users():
                         retry_after = float(resp.headers.get("Retry-After", 2))
                         print(f" Rate Limited. Waiting {retry_after}s...")
                         await asyncio.sleep(retry_after + 0.1)
-                        # Retry logic could be added here, or just skip and let next run catch it
-                        # For simplicity, we skip this one but the delay creates space for next
+                        
+                        
                     else:
                         print(f" Failed ({resp.status_code})")
                         await asyncio.sleep(0.2)

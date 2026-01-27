@@ -1,5 +1,5 @@
-# commands/activity.py
-# -*- coding: utf-8 -*-
+
+
 from __future__ import annotations
 
 import discord
@@ -13,21 +13,21 @@ from collections import defaultdict
 import re
 import json
 
-# Redis Stats Keys (Daily Buckets)
-# activity:day:{YYYY-MM-DD}:{guild_id}:{user_id}:{metric}
-# Metrics: chat_time, voice_time, messages, bans, kicks, timeouts, unbans, verifications, msg_deleted, role_updates
 
-# Redis State Keys (Ephemeral - Session Tracking)
-# activity:state:{guild_id}:{user_id}:chat_start
-# activity:state:{guild_id}:{user_id}:chat_last
-# activity:state:{guild_id}:{user_id}:voice_start
 
-SESSION_TIMEOUT = 900  # 15 minutes
-MIN_SESSION_TIME = 60 # Minimum time for a session (even single message)
-# Lead-In Constants for Content-Aware Tracking
-LEAD_IN_BASE = 180.0  # 3 minutes base per session start
-LEAD_IN_CHAR = 1.0    # 1.0s per character (every message)
-LEAD_IN_REPLY = 60.0  # 1 minute bonus for replies (new session context)
+
+
+
+
+
+
+
+SESSION_TIMEOUT = 900  
+MIN_SESSION_TIME = 60 
+
+LEAD_IN_BASE = 180.0  
+LEAD_IN_CHAR = 1.0    
+LEAD_IN_REPLY = 60.0  
 
 REDIS_URL = "redis://redis-hll:6379/0"
 
@@ -73,22 +73,22 @@ class ActivityMonitor(commands.Cog):
         if user.bot: return
         key = f"user:info:{user.id}"
         
-        # Avoid writing if not needed? No, easy enough to overwrite.
-        # Prefer display_name (nickname) but fallback to name
+        
+        
         name = user.display_name
         avatar = user.display_avatar.url
         
-        # Cache Roles (comma separated IDs)
+        
         roles = ""
         if isinstance(user, discord.Member):
             roles = ",".join(str(r.id) for r in user.roles)
         
         async with self.r.pipeline() as pipe:
             pipe.hset(key, mapping={"name": name, "avatar": avatar, "roles": roles})
-            pipe.expire(key, 604800) # 7 days TTL (refresh on activity)
+            pipe.expire(key, 604800) 
             await pipe.execute()
 
-    # --- LISTENERS ---
+    
     @commands.Cog.listener()
     async def on_ready(self):
         print(f"Logged in as {self.bot.user} (ID: {self.bot.user.id})")
@@ -96,11 +96,11 @@ class ActivityMonitor(commands.Cog):
 
     @tasks.loop(minutes=1.0)
     async def usage_loop(self):
-        # Sync guilds occasionally (every loop is fine, it's cheap)
+        
         await self._sync_bot_guilds()
         
         now = time.time()
-        # ... rest of loop
+        
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
@@ -115,7 +115,7 @@ class ActivityMonitor(commands.Cog):
         try:
             guild_ids = [str(g.id) for g in self.bot.guilds]
             if guild_ids:
-                await self.r.delete("bot:guilds") # Clear old
+                await self.r.delete("bot:guilds") 
                 await self.r.sadd("bot:guilds", *guild_ids)
             print(f"Synced {len(guild_ids)} guilds to Redis")
         except Exception as e:
@@ -123,17 +123,17 @@ class ActivityMonitor(commands.Cog):
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
-        # ... logic for interaction tracking ...
+        
         pass
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild: return
         
-        # Store raw event in Sorted Set
-        # Key: events:msg:{guild_id}:{user_id}
-        # Score: timestamp (for range queries)
-        # Member: JSON {"len": X, "reply": bool}
+        
+        
+        
+        
         
         key = f"events:msg:{message.guild.id}:{message.author.id}"
         ts = message.created_at.timestamp()
@@ -151,7 +151,7 @@ class ActivityMonitor(commands.Cog):
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         if member.bot: return
         
-        # Sync info on voice change
+        
         await self._update_user_info(member)
         
         gid = member.guild.id
@@ -163,19 +163,19 @@ class ActivityMonitor(commands.Cog):
         was_in = before.channel is not None
         
         if is_in and not was_in:
-            # Joining - store start time
+            
             await self.r.set(k_voice, now)
         elif was_in and not is_in:
-            # Leaving - calculate duration and store event
+            
             start_str = await self.r.get(k_voice)
             if start_str:
                 start = float(start_str)
                 duration = now - start
                 if duration > 0:
-                    # DEDUPLICATION for voice
+                    
                     lock_key = f"lock:voice:{uid}:{int(start)}"
                     if await self.r.set(lock_key, "1", ex=60, nx=True):
-                        # Store event: events:voice:{gid}:{uid}
+                        
                         key = f"events:voice:{gid}:{uid}"
                         event_data = json.dumps({"duration": int(duration), "ts": int(start)})
                         await self.r.zadd(key, {event_data: start})
@@ -198,7 +198,7 @@ class ActivityMonitor(commands.Cog):
         elif entry.action == discord.AuditLogAction.unban:
             action_type = "unban"
         elif entry.action == discord.AuditLogAction.member_update:
-            # Check for Timeout (timed_out_until)
+            
             if hasattr(entry.after, "timed_out_until") and entry.after.timed_out_until:
                 action_type = "timeout"
         elif entry.action == discord.AuditLogAction.member_role_update:
@@ -207,13 +207,13 @@ class ActivityMonitor(commands.Cog):
             action_type = "msg_delete"
             
         if action_type:
-            # Store event: events:action:{gid}:{uid}
+            
             key = f"events:action:{gid}:{uid}"
             event_data = json.dumps({"type": action_type, "id": entry.id})
             await self.r.zadd(key, {event_data: ts})
             await self._update_user_info(entry.user)
 
-    # --- HELPERS ---
+    
     def fmt_time(self, seconds: float) -> str:
         if seconds < 60: return f"{int(seconds)}s"
         m, s = divmod(int(seconds), 60)
@@ -229,27 +229,27 @@ class ActivityMonitor(commands.Cog):
         day_str = day.strftime("%Y-%m-%d")
         cache_key = f"stats:day:{day_str}:{gid}:{uid}"
         
-        # Check cache version
+        
         cached_version = await self.r.hget(cache_key, "_version")
         current_version = await self.r.get("config:weights_version") or "0"
         
         if cached_version == current_version:
-            # Cache hit!
+            
             stats = await self.r.hgetall(cache_key)
-            # Convert strings to floats/ints
+            
             return {k: float(v) if k != "_version" else v for k, v in stats.items()}
         
-        # Cache miss → recalculate from raw events
+        
         weights = await self.get_action_weights()
         
-        # Timestamp range for this day
+        
         from datetime import time as dt_time
         day_start = datetime.combine(day, dt_time(0, 0, 0)).timestamp()
         day_end = datetime.combine(day, dt_time(23, 59, 59)).timestamp()
         
         stats = defaultdict(float)
         
-        # 1. Messages
+        
         msg_key = f"events:msg:{gid}:{uid}"
         messages = await self.r.zrangebyscore(msg_key, day_start, day_end)
         
@@ -257,10 +257,10 @@ class ActivityMonitor(commands.Cog):
             msg_data = json.loads(msg_json)
             stats["messages"] += 1
             stats["chat_time"] += msg_data["len"] * weights.get("chat_time", 1)
-            # Lead-in bonuses (simplified - count per session start)
-            # For now, just use character-based time
+            
+            
         
-        # 2. Voice
+        
         voice_key = f"events:voice:{gid}:{uid}"
         voice_sessions = await self.r.zrangebyscore(voice_key, day_start, day_end)
         
@@ -268,7 +268,7 @@ class ActivityMonitor(commands.Cog):
             vs_data = json.loads(vs_json)
             stats["voice_time"] += vs_data["duration"] * weights.get("voice_time", 1)
         
-        # 3. Actions
+        
         action_key = f"events:action:{gid}:{uid}"
         actions = await self.r.zrangebyscore(action_key, day_start, day_end)
         
@@ -276,7 +276,7 @@ class ActivityMonitor(commands.Cog):
             action_data = json.loads(action_json)
             action_type = action_data["type"]
             
-            # Map back to old metric names for compatibility
+            
             metric_map = {
                 "ban": "bans", "kick": "kicks", "timeout": "timeouts",
                 "unban": "unbans", "role_update": "role_updates",
@@ -286,14 +286,14 @@ class ActivityMonitor(commands.Cog):
             metric = metric_map.get(action_type, action_type + "s")
             stats[metric] += 1
         
-        # Store in cache with version
+        
         cache_data = dict(stats)
         cache_data["_version"] = current_version
         await self.r.hset(cache_key, mapping={k: str(v) for k, v in cache_data.items()})
         
         return dict(stats)
 
-    # --- COMMANDS ---
+    
     act_group = app_commands.Group(name="activity", description="Sledování aktivity moderátorů")
 
     @act_group.command(name="sync_names", description="ADMIN: Synchronizuje jména a ROLE členů do databáze.")
@@ -301,7 +301,7 @@ class ActivityMonitor(commands.Cog):
     async def sync_names(self, itx: discord.Interaction):
         await itx.response.defer()
         
-        # 1. Sync Roles
+        
         roles_key = f"guild:roles:{itx.guild.id}"
         role_map = {str(r.id): r.name for r in itx.guild.roles if r.name != "@everyone"}
         
@@ -311,7 +311,7 @@ class ActivityMonitor(commands.Cog):
                 pipe.hset(roles_key, mapping=role_map)
             await pipe.execute()
             
-        # 2. Sync Members
+        
         count = 0
         for member in itx.guild.members:
             if not member.bot:
@@ -332,10 +332,10 @@ class ActivityMonitor(commands.Cog):
         gid = itx.guild.id
         uid = user.id
         
-        # Update info while we are here
+        
         await self._update_user_info(user)
         
-        # Parse dates
+        
         d_after = None
         d_before = None
         date_info = "Celková historie"
@@ -360,8 +360,8 @@ class ActivityMonitor(commands.Cog):
         from datetime import time as dt_time
         data = defaultdict(float)
         
-        # Calculate timestamp range (not day-by-day iteration)
-        start_day = d_after if d_after else date(2015, 1, 1)  # Discord epoch
+        
+        start_day = d_after if d_after else date(2015, 1, 1)  
         end_day = d_before if d_before else date.today()
         
         ts_start = datetime.combine(start_day, dt_time(0, 0, 0)).timestamp()
@@ -369,7 +369,7 @@ class ActivityMonitor(commands.Cog):
         
         weights = await self.get_action_weights()
         
-        # 1. Messages - direct query
+        
         msg_key = f"events:msg:{gid}:{uid}"
         messages = await self.r.zrangebyscore(msg_key, ts_start, ts_end)
         for msg_json in messages:
@@ -377,14 +377,14 @@ class ActivityMonitor(commands.Cog):
             data["messages"] += 1
             data["chat_time"] += msg_data["len"] * weights.get("chat_time", 1)
         
-        # 2. Voice - direct query
+        
         voice_key = f"events:voice:{gid}:{uid}"
         voice_sessions = await self.r.zrangebyscore(voice_key, ts_start, ts_end)
         for vs_json in voice_sessions:
             vs_data = json.loads(vs_json)
             data["voice_time"] += vs_data["duration"] * weights.get("voice_time", 1)
         
-        # 3. Actions - direct query
+        
         action_key = f"events:action:{gid}:{uid}"
         actions = await self.r.zrangebyscore(action_key, ts_start, ts_end)
         metric_map = {
@@ -398,7 +398,7 @@ class ActivityMonitor(commands.Cog):
             metric = metric_map.get(action_type, action_type + "s")
             data[metric] += 1
         
-        # Pending Session
+        
         today = date.today()
         include_pending = True
         if d_before and d_before < today: include_pending = False
@@ -406,21 +406,21 @@ class ActivityMonitor(commands.Cog):
         
         if include_pending:
             now = time.time()
-            # Chat
+            
             k_cs = self._k_state(gid, uid, "chat_start")
             k_cl = self._k_state(gid, uid, "chat_last")
             cs = await self.r.get(k_cs)
             cl = await self.r.get(k_cl)
             if cs and cl and (now - float(cl) < SESSION_TIMEOUT):
-                # Only add the duration between start and last, as char_time is added instantly
+                
                 data["chat_time"] += (float(cl) - float(cs))
-            # Voice
+            
             k_vs = self._k_state(gid, uid, "voice_start")
             vs = await self.r.get(k_vs)
             if vs:
                 data["voice_time"] += (now - float(vs))
 
-        # Calculate Breakdown
+        
         chat_t = data["chat_time"]
         voice_t = data["voice_time"]
         msgs = int(data["messages"])
@@ -432,7 +432,7 @@ class ActivityMonitor(commands.Cog):
             
         total_time = chat_t + voice_t + action_time
         
-        # Embed
+        
         e = discord.Embed(title=f"📊 Aktivita: {user.display_name}", description=f"📅 **Období:** {date_info}", color=discord.Color.blue())
         e.set_thumbnail(url=user.display_avatar.url)
         
@@ -485,12 +485,12 @@ class ActivityMonitor(commands.Cog):
             await itx.followup.send("❌ Špatný formát data.")
             return
 
-        user_scores = defaultdict(float) # uid -> total_weighted_seconds
+        user_scores = defaultdict(float) 
         
-        # Get weights
+        
         ACTION_WEIGHTS = await self.get_action_weights()
         
-        # Discover active users
+        
         active_users = set()
         for pattern in [f"events:msg:{gid}:*", f"events:voice:{gid}:*", f"events:action:{gid}:*"]:
             async for key in self.r.scan_iter(pattern):
@@ -498,7 +498,7 @@ class ActivityMonitor(commands.Cog):
                 if len(parts) == 4:
                     active_users.add(int(parts[3]))
         
-        # Iterate through days and users
+        
         current_day = d_after if d_after else (date.today() - timedelta(days=365))
         end_day = d_before if d_before else date.today()
         
@@ -506,7 +506,7 @@ class ActivityMonitor(commands.Cog):
             for uid in active_users:
                 daily = await self.get_daily_stats(gid, uid, current_day)
                 
-                # Calculate weighted score
+                
                 chat_t = daily.get("chat_time", 0)
                 voice_t = daily.get("voice_time", 0)
                 
@@ -537,11 +537,11 @@ class ActivityMonitor(commands.Cog):
         await itx.response.defer(thinking=True)
         gid = itx.guild.id
         
-        # 1. DELETE OLD DATA
+        
         await itx.followup.send("🗑️ Mazání staré databáze aktivity...")
         
         keys = []
-        # Support deletion of both schemas just in case
+        
         async for k in self.r.scan_iter(f"activity:stats:{gid}:*"): keys.append(k)
         async for k in self.r.scan_iter(f"activity:day:*:{gid}:*"): keys.append(k)
         
@@ -550,17 +550,17 @@ class ActivityMonitor(commands.Cog):
             for i in range(0, len(keys), chunk_size):
                 await self.r.delete(*keys[i:i+chunk_size])
                 
-        # 2. START BACKFILL
+        
         discord_epoch = datetime(2015, 1, 1)
         limit_date = datetime.now() - timedelta(days=days)
         if limit_date < discord_epoch: limit_date = discord_epoch
         
         await itx.followup.send(f"⏳ Začínám Backfill od {limit_date.date()}... (Režim: 3min Base + Chars)")
         
-        # A. MESSAGES → events:msg:{gid}:{uid}
+        
         msg_count = 0
-        user_messages = defaultdict(list)  # uid -> [(ts, len, is_reply), ...]
-        BATCH_SIZE = 10000  # Save every 10k messages
+        user_messages = defaultdict(list)  
+        BATCH_SIZE = 10000  
         
         for channel in itx.guild.text_channels:
             try:
@@ -573,12 +573,12 @@ class ActivityMonitor(commands.Cog):
                         user_messages[msg.author.id].append((ts, length, is_reply))
                         msg_count += 1
                         
-                        # Update user info
+                        
                         await self._update_user_info(msg.author)
                         
-                        # Batch save every BATCH_SIZE messages
+                        
                         if msg_count % BATCH_SIZE == 0:
-                            # Save current batch to Redis
+                            
                             for uid, messages in user_messages.items():
                                 key = f"events:msg:{gid}:{uid}"
                                 mapping = {}
@@ -589,13 +589,13 @@ class ActivityMonitor(commands.Cog):
                                 if mapping:
                                     await self.r.zadd(key, mapping)
                             
-                            # Clear batch and update progress
+                            
                             user_messages.clear()
                             
                             try:
                                 await itx.edit_original_response(content=f"⏳ Zpracováno: {msg_count} zpráv...")
                             except discord.HTTPException:
-                                # Webhook expired, continue silently
+                                
                                 print(f"Progress: {msg_count} messages")
                                 
             except discord.Forbidden:
@@ -603,7 +603,7 @@ class ActivityMonitor(commands.Cog):
             except Exception as e:
                 print(f"Error in {channel.name}: {e}")
         
-        # Store remaining message events
+        
         for uid, messages in user_messages.items():
             key = f"events:msg:{gid}:{uid}"
             mapping = {}
@@ -614,9 +614,9 @@ class ActivityMonitor(commands.Cog):
             if mapping:
                 await self.r.zadd(key, mapping)
 
-        # B. AUDIT LOGS → events:action:{gid}:{uid}
+        
         audit_ops = 0
-        user_actions = defaultdict(list)  # uid -> [(ts, action_type), ...]
+        user_actions = defaultdict(list)  
         
         try:
             async for entry in itx.guild.audit_logs(limit=None, after=limit_date):
@@ -647,7 +647,7 @@ class ActivityMonitor(commands.Cog):
         except Exception as e:
             print(f"Audit error: {e}")
         
-        # Store action events in Sorted Sets
+        
         for uid, actions in user_actions.items():
             key = f"events:action:{gid}:{uid}"
             mapping = {}
@@ -658,7 +658,7 @@ class ActivityMonitor(commands.Cog):
             if mapping:
                 await self.r.zadd(key, mapping)
 
-        # C. VERIFICATIONS → events:action:{gid}:{uid}
+        
         verifs = 0
         VERIFICATION_LOG_CHANNEL_ID = 1404416148077809705
         log_ch = itx.guild.get_channel(VERIFICATION_LOG_CHANNEL_ID)
@@ -667,7 +667,7 @@ class ActivityMonitor(commands.Cog):
             re_approve = re.compile(r"Schválil <@!?(\d+)>")
             re_bypass = re.compile(r"Manuální bypass - <@!?(\d+)>")
             
-            verification_events = defaultdict(list)  # uid -> [ts, ...]
+            verification_events = defaultdict(list)  
             
             try:
                 async for msg in log_ch.history(limit=None, after=limit_date):
@@ -688,7 +688,7 @@ class ActivityMonitor(commands.Cog):
             except:
                 pass
             
-            # Store verification events
+            
             for uid, timestamps in verification_events.items():
                 key = f"events:action:{gid}:{uid}"
                 mapping = {}
@@ -705,27 +705,27 @@ class ActivityMonitor(commands.Cog):
                                     f"Data uložena do event systému.\n"
                                     f"Zkus: `/activity stats after:01-01-2025`.")
         except discord.HTTPException:
-            # Webhook token vypršel (15min timeout) - backfill ale doběhl
+            
             print(f"Backfill completed: {msg_count} msgs, {audit_ops} actions, {verifs} verifs")
 
     @act_group.command(name="report", description="Zobrazí report aktivity týmu (7 a 30 dní).")
-    @app_commands.checks.has_permissions(administrator=True) # Admin only for full report
+    @app_commands.checks.has_permissions(administrator=True) 
     async def report(self, itx: discord.Interaction):
         await itx.response.defer()
         gid = itx.guild.id
         today = date.today()
         
-        # Ranges
+        
         d_week = today - timedelta(days=7)
         d_month = today - timedelta(days=30)
         
-        # We need efficient fetching for ALL users.
-        # Scanning all keys is the only way with current Redis structure.
+        
+        
         
         scores_week = defaultdict(float)
         scores_month = defaultdict(float)
         
-        # Scan once, bucket into week/month
+        
         pattern = f"activity:day:*:{gid}:*:*"
         async for key in self.r.scan_iter(pattern):
             parts = key.split(":")
@@ -747,29 +747,29 @@ class ActivityMonitor(commands.Cog):
             
             weighted_val = val * w
             
-            # Week
+            
             if d >= d_week:
                 scores_week[uid] += weighted_val
             
-            # Month
+            
             if d >= d_month:
                 scores_month[uid] += weighted_val
 
-        # Sort
+        
         top_week = sorted(scores_week.items(), key=lambda x: x[1], reverse=True)
         top_month = sorted(scores_month.items(), key=lambda x: x[1], reverse=True)
         
-        # Format Helper
+        
         def fmt_list(data_list):
             lines = []
             for i, (uid, sec) in enumerate(data_list, 1):
-                # We can't easily get names for ALL without fetching members, which might be slow.
-                # Use mention to be safe/fast.
+                
+                
                 lines.append(f"**{i}.** <@{uid}> — `{self.fmt_time(sec)}`")
             return "\n".join(lines) if lines else "Žádná data."
 
-        # Since lists can be long, we might need to limit them or handle display carefully.
-        # User asked for "all", but Discord limits. Let's do TOP 25 per category.
+        
+        
         limit = 25
         
         desc_week = fmt_list(top_week[:limit])

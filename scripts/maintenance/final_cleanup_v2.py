@@ -12,18 +12,18 @@ for path in files:
     with open(path, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # 1. Fix split tags { { and } }
+    
     content = re.sub(r'\{\s+\{', '{{', content)
     content = re.sub(r'\}\s+\}', '}}', content)
 
-    # 2. Fix triple braces }}} or { {{
+    
     content = re.sub(r'\}\}\}', '}}', content)
     content = re.sub(r'\{\{\{', '{{', content)
 
-    # 3. Fix space in default (0)
+    
     content = content.replace('default (0)', 'default(0)')
 
-    # 4. Fix specific corrupted identifiers
+    
     replacements = {
         'labe ls:': 'labels:',
         '| s afe': '| safe',

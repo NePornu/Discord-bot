@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Dokumentace{% endblock %} | Ultimate Analytics</title>
+    <title>{% block title %}Dokumentace{% endblock %} | Metricord</title>
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet">
@@ -70,6 +70,23 @@
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
+        }
+
+        .nav-link-top {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+
+        .nav-link-top:hover {
+            color: white;
+        }
+
+        .nav-link-top.active {
+            color: white;
+            font-weight: 600;
         }
 
         header .nav-btn {
@@ -288,10 +305,16 @@
             </button>
             <a href="/" class="logo">
                 <i class="fa-brands fa-discord" style="color: #5865F2;"></i>
-                Ultimate<span>Analytics</span>
+                Metricord
             </a>
         </div>
-        <a href="/" class="nav-btn"><i class="fa-solid fa-arrow-left"></i> Zpět na web</a>
+        <div style="display: flex; align-items: center; gap: 24px;">
+            <a href="/about" class="nav-link-top">O nás</a>
+            <a href="/support#faq" class="nav-link-top">FAQ</a>
+            <a href="/features" class="nav-link-top">Funkce</a>
+            <a href="/docs" class="nav-link-top {% if current_page != 'index' %}active{% endif %}">Dokumentace</a>
+            <a href="/" class="nav-btn"><i class="fa-solid fa-arrow-left"></i> Zpět na web</a>
+        </div>
     </header>
 
     {% set current_page = page_name|default('index') %}
@@ -312,7 +335,7 @@
             exportu</a>
 
         <div class="sidebar-title">Pokročilé funkce</div>
-        <a href="/docs/ai" class="sidebar-link {% if current_page == 'ai' %}active{% endif %}">AI Predikce</a>
+        <a href="/docs/ai" class="sidebar-link {% if current_page == 'ai' %}active{% endif %}">Predikce</a>
         <a href="/docs/backfill" class="sidebar-link {% if current_page == 'backfill' %}active{% endif %}">Backfill
             Systém</a>
         <a href="/docs/roles" class="sidebar-link {% if current_page == 'roles' %}active{% endif %}">Role a XP</a>

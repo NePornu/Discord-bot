@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Backfill script to populate Redis with historical Discord message data.
 Fetches messages from Discord API and generates statistics for dashboard.
@@ -14,7 +14,7 @@ import argparse
 import sys
 import os
 
-# Default Config Fallback
+
 BOT_TOKEN_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config', 'bot_token.py'))
 CONFIG_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config', 'config.py'))
 
@@ -36,15 +36,15 @@ def get_default_config():
                     except: pass
     return token, gid
 
-# Redis configuration
+
 REDIS_URL = "redis://172.22.0.2:6379/0"
 
-# Key functions
+
 def day_key(dt: datetime) -> str:
     return dt.strftime("%Y%m%d")
 
 
-# Key functions (matching activity_hll_optimized.py)
+
 def day_key(dt: datetime) -> str:
     return dt.strftime("%Y%m%d")
 
@@ -80,31 +80,31 @@ async def backfill_channel_history(bot: discord.Client, channel: discord.TextCha
     print(f"  Processing #{channel.name}...")
     await report_progress(r, channel.guild.id, "processing", current_total, channel.name)
     
-    # Calculate cutoff time
+    
     after_date = datetime.utcnow() - timedelta(days=days_back) if days_back else None
     
     msg_count = 0
     
-    # Aggregates
-    daily_stats = defaultdict(lambda: defaultdict(int))  # {date: {hour: count}}
-    hll_members = defaultdict(set) # {date: {uids}}
-    heatmap_agg = defaultdict(int) # {weekday_hour: count}
-    msglen_agg = defaultdict(int)  # {bucket: count}
     
-    # New Aggregates for Leaderboards & Channel Stats
-    user_msg_counts = defaultdict(int) # {uid: count}
-    user_avg_len_agg = defaultdict(list) # {uid: [len, ...]} -> simplified to sum/count to save RAM? 
-    # Storing all lengths for huge servers in RAM is bad. 
-    # But for "Top Users" we need average length. 
-    # Let's store sum_len and count.
+    daily_stats = defaultdict(lambda: defaultdict(int))  
+    hll_members = defaultdict(set) 
+    heatmap_agg = defaultdict(int) 
+    msglen_agg = defaultdict(int)  
+    
+    
+    user_msg_counts = defaultdict(int) 
+    user_avg_len_agg = defaultdict(list) 
+    
+    
+    
     user_len_sum = defaultdict(int) 
     
-    # Channel Stats (Daily)
-    # stats:channel:{gid}:{cid}:{date}
-    channel_daily_stats = defaultdict(int) # {date: count}
-    channel_hourly_stats = defaultdict(int) # {hour: count}
     
-    user_event_buffer = defaultdict(dict) # {uid: {data: score}}
+    
+    channel_daily_stats = defaultdict(int) 
+    channel_hourly_stats = defaultdict(int) 
+    
+    user_event_buffer = defaultdict(dict) 
     BATCH_SIZE = 500
     
     try:
@@ -116,7 +116,7 @@ async def backfill_channel_history(bot: discord.Client, channel: discord.TextCha
             if after_date and msg_dt < after_date:
                 break
             
-            # Key Vars
+            
             date_str = msg_dt.strftime("%Y%m%d")
             hour = msg_dt.hour
             weekday = msg_dt.weekday()
@@ -124,15 +124,15 @@ async def backfill_channel_history(bot: discord.Client, channel: discord.TextCha
             cid = channel.id
             msg_len = len(msg.content)
             
-            # 1. Hourly Stats & HLL (Global)
+            
             daily_stats[date_str][hour] += 1
             hll_members[date_str].add(str(uid))
             
-            # 2. Heatmap (Global)
+            
             hm_key = f"{weekday}_{hour}"
             heatmap_agg[hm_key] += 1
             
-            # 3. Message Lengths (Global)
+            
             if msg_len == 0: b=0
             elif msg_len <= 10: b=5
             elif msg_len <= 50: b=30
@@ -141,18 +141,18 @@ async def backfill_channel_history(bot: discord.Client, channel: discord.TextCha
             else: b=250
             msglen_agg[b] += 1
             
-            # 4. Raw Events (Events:Msg)
-            # Necessary for "User Activity" page detailed view
+            
+            
             import json
             evt_key = f"events:msg:{channel.guild.id}:{uid}"
             evt_data = json.dumps({"len": msg_len, "reply": msg.reference is not None})
             user_event_buffer[evt_key][evt_data] = msg_dt.timestamp()
 
-            # 5. Leaderboard Aggregates
+            
             user_msg_counts[uid] += 1
             user_len_sum[uid] += msg_len
             
-            # 6. Channel Stats
+            
             channel_daily_stats[date_str] += 1
             channel_hourly_stats[hour] += 1
 
@@ -162,48 +162,48 @@ async def backfill_channel_history(bot: discord.Client, channel: discord.TextCha
                 print(f"    ... processed {msg_count} messages")
                 await report_progress(r, channel.guild.id, "processing", current_total + msg_count, channel.name)
                 
-                # --- INCREMENTAL PUSH TO REDIS ---
+                
                 pipe = r.pipeline()
                 
-                # Flush events buffer
+                
                 for k, v in user_event_buffer.items():
                     pipe.zadd(k, v)
                 user_event_buffer.clear()
                 
-                # 1. Global Hourly
+                
                 gid = channel.guild.id
                 for d_str, hours in daily_stats.items():
                     k = f"stats:hourly:{gid}:{d_str}"
                     for h, c in hours.items(): pipe.hincrby(k, str(h), c)
                     pipe.expire(k, 60*86400)
-                daily_stats.clear() # Clear after push
+                daily_stats.clear() 
                 
-                # 2. Global HLL
+                
                 for d_str, uids in hll_members.items():
                     k = f"hll:dau:{gid}:{d_str}"
                     pipe.pfadd(k, *uids)
                     pipe.expire(k, 40*86400)
                 hll_members.clear()
 
-                # 3. Global Heatmap
+                
                 for k, c in heatmap_agg.items():
                     pipe.hincrby(f"stats:heatmap:{gid}", k, c)
                 pipe.expire(f"stats:heatmap:{gid}", 60*86400)
                 heatmap_agg.clear()
                 
-                # 4. Global MsgLen
+                
                 for b, c in msglen_agg.items():
                     pipe.zincrby(f"stats:msglen:{gid}", c, b)
                 msglen_agg.clear()
                     
-                # 5. Global Total
-                pipe.incrby(f"stats:total_msgs:{gid}", BATCH_SIZE) # Approximate but safe if we push every batch
                 
-                # 6. Channel Specific Stats
+                pipe.incrby(f"stats:total_msgs:{gid}", BATCH_SIZE) 
+                
+                
                 pipe.zincrby(f"stats:channel_total:{gid}", BATCH_SIZE, cid)
                 pipe.hset(f"channel:info:{cid}", mapping={"name": channel.name})
                 
-                # Daily/Hourly per channel
+                
                 for d_str, c in channel_daily_stats.items():
                      k = f"stats:channel:{gid}:{cid}:{d_str}"
                      pipe.incrby(k, c)
@@ -216,11 +216,11 @@ async def backfill_channel_history(bot: discord.Client, channel: discord.TextCha
                 pipe.expire(k_ch_hour, 60*86400)
                 channel_hourly_stats.clear()
                      
-                # 7. Leaderboard
+                
                 for uid, c in user_msg_counts.items():
                     pipe.zincrby(f"leaderboard:messages:{gid}", c, uid)
                     
-                    # Avg len hack: just push one sample
+                    
                     avg = int(user_len_sum[uid] / c)
                     k_len = f"leaderboard:msg_lengths:{gid}:{uid}"
                     pipe.lpush(k_len, avg)
@@ -228,7 +228,7 @@ async def backfill_channel_history(bot: discord.Client, channel: discord.TextCha
                 user_len_sum.clear()
 
                 await pipe.execute()
-                # -------------------------------
+                
 
     except discord.Forbidden:
         print(f"    SKIP: No permission to read #{channel.name}")
@@ -237,18 +237,18 @@ async def backfill_channel_history(bot: discord.Client, channel: discord.TextCha
         print(f"    ERROR in #{channel.name}: {e}")
         return 0
 
-    # Remaining flush (same logic but for leftovers)
+    
     if msg_count % BATCH_SIZE != 0:
         gid = channel.guild.id
         cid = channel.id
         pipe = r.pipeline()
         
-        # Flush events
+        
         if user_event_buffer:
             for k, v in user_event_buffer.items(): pipe.zadd(k, v)
             user_event_buffer.clear()
 
-        # Flush aggregators
+        
         for d_str, hours in daily_stats.items():
             k = f"stats:hourly:{gid}:{d_str}"
             for h, c in hours.items(): pipe.hincrby(k, str(h), c)
@@ -291,8 +291,8 @@ async def reset_stats(r: redis.Redis, gid: int):
     print("🧹 PRE-FLIGHT: Cleaning old statistics from Redis...")
     try:
         keys = []
-        # We need to find all keys related to stats for this guild
-        # stats:hourly:GID:DATE, hll:dau:GID:DATE, stats:heatmap:GID, stats:msglen:GID, stats:total_msgs:GID
+        
+        
         match_patterns = [
             f"stats:hourly:{gid}:*",
             f"hll:dau:{gid}:*",
@@ -320,11 +320,11 @@ async def main(target_guild_id: int, target_token: str):
     print(f"Target Guild: {target_guild_id}")
     print("=" * 60)
     
-    # Initialize bot
+    
     intents = discord.Intents.default()
     intents.guilds = True
-    intents.guild_messages = True # Fix: allow reading messages
-    intents.members = True # Fix: allow reading member join dates
+    intents.guild_messages = True 
+    intents.members = True 
     
     bot = discord.Client(intents=intents)
     r = redis.from_url(REDIS_URL, decode_responses=True)
@@ -336,7 +336,7 @@ async def main(target_guild_id: int, target_token: str):
         guild = bot.get_guild(target_guild_id)
         if not guild:
             print(f"ERROR: Could not find guild {target_guild_id}")
-            # Try fetching if not in cache
+            
             try:
                 guild = await bot.fetch_guild(target_guild_id)
             except Exception as e:
@@ -344,7 +344,7 @@ async def main(target_guild_id: int, target_token: str):
                 await bot.close()
                 return
         
-        # 1. Reset Stats
+        
         await reset_stats(r, target_guild_id)
         
         print(f"Guild: {guild.name}")
@@ -352,29 +352,29 @@ async def main(target_guild_id: int, target_token: str):
         
         total_messages = 0
         
-        # If fetch_guild was used, we might need to fetch channels explicitly
+        
         channels = guild.text_channels if hasattr(guild, "text_channels") else []
         if not channels:
-             # Try fetch channels
+             
              try: channels = await guild.fetch_channels()
              except: pass
              channels = [c for c in channels if isinstance(c, discord.TextChannel)]
 
         for channel in channels:
-            # Full History (days_back=None)
+            
             count = await backfill_channel_history(bot, channel, r, days_back=None, current_total=total_messages)
             total_messages += count
         
-        # --- NEW: Member Join Statistics (Traffic) ---
+        
         print("\nProcessing Member Joins (Traffic)...")
         try:
-             # Ensure we have members (requires intents.members)
+             
              if not guild.members:
-                 # Try chunking if zero (gateway issue)
+                 
                  await guild.chunk()
              
              join_counts = defaultdict(int) 
-             # Format: YYYY-MM
+             
              
              for member in guild.members:
                  if member.joined_at:
@@ -394,11 +394,11 @@ async def main(target_guild_id: int, target_token: str):
         except Exception as e:
             print(f"   ❌ Error processing member joins: {e}")
 
-        # --- NEW: Mock/Init Command Stats from recent messages (Approximation) ---
-        # Since we can't easily detect slash commands from history without interaction data, 
-        # checking for '!' or '/' prefix in content is a weak but usable proxy for legacy commands.
-        # Ideally, we rely on new data. But let's verify if we can do anything.
-        # Skipping for now to avoid pollution with false positives.
+        
+        
+        
+        
+        
 
         
         await report_progress(r, target_guild_id, "completed", total_messages)
@@ -424,7 +424,7 @@ if __name__ == "__main__":
     parser.add_argument("--token", type=str, help="Bot Token (optional if in file)")
     args = parser.parse_args()
     
-    # Load defaults
+    
     def_token, def_gid = get_default_config()
     
     final_gid = args.guild_id or def_gid

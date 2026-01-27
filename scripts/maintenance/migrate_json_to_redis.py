@@ -23,27 +23,27 @@ async def migrate():
         count = 0
         
         for date_key, values in data.items():
-            # date_key is usually "YYYY-MM" or "YYYY-MM-DD"
+            
             
             if isinstance(values, dict):
                 joins = values.get("joins", 0)
                 leaves = values.get("leaves", 0)
                 
-                # Store in Redis Hash: stats:joins:{gid} field=date_key value=count
+                
                 pipe.hset(f"stats:joins:{GUILD_ID}", date_key, joins)
                 pipe.hset(f"stats:leaves:{GUILD_ID}", date_key, leaves)
                 
-                # Also ensure we track total if provided? 
-                # The total is usually calculated cumulative, but let's stick to joins/leaves for the chart.
+                
+                
                 count += 1
             else:
-                # Legacy format might just be total count?
+                
                 pass
                 
         await pipe.execute()
         print(f"✓ Migrated {count} months of data to Redis.")
         
-        # Verify
+        
         test_joins = await r.hgetall(f"stats:joins:{GUILD_ID}")
         print(f"Redis Verification (Joins): {len(test_joins)} entries found.")
         

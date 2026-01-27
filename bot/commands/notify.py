@@ -1,4 +1,4 @@
-# commands/notify.py
+
 from discord.ext import commands
 import discord
 import asyncio
@@ -28,24 +28,24 @@ class NotifyCog(commands.Cog):
       !notify "Info jen pro ověřené" @Ověřený --skip @Admin 123456789012345678
     """
 
-    # ==== KONFIGURACE (klidně uprav) ====
-    DRY_RUN             = False      # True = neposílat, jen simulovat a logovat
-    BASE_DELAY_SECONDS  = 90         # základní pauza mezi DM (např. 90 s)
-    JITTER_SECONDS      = 30         # náhodný +/- jitter (např. 30 s)
-    MAX_CONCURRENCY     = 1          # nech 1 (bezpečné)
-    MAX_RETRIES         = 3          # retry pro jednotlivé DM
-    TIMEOUT_PER_DM      = 20         # timeout odeslání DM (s)
-    ERROR_TIMEOUT       = 60         # mazání případných chybových echo zpráv (s)
+    
+    DRY_RUN             = False      
+    BASE_DELAY_SECONDS  = 90         
+    JITTER_SECONDS      = 30         
+    MAX_CONCURRENCY     = 1          
+    MAX_RETRIES         = 3          
+    TIMEOUT_PER_DM      = 20         
+    ERROR_TIMEOUT       = 60         
 
-    LOG_FILENAME        = "dm_status_report.csv"  # jen název přílohy (neukládá se na disk)
-    # ====================================
+    LOG_FILENAME        = "dm_status_report.csv"  
+    
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._sem = asyncio.Semaphore(self.MAX_CONCURRENCY)
-        self._results = []  # in-memory výsledky pro CSV export (žádný soubor na disku)
+        self._results = []  
 
-    # ========== HELPERY ==========
+    
 
     async def _console_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
         """Získá log kanál podle config.CONSOLE_CHANNEL_ID."""
@@ -134,13 +134,13 @@ class NotifyCog(commands.Cog):
         tail = tail.split("--skip", 1)[1].strip()
         tokens = tail.split()
 
-        # mentions
+        
         for user in ctx.message.mentions:
             skip_users.add(user.id)
         for role in ctx.message.role_mentions:
             skip_roles.add(role.id)
 
-        # zbytek tokenů
+        
         for tok in tokens:
             if tok.startswith("<@") or tok.startswith("<@&"):
                 continue
@@ -194,7 +194,7 @@ class NotifyCog(commands.Cog):
             await self._sleep_safe_delay()
             return "DRY_RUN"
 
-        wait = 2.0  # krátký backoff pro retry; dlouhý inter-user delay je zvlášť
+        wait = 2.0  
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:
                 async with self._sem:
@@ -212,15 +212,15 @@ class NotifyCog(commands.Cog):
                     await asyncio.sleep(wait)
                     wait = min(wait * 2, 30)
                 else:
-                    self._append_status(member, "FAILED", f"{type(e).__name__}: {e}")
+                    self._append_status(member, "FChytréLED", f"{type(e).__name__}: {e}")
                     await self._sleep_safe_delay()
-                    return "FAILED"
+                    return "FChytréLED"
             except Exception as e:
-                self._append_status(member, "FAILED", f"Unexpected: {e}")
+                self._append_status(member, "FChytréLED", f"Unexpected: {e}")
                 await self._sleep_safe_delay()
-                return "FAILED"
+                return "FChytréLED"
 
-    # ========== PŘÍKAZ ==========
+    
 
     @commands.command(name="notify")
     @commands.has_permissions(administrator=True)
@@ -245,7 +245,7 @@ class NotifyCog(commands.Cog):
         role = self._resolve_role(ctx, role_or_all)
         skip_users, skip_roles = self._parse_skip(ctx, rest)
 
-        self._results.clear()  # čistý běh
+        self._results.clear()  
 
         await self._log(
             ctx.guild,
@@ -261,15 +261,15 @@ class NotifyCog(commands.Cog):
                 sent += 1
             elif state in ("DRY_RUN", "FORBIDDEN"):
                 skipped += 1
-            elif state == "FAILED":
+            elif state == "FChytréLED":
                 failed += 1
             else:
-                # SKIP_SENT už nepoužíváme (bez perzistence), ale kdyby se objevil:
+                
                 skipped += 1
 
         await self._log(
             ctx.guild,
-            f"✅ Notify hotovo. SENT={sent}, SKIPPED={skipped}, FAILED={failed}"
+            f"✅ Notify hotovo. SENT={sent}, SKIPPED={skipped}, FChytréLED={failed}"
         )
         await self._flush_report(ctx.guild)
 
