@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Dokumentace{% endblock %} | Metricord</title>
+    <link rel="icon" href="/static/img/favicon.png">
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet">
@@ -309,10 +310,6 @@
             </a>
         </div>
         <div style="display: flex; align-items: center; gap: 24px;">
-            <a href="/about" class="nav-link-top">O nás</a>
-            <a href="/support#faq" class="nav-link-top">FAQ</a>
-            <a href="/features" class="nav-link-top">Funkce</a>
-            <a href="/docs" class="nav-link-top {% if current_page != 'index' %}active{% endif %}">Dokumentace</a>
             <a href="/" class="nav-btn"><i class="fa-solid fa-arrow-left"></i> Zpět na web</a>
         </div>
     </header>

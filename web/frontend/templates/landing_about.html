@@ -9,6 +9,7 @@
         text-align: center;
         padding: 100px 0 80px;
         position: relative;
+        overflow: hidden;
     }
 
     .about-hero::before {
@@ -290,7 +291,8 @@
         }
 
         .stats-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
         }
 
         .tech-grid {
@@ -308,6 +310,12 @@
             height: 150px;
             font-size: 3rem;
             margin: 0 auto;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
         }
     }
 </style>

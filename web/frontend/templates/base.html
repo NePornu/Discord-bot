@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metricord | Dashboard</title>
+    <link rel="icon" href="/static/img/favicon.png">
     <link rel="stylesheet" href="/static/css/style.css?v=2.7">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="/static/js/chart.js"></script>
@@ -27,6 +28,7 @@
             <i class="fas fa-chart-bar" style="margin-right: 10px; color: var(--accent);"></i> Metricord
         </div>
         <nav>
+            {% if request.session.role != 'guest' %}
             <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">
                 <i class="fas fa-chart-pie"></i> Přehled
             </a>
@@ -42,15 +44,20 @@
             <a href="/profile" class="nav-link {% if request.url.path == '/profile' %}active{% endif %}">
                 <i class="fas fa-user-circle"></i> Profil
             </a>
+            {% endif %}
+
             <a href="/leaderboard" class="nav-link {% if request.url.path == '/leaderboard' %}active{% endif %}">
                 <i class="fas fa-trophy"></i> Žebříček
             </a>
+
+            {% if request.session.role != 'guest' %}
             <a href="/settings" class="nav-link {% if request.url.path == '/settings' %}active{% endif %}">
                 <i class="fas fa-cog"></i> Nastavení
             </a>
             <a href="/settings/team" class="nav-link {% if request.url.path == '/settings/team' %}active{% endif %}">
                 <i class="fas fa-users"></i> Tým
             </a>
+            {% endif %}
         </nav>
 
         {% if request.session.authenticated %}
@@ -93,10 +100,12 @@
                 </div>
                 {% else %}
 
+                {% if request.session.role != 'guest' %}
                 <a href="/select-server" class="btn-connect-server">
                     <div class="connect-icon"><i class="fas fa-plus"></i></div>
                     <span class="connect-text">Vybrat server</span>
                 </a>
+                {% endif %}
                 {% endif %}
             </div>
 

@@ -75,6 +75,10 @@ async def select_server_page(request: Request):
     
     user_guilds = await get_user_guilds(user["id"])
     
+    # Restrict guest users
+    if request.session.get("role") == "guest":
+        return RedirectResponse(url="/leaderboard")
+    
     
     if user_guilds is None:
         return RedirectResponse(url="/login")
@@ -238,7 +242,9 @@ async def _dashboard_logic(request: Request, start_date: str = None, end_date: s
              
         return templates.TemplateResponse("landing.html", {"request": request, "stats": public_stats})
 
-    
+    # Restrict guest users
+    if request.session.get("role") == "guest":
+        return RedirectResponse(url="/leaderboard")
     
     guild_id = request.session.get("guild_id")
     if not guild_id:
@@ -791,6 +797,7 @@ class TeamUser(pydantic.BaseModel):
     avatar: Optional[str] = None
     permissions: List[str]
 
+
 @app.get("/api/settings/team")
 async def get_team_api(request: Request):
     """Get list of team members."""
@@ -957,9 +964,13 @@ async def commands_page(request: Request, _=Depends(require_auth)):
     return templates.TemplateResponse("docs/commands.html", ctx)
 
 @app.get("/analytics", response_class=HTMLResponse)
-async def analytics_page(request: Request, start_date: str = None, end_date: str = None, role_id: str = None, _=Depends(require_auth)):
-    """New advanced analytics page with channel stats and leaderboards."""
-    user = request.session.get("discord_user", {})
+async def analytics_page(request: Request, start_date: str = None, end_date: str = None, role_id: str = None):
+    user = request.session.get("discord_user")
+    if not user: return RedirectResponse(url="/")
+    
+    if request.session.get("role") == "guest":
+        return RedirectResponse(url="/leaderboard")
+
     guild_id = request.session.get("guild_id")
     if not guild_id:
         return RedirectResponse(url="/select-server")

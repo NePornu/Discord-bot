@@ -1,4 +1,5 @@
 {% extends "landing_base.html" %}
+{% set simple_nav = true %}
 
 {% block title %}Novinky | Metricord{% endblock %}
 
@@ -201,6 +202,46 @@
         padding: 4px 12px;
         border-radius: 6px;
         font-size: 0.9rem;
+    }
+
+    @media (max-width: 768px) {
+        .changelog-hero::before {
+            width: 90vw;
+            height: 90vw;
+            top: -50px;
+        }
+
+        .changelog-hero h1 {
+            font-size: 2.5rem;
+        }
+
+        .changelog-hero {
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        .timeline {
+            padding-left: 0;
+            margin: 40px 20px;
+        }
+
+        .timeline::before {
+            display: none;
+        }
+
+        .timeline-marker {
+            position: relative;
+            left: 0;
+            top: 0;
+            margin-bottom: 16px;
+            display: inline-block;
+        }
+
+        .version-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+        }
     }
 </style>
 

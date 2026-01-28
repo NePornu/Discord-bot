@@ -1,14 +1,12 @@
-
-
 :root {
-    
-    --primary-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+
+    --primary-gradient: var(--accent);
     --secondary-gradient: linear-gradient(135deg, #3b82f6 0%, #2dd4bf 100%);
     --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
     --warning-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
     --danger-gradient: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
 
-    
+
     --bg-primary: #0b0b15;
     --bg-secondary: #13132b;
     --bg-card: rgba(30, 30, 50, 0.4);
@@ -20,12 +18,12 @@
     --danger: #ef4444;
     --warning: #f59e0b;
 
-    
+
     --glass-bg: rgba(255, 255, 255, 0.03);
     --glass-border: rgba(255, 255, 255, 0.08);
     --glass-highlight: rgba(255, 255, 255, 0.05);
 
-    
+
     --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
@@ -74,7 +72,7 @@ body::before {
     right: 0;
     bottom: 0;
     background: radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.1) 0%, transparent 50%);
+        radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
     z-index: -1;
     animation: pulse 20s ease-in-out infinite;
 }
@@ -98,7 +96,7 @@ body::before {
     top: 0;
     bottom: 0;
     width: 280px;
-    
+
     background: rgba(15, 15, 35, 0.4);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -112,12 +110,12 @@ body::before {
         inset 0 0 20px rgba(255, 255, 255, 0.02);
     overflow-y: auto;
     scrollbar-width: none;
-    
+
 }
 
 .sidebar::-webkit-scrollbar {
     display: none;
-    
+
 }
 
 .brand {
@@ -494,7 +492,7 @@ body::before {
 
 .widget-wrapper {
     min-width: 0;
-    
+
 }
 
 @media (min-width: 1024px) {
@@ -518,7 +516,7 @@ body::before {
 
 @media (max-width: 1199px) {
 
-    
+
     .span-3,
     .span-4 {
         grid-column: span 2 !important;
@@ -527,7 +525,7 @@ body::before {
 
 @media (max-width: 767px) {
 
-    
+
     .span-2,
     .span-3,
     .span-4 {
@@ -687,7 +685,7 @@ body::before {
 .stat-card {
     position: relative;
     overflow: hidden;
-    
+
 }
 
 .stat-card::before {
@@ -699,7 +697,7 @@ body::before {
     height: 4px;
     background: var(--primary-gradient);
     border-top-left-radius: 24px;
-    
+
     border-top-right-radius: 24px;
 }
 
@@ -980,7 +978,7 @@ tbody tr:last-child td:last-child {
     justify-content: center;
     opacity: 0;
     transition: opacity 0.3s ease;
-    
+
     display: none;
 }
 
@@ -1173,7 +1171,7 @@ tbody tr:last-child td:last-child {
 
 @media (max-width: 768px) {
 
-    
+
     .mobile-menu-toggle {
         display: flex;
     }
@@ -1182,7 +1180,7 @@ tbody tr:last-child td:last-child {
         display: block;
     }
 
-    
+
     .sidebar {
         position: fixed;
         left: -280px;
@@ -1201,26 +1199,26 @@ tbody tr:last-child td:last-child {
         left: 0;
     }
 
-    
+
     .content {
         margin-left: 0;
         padding: 70px 16px 24px 16px;
         min-height: 100vh;
     }
 
-    
+
     .grid {
         grid-template-columns: 1fr !important;
         gap: 16px;
     }
 
-    
+
     .full-width,
     [style*="grid-column: span 2"] {
         grid-column: span 1 !important;
     }
 
-    
+
     .title {
         font-size: 1.75rem;
     }
@@ -1229,7 +1227,7 @@ tbody tr:last-child td:last-child {
         margin-bottom: 24px;
     }
 
-    
+
     .card {
         padding: 16px;
         border-radius: 16px;
@@ -1239,19 +1237,19 @@ tbody tr:last-child td:last-child {
         font-size: 2rem;
     }
 
-    
+
     .chart-container {
         height: 240px;
         overflow: hidden;
         max-width: 100%;
     }
 
-    
+
     canvas {
         max-width: 100% !important;
     }
 
-    
+
     table {
         display: block;
         overflow-x: auto;
@@ -1263,14 +1261,14 @@ tbody tr:last-child td:last-child {
         min-width: 500px;
     }
 
-    
+
     [style*="display: flex"][style*="justify-content: space-between"] {
         flex-direction: column !important;
         gap: 16px;
         align-items: stretch !important;
     }
 
-    
+
     form[method="GET"],
     form[style*="display: flex"] {
         flex-direction: column !important;
@@ -1297,19 +1295,19 @@ tbody tr:last-child td:last-child {
         margin-top: 8px !important;
     }
 
-    
+
     table[style*="border-collapse"] td div {
         width: 24px !important;
         height: 24px !important;
         font-size: 0.65rem !important;
     }
 
-    
+
     .user-widget {
         margin-top: 24px;
     }
 
-    
+
     .grid:has(.stat-card) {
         grid-template-columns: repeat(2, 1fr) !important;
     }
@@ -1322,25 +1320,25 @@ tbody tr:last-child td:last-child {
         font-size: 0.75rem;
     }
 
-    
+
     .dash-tooltip .dash-tooltip-text {
         width: 200px;
         font-size: 10px;
     }
 
-    
+
     .live-indicator {
         font-size: 0.75rem;
         padding: 4px 10px;
     }
 
-    
+
     .btn {
         min-height: 44px;
         padding: 12px 20px;
     }
 
-    
+
     .nav-link {
         padding: 14px 20px;
         min-height: 44px;
@@ -1362,7 +1360,7 @@ tbody tr:last-child td:last-child {
         border-radius: 14px;
     }
 
-    
+
     .grid:has(.stat-card) {
         grid-template-columns: 1fr !important;
     }
@@ -1375,37 +1373,37 @@ tbody tr:last-child td:last-child {
         height: 200px;
     }
 
-    
+
     table[style*="border-collapse"] td div {
         width: 20px !important;
         height: 20px !important;
         font-size: 0.6rem !important;
     }
 
-    
+
     select,
     input[type="date"],
     input[type="number"],
     input[type="text"] {
         padding: 12px 14px;
         font-size: 16px;
-        
+
     }
 
-    
+
     .brand {
         font-size: 1.25rem;
         margin-bottom: 24px;
     }
 
-    
+
     .info-icon {
         width: 16px;
         height: 16px;
         font-size: 0.65rem;
     }
 
-    
+
     .dash-tooltip .dash-tooltip-text {
         width: 180px;
         padding: 8px;
@@ -1447,7 +1445,7 @@ tbody tr:last-child td:last-child {
         transform: none;
     }
 
-    
+
     .info-icon {
         width: 24px;
         height: 24px;
@@ -1556,7 +1554,7 @@ option {
     position: relative;
     overflow: hidden;
     aspect-ratio: 1;
-    
+
 }
 
 .server-card-square:hover {
@@ -1583,7 +1581,7 @@ option {
     color: white;
     background: var(--bg-secondary);
     flex-shrink: 0;
-    
+
 }
 
 .server-card-square:hover .server-icon {

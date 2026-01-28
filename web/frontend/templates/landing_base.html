@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Metricord{% endblock %}</title>
+    <link rel="icon" href="/static/img/favicon.png">
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet">
@@ -14,8 +15,8 @@
             --bg-dark: #09090b;
             --bg-secondary: #14141a;
             --primary: #8b5cf6;
-            --primary-g: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
-            --accent: #d946ef;
+            --primary-g: #8b5cf6;
+            --accent: #8b5cf6;
             --text-main: #ffffff;
             --text-muted: #9ca3af;
             --glass: rgba(255, 255, 255, 0.03);
@@ -295,6 +296,16 @@
             <i class="fa-brands fa-discord" style="color: #5865F2;"></i>
             Metricord
         </a>
+
+        {% if simple_nav %}
+        <!-- Simple Nav for Docs/Support -->
+        <div class="nav-links" style="margin-left: auto;">
+            <a href="/" class="nav-btn">
+                <i class="fa-solid fa-arrow-left" style="margin-right:8px;"></i> Zpět na web
+            </a>
+        </div>
+        {% else %}
+        <!-- Full Nav -->
         <div class="nav-links">
             <a href="/about" class="nav-item">O nás</a>
             <a href="/support#faq" class="nav-item">FAQ</a>
@@ -307,8 +318,10 @@
         <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
             <i class="fa-solid fa-bars"></i>
         </button>
+        {% endif %}
     </nav>
 
+    {% if not simple_nav %}
     <div class="mobile-nav-overlay" id="mobileNav">
         <a href="/about" class="mobile-nav-link">O nás</a>
         <a href="/support#faq" class="mobile-nav-link">FAQ</a>
@@ -318,6 +331,7 @@
             <i class="fa-brands fa-discord" style="margin-right:8px;"></i> Přihlásit se
         </a>
     </div>
+    {% endif %}
 
     <script>
         function toggleMobileMenu() {

@@ -31,6 +31,7 @@
         font-weight: 800;
         background: linear-gradient(to right, #fff, #c4b5fd);
         -webkit-background-clip: text;
+        background-clip: text;
         -webkit-text-fill-color: transparent;
         letter-spacing: -0.05em;
     }
@@ -44,73 +45,9 @@
         margin-bottom: 8px;
     }
 
-    .filter-bar {
-        background: rgba(0, 0, 0, 0.2);
-        padding: 4px;
-        border-radius: 12px;
-        border: 1px solid var(--glass-border);
-        display: flex;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .filter-input {
-        background: transparent;
-        border: none;
-        color: white;
-        padding: 8px 12px;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        outline: none;
-        transition: background 0.2s;
-    }
-
-    .filter-input:hover,
-    .filter-input:focus {
-        background: rgba(255, 255, 255, 0.05);
-    }
-
-    .filter-input[type="date"]::-webkit-calendar-picker-indicator {
-        filter: invert(1);
-        cursor: pointer;
-    }
-
-    .btn-filter {
-        background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
-        color: white;
-        border: none;
-        padding: 8px 20px;
-        border-radius: 8px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: opacity 0.2s;
-    }
-
-    .btn-filter:hover {
-        opacity: 0.9;
-    }
-
-    /* Leaderboard Styles */
-    .lb-table {
-        width: 100%;
-        border-collapse: separate;
-        border-spacing: 0 8px;
-    }
-
-    .lb-row {
-        transition: transform 0.2s;
-    }
-
-    .lb-row:hover {
-        transform: scale(1.01);
-        background: rgba(255, 255, 255, 0.02);
-    }
-
     .lb-cell {
         padding: 16px;
         background: rgba(255, 255, 255, 0.02);
-        first-child: border-radius: 12px 0 0 12px;
-        last-child: border-radius: 0 12px 12px 0;
     }
 
     .lb-cell:first-child {
@@ -157,28 +94,40 @@
 </style>
 
 
-<div
-    style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 32px; flex-wrap: wrap; gap: 20px;">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
     <div>
-        <h1
-            style="font-size: 2.5rem; font-weight: 800; margin-bottom: 8px; background: linear-gradient(90deg, #fff, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-            Team Activity
-        </h1>
-        <p style="color: var(--text-muted);">Monitor actions, voice time, and engagement.</p>
+        <h1 class="title">Aktivita Týmu</h1>
+        <p style="color: var(--text-secondary);">Sledování akcí, času v hovoru a zapojení</p>
     </div>
+</div>
 
-    <form method="GET" action="/activity" class="filter-bar">
-        <select name="role_id" class="filter-input" style="background: rgba(0,0,0,0.2);">
-            <option value="all" {% if selected_role=='all' %}selected{% endif %}>All Roles</option>
-            {% for rid, rname in roles %}
-            <option value="{{ rid }}" {% if selected_role==rid %}selected{% endif %}>{{ rname }}</option>
-            {% endfor %}
-        </select>
-        <div style="width: 1px; height: 20px; background: var(--glass-border);"></div>
-        <input type="date" name="start_date" value="{{ start_date }}" class="filter-input">
-        <span style="color: var(--text-muted);">-</span>
-        <input type="date" name="end_date" value="{{ end_date }}" class="filter-input">
-        <button type="submit" class="btn-filter">Update View</button>
+<div style="margin-bottom: 40px;">
+    <form method="GET" action="/activity"
+        style="display: flex; gap: 12px; align-items: center; background: var(--bg-card); padding: 8px 16px; border-radius: 12px; border: 1px solid var(--glass-border);">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Role</label>
+            <select name="role_id" style="min-width: 140px;">
+                <option value="all" {% if selected_role=='all' %}selected{% endif %}>Všechny role</option>
+                {% for rid, rname in roles %}
+                <option value="{{ rid }}" {% if selected_role==rid %}selected{% endif %}>{{ rname }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Od</label>
+            <input type="date" name="start_date" value="{{ start_date }}">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Do</label>
+            <input type="date" name="end_date" value="{{ end_date }}">
+        </div>
+        <button type="submit" class="btn"
+            style="height: 42px; margin-top: auto; display: flex; align-items: center; gap: 8px;">
+            Filtrovat
+        </button>
     </form>
 </div>
 
@@ -192,21 +141,21 @@
 
 <div
     style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 32px;">
-    
+
     <div class="glass-card">
-        <div class="stat-label">Active Staff</div>
+        <div class="stat-label">Aktivní Tým</div>
         <div class="stat-value">{{ active_staff_count }}</div>
         <div style="margin-top: 12px; display: flex; align-items: center; gap: 6px; color: #4ade80; font-size: 0.9rem;">
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path d="M20 6L9 17l-5-5" />
             </svg>
-            Actually Contributing
+            Aktivně přispívající
         </div>
     </div>
 
-    
+
     <div class="glass-card">
-        <div class="stat-label">Total Hours (Filter)</div>
+        <div class="stat-label">Celkem Hodin (Výběr)</div>
         <div class="stat-value">
             {% if total_hours_30d < 1 and total_hours_30d> 0 %}
                 {{ (total_hours_30d * 60)|round|int }}m
@@ -215,16 +164,16 @@
                 {% endif %}
         </div>
         <div style="margin-top: 12px; color: var(--text-muted); font-size: 0.9rem;">
-            Combined Voice & Chat
+            Kombinace Voice & Chat
         </div>
     </div>
 
-    
+
     <div class="glass-card">
-        <div class="stat-label">Top Metric</div>
+        <div class="stat-label">Top Metrika</div>
         <div class="stat-value" style="font-size: 2rem;">{{ top_action }}</div>
         <div style="margin-top: 12px; color: #a78bfa; font-size: 0.9rem;">
-            Most Frequent Action
+            Nejčastější akce
         </div>
     </div>
 </div>
@@ -232,10 +181,10 @@
 
 <div class="glass-card" style="margin-bottom: 32px; padding: 32px;">
     <div style="display: flex; justify-content: space-between; margin-bottom: 24px;">
-        <h3 style="font-size: 1.25rem; font-weight: 700;">Activity Trend</h3>
+        <h3 style="font-size: 1.25rem; font-weight: 700;">Trend Aktivity</h3>
         <div style="display: flex; gap: 12px;">
             <span style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted);">
-                <span style="width: 8px; height: 8px; background: #8b5cf6; border-radius: 50%;"></span> Weighted Hours
+                <span style="width: 8px; height: 8px; background: #8b5cf6; border-radius: 50%;"></span> Vážené Hodiny
             </span>
         </div>
     </div>
@@ -246,7 +195,7 @@
 
 
 <div class="glass-card">
-    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 24px;">Top Contributors</h3>
+    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 24px;">Top Přispěvatelé</h3>
 
     {% if leaderboard %}
     <table class="lb-table">
@@ -290,7 +239,7 @@
                 </td>
                 <td class="lb-cell" style="width: 200px;">
                     <div style="margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 0.85rem;">
-                        <span style="color: var(--text-muted);">Contribution Score</span>
+                        <span style="color: var(--text-muted);">Skóre Příspěvku</span>
                         <span style="font-weight: bold; color: white;">
                             {% if user.weighted_h < 1 and user.weighted_h> 0 %}
                                 {{ (user.weighted_h * 60)|round|int }}m
@@ -299,7 +248,7 @@
                                 {% endif %}
                         </span>
                     </div>
-                    
+
                     {% set max_score = leaderboard[0].weighted_h | default(100) %}
                     {% set pct = (user.weighted_h / max_score * 100) if max_score > 0 else 0 %}
                     <div
@@ -310,7 +259,7 @@
                     </div>
                 </td>
                 <td class="lb-cell" style="width: 120px; text-align: right;">
-                    <div style="font-size: 0.9rem; color: var(--text-muted);">Actions</div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted);">Akce</div>
                     <div style="font-size: 1.1rem; font-weight: bold; color: #fff;">{{ user.action_count }}</div>
                 </td>
             </tr>
@@ -320,8 +269,8 @@
     {% else %}
     <div style="text-align: center; padding: 60px 0; color: var(--text-muted);">
         <div style="font-size: 3rem; margin-bottom: 16px;">😴</div>
-        <h3>No activity found for this period.</h3>
-        <p>Try adjusting the filters or check back later.</p>
+        <h3>Žádná aktivita v tomto období.</h3>
+        <p>Zkuste upravit filtry nebo se vraťte později.</p>
     </div>
     {% endif %}
 </div>

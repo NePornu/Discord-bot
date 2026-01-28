@@ -1,4 +1,5 @@
 {% extends "landing_base.html" %}
+{% set simple_nav = true %}
 
 {% block title %}Podpora | Metricord{% endblock %}
 
@@ -160,6 +161,32 @@
         font-size: 1.05rem;
         line-height: 1.6;
     }
+
+    @media (max-width: 768px) {
+        .support-hero::before {
+            width: 90vw;
+            height: 90vw;
+            top: -50px;
+        }
+
+        .support-hero h1 {
+            font-size: 2.5rem;
+        }
+
+        .support-hero {
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        .support-grid {
+            grid-template-columns: 1fr;
+            padding: 0 16px;
+        }
+
+        .faq-list {
+            padding: 20px;
+        }
+    }
 </style>
 
 <div class="support-hero">
@@ -168,7 +195,7 @@
 </div>
 
 <div class="support-grid">
-    
+
     <div class="support-card">
         <div class="icon-wrapper">
             <i class="fa-brands fa-discord"></i>
@@ -179,7 +206,7 @@
         <a href="#" class="btn-card btn-primary-card">Připojit se</a>
     </div>
 
-    
+
     <div class="support-card">
         <div class="icon-wrapper">
             <i class="fas fa-envelope"></i>
@@ -190,7 +217,7 @@
         <a href="mailto:support@nepornu.cz" class="btn-card btn-secondary-card">Napsat Email</a>
     </div>
 
-    
+
     <div class="support-card">
         <div class="icon-wrapper">
             <i class="fas fa-book"></i>
