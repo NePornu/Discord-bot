@@ -33,7 +33,7 @@ start_bot() {
     PRIMARY_TOKEN=$(grep "^TOKEN =" "$TOKEN_FILE" | cut -d '"' -f 2 | tr -d "'")
     DASH_TOKEN=$(grep "^DASHBOARD_TOKEN =" "$TOKEN_FILE" | cut -d '"' -f 2 | tr -d "'")
 
-    echo "[INFO] Starting PRIMARY bot (NePornu)..."
+    echo "[INFO] Starting PRIMARY bot..."
     docker run -d --name discord-bot-primary --network botnet --restart unless-stopped \
         -e BOT_TOKEN="$PRIMARY_TOKEN" \
         discord-bot-image

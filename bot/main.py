@@ -163,7 +163,7 @@ async def on_ready():
     
     
     is_lite = os.getenv("BOT_LITE_MODE") == "1"
-    status_msg = "Analytics 📈 stats.nepornu.cz" if is_lite else "nepornu.cz 📊"
+    status_msg = "Analytics 📈" if is_lite else "discord.gg/metricord 📊"
     activity = discord.Activity(type=discord.ActivityType.watching, name=status_msg)
     await bot.change_presence(status=discord.Status.online, activity=activity)
     

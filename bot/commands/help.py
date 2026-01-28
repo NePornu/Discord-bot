@@ -3,7 +3,7 @@ from discord.ext import commands
 from typing import List, Optional
 
 TITLE = "📘 Přehled příkazů a modulů"
-FOOTER = "Nepornu Bot – Help System"
+FOOTER = "Metricord Bot – Help System"
 
 
 PAGE_DATA = [

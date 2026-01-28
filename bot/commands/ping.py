@@ -30,7 +30,7 @@ QUOTES: list[tuple[str, str]] = [
     ("Nejsi definován svými pády, ale tím, že se zvedáš.", "John Eldredge"),
     ("Zlo se rozpadá, když se na něj podíváš světlem pravdy.", "C. S. Lewis"),
     ("Síla začíná v rozhodnutí – nekliknout.", "Neznámý autor"),
-    ("Život mimo pornografii není prázdný, je plný skutečných lidí.", "NePornu.cz"),
+    ("Život mimo pornografii není prázdný, je plný skutečných lidí.", "Metricord"),
 ]
 
 def format_quote() -> str:

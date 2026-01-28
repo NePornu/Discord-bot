@@ -10,12 +10,12 @@ SESSION_EXPIRY_HOURS = 24
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
-SMTP_USER = "marcipan@nepornu.cz"
+SMTP_USER = "support@metricord.app"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  
-SMTP_FROM = "NePornu Dashboard <marcipan@nepornu.cz>"
+SMTP_FROM = "Metricord Dashboard <support@metricord.app>"
 
 
-ALLOWED_EMChytréL_DOMChytréN = "@nepornu.cz"
+ALLOWED_EMAIL_DOMAIN = "@metricord.app"
 OTP_LENGTH = 6
 OTP_EXPIRY_SECONDS = 300
 OTP_MAX_ATTEMPTS = 5
