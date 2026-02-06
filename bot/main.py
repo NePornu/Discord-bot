@@ -8,6 +8,17 @@ import time
 import platform
 import sys
 from datetime import datetime
+import os
+
+# Manual .env loading
+env_path = "/root/discord-bot/.env"
+if os.path.exists(env_path):
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                os.environ[key] = val.strip('"').strip("'")
 
 import discord
 
@@ -38,6 +49,7 @@ async def send_console_log(msg: str):
             print(f"[PENDING] {fullmsg}")
             return
         channel = bot.get_channel(config.CONSOLE_CHANNEL_ID)
+        print(f"[lOG] {fullmsg}")
         if channel:
             for i in range(0, len(fullmsg), 1900):
                 await channel.send(f"```{fullmsg[i:i+1900]}```")
@@ -56,6 +68,16 @@ async def log_start_info():
     await send_console_log(f"CONSOLE_CHANNEL_ID: {config.CONSOLE_CHANNEL_ID}")
     await send_console_log(f"'commands' existuje: {os.path.exists('commands')}")
     await send_console_log(f"Obsah 'commands': {os.listdir('commands') if os.path.exists('commands') else '—'}")
+
+@bot.command(name="sync")
+@commands.has_permissions(administrator=True)
+async def sync_tree(ctx: commands.Context):
+    await ctx.send("⏳ Synchronizuji slash příkazy...")
+    try:
+        synced = await bot.tree.sync()
+        await ctx.send(f"✅ Synchronizováno {len(synced)} příkazů.")
+    except Exception as e:
+        await ctx.send(f"❌ Chyba: {e}")
 
 async def load_commands():
     start = time.time()
@@ -134,9 +156,9 @@ async def member_stats_task():
                 await pipe.setex(f"presence:total:{guild.id}", 60, str(total_members))
                 
                 
-                await pipe.set(f"guild:verification_level:{guild.id}", str(guild.verification_level.value))
-                await pipe.set(f"guild:mfa_level:{guild.id}", str(int(guild.mfa_level)))  
-                await pipe.set(f"guild:explicit_filter:{guild.id}", str(guild.explicit_content_filter.value))
+                await pipe.set(f"guild:verification_level:{guild.id}", str(guild.verification_level.value if hasattr(guild.verification_level, "value") else guild.verification_level))
+                await pipe.set(f"guild:mfa_level:{guild.id}", str(guild.mfa_level.value if hasattr(guild.mfa_level, "value") else guild.mfa_level))  
+                await pipe.set(f"guild:explicit_filter:{guild.id}", str(guild.explicit_content_filter.value if hasattr(guild.explicit_content_filter, "value") else guild.explicit_content_filter))
                 
                 
                 await pipe.sadd("bot:guilds", str(guild.id))
@@ -150,20 +172,41 @@ async def member_stats_task():
         
         await r.close()
     except Exception as e:
-        print(f"Error in member_stats_task: {e}")
+        if "Error 113" in str(e):
+             # Suppress repetitive redis timeout errors
+             pass
+        else:
+             print(f"Error in member_stats_task: {e}")
 
 @member_stats_task.before_loop
 async def before_member_stats_task():
-    
+    # await bot.wait_until_ready()
+    pass
+
+@tasks.loop(seconds=60)
+async def heartbeat_task():
+    """Updates a heartbeat key in Redis to show the bot is alive."""
+    try:
+        r = await get_redis_client()
+        await r.set("bot:heartbeat", str(time.time()))
+        await r.close()
+    except Exception as e:
+        print(f"[{ts()}] [ERROR] Heartbeat failed: {e}")
+
+@heartbeat_task.before_loop
+async def before_heartbeat_task():
+    # Don't wait for bot to be ready - send heartbeat during startup too
+    # This prevents false DOWN alerts when bot is loading extensions
     pass
 
 @bot.event
 async def on_ready():
+    await load_commands()
     await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
     
     
     is_lite = os.getenv("BOT_LITE_MODE") == "1"
-    status_msg = "Analytics 📈" if is_lite else "discord.gg/metricord 📊"
+    status_msg = "Analytics 📈" if is_lite else "nepornu.cz"
     activity = discord.Activity(type=discord.ActivityType.watching, name=status_msg)
     await bot.change_presence(status=discord.Status.online, activity=activity)
     
@@ -172,7 +215,7 @@ async def on_ready():
 
     
     try:
-        r = redis.from_url(CONFIG["REDIS_URL"], decode_responses=True)
+        r = redis.from_url(config.REDIS_URL, decode_responses=True)
         
         idx_key = "bot:guilds:dashboard" if is_lite else "bot:guilds:primary"
         
@@ -201,31 +244,15 @@ async def on_ready():
                     await channel.send(f"```{msg[i:i+1900]}```")
         pending_console_msgs.clear()
 
-    await send_console_log("Načítám cogy…")
-    await load_commands()
+
+    # await send_console_log("Načítám cogy…")
+    # await load_commands()
 
     
     
     try:
-        pass
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-            
-        
-        
+        synced = await bot.tree.sync()
+        await send_console_log(f"✅ Synchronizováno {len(synced)} slash příkazů.")
         
 
     except Exception as e:
@@ -252,7 +279,7 @@ async def on_guild_join(guild: discord.Guild):
 
     
     try:
-        r = redis.from_url(CONFIG["REDIS_URL"], decode_responses=True)
+        r = redis.from_url(config.REDIS_URL, decode_responses=True)
         is_lite = os.getenv("BOT_LITE_MODE") == "1"
         idx_key = "bot:guilds:dashboard" if is_lite else "bot:guilds:primary"
         
@@ -268,13 +295,17 @@ async def on_guild_join(guild: discord.Guild):
     if not member_stats_task.is_running():
         member_stats_task.start()
         print("✅ Background task: Member stats sync started")
+    
+    if not heartbeat_task.is_running():
+        heartbeat_task.start()
+        print("✅ Background task: Heartbeat started")
 
 @bot.event
 async def on_guild_remove(guild: discord.Guild):
     await send_console_log(f"👋 ODPOJEN ZE SERVERU: {guild.name} ({guild.id})")
     
     try:
-        r = redis.from_url(CONFIG["REDIS_URL"], decode_responses=True)
+        r = redis.from_url(config.REDIS_URL, decode_responses=True)
         is_lite = os.getenv("BOT_LITE_MODE") == "1"
         idx_key = "bot:guilds:dashboard" if is_lite else "bot:guilds:primary"
         
@@ -374,6 +405,10 @@ async def main():
     if not member_stats_task.is_running():
         member_stats_task.start()
         print(ts(), "✅ Background task: Member stats sync started (from main)")
+
+    if not heartbeat_task.is_running():
+        heartbeat_task.start()
+        print(ts(), "✅ Background task: Heartbeat started (from main)")
     
     
     

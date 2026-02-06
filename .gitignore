@@ -8,3 +8,14 @@ data/*.json
 bot_data/
 venv/
 .DS_Store
+
+# Python source files
+Python-3.9.18/
+*.tgz
+
+# Generated HTML files
+debug_status.html
+status_page_output.html
+
+# VSCode settings
+.vscode/

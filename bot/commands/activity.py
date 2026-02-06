@@ -29,7 +29,8 @@ LEAD_IN_BASE = 180.0
 LEAD_IN_CHAR = 1.0    
 LEAD_IN_REPLY = 60.0  
 
-REDIS_URL = "redis://redis-hll:6379/0"
+import os
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 class ActivityMonitor(commands.Cog):
     def __init__(self, bot: commands.Bot):

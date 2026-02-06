@@ -14,8 +14,9 @@ from discord.ext import commands, tasks
 import redis.asyncio as redis
 
 
+import os
 CONFIG = {
-    "REDIS_URL": "redis://redis-hll:6379/0",
+    "REDIS_URL": os.getenv("REDIS_URL", "redis://localhost:6379/0"),
     "RETENTION_DAYS": 40,
     "USER_COOLDOWN_SEC": 60,
     "VOICE_MIN_MINUTES": 5,

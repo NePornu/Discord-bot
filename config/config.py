@@ -2,7 +2,8 @@
 BOT_PREFIX = "*"  
 
 
-REDIS_URL = "redis://redis-hll:6379/0"
+import os
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 
 GUILD_ID = 615171377783242769  

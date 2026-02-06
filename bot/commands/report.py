@@ -10,6 +10,7 @@ from config import config
 from datetime import datetime, date, timedelta, time, timezone
 import os
 import calendar
+from typing import Optional, Union
 
 
 try:
@@ -315,9 +316,9 @@ class ServerReport(commands.Cog):
     async def report_run(
         self,
         itx: Interaction,
-        year: int | None = None,
-        month: app_commands.Range[int, 1, 12] | None = None,
-        channel: discord.TextChannel | None = None,
+        year: Optional[int] = None,
+        month: Optional[app_commands.Range[int, 1, 12]] = None,
+        channel: Optional[discord.TextChannel] = None,
         hide: bool = True
     ):
         await itx.response.defer(ephemeral=hide)
@@ -347,8 +348,8 @@ class ServerReport(commands.Cog):
     async def report_preview(
         self,
         itx: Interaction,
-        year: int | None = None,
-        month: app_commands.Range[int, 1, 12] | None = None,
+        year: Optional[int] = None,
+        month: Optional[app_commands.Range[int, 1, 12]] = None,
         hide: bool = True
     ):
         await itx.response.defer(ephemeral=hide)

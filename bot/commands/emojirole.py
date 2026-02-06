@@ -1,5 +1,4 @@
 
-
 from __future__ import annotations
 
 import re
@@ -7,7 +6,7 @@ import json
 import random
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, Optional, Union
 
 import discord
 from discord import app_commands
@@ -91,7 +90,7 @@ class ChallengeConfig:
         )
 
 
-def _parse_channel_any(s: str | discord.abc.GuildChannel | None, guild: discord.Guild) -> discord.TextChannel | None:
+def _parse_channel_any(s: Union[str, discord.abc.GuildChannel, None], guild: discord.Guild) -> Optional[discord.TextChannel]:
     """Podpora: <#123>, číslo, název, nebo rovnou objekt."""
     if s is None:
         return None
@@ -130,34 +129,61 @@ def _split_emoji_list(raw: str) -> list[str]:
 def _match_custom_emoji(name_or_token: str, content: str) -> bool:
     """
     Ověří přítomnost custom emoji:
-    - ':name:' → matchne ':name:' i '<:name:id>' / '<a:name:id>'
-    - '<:name:id>' → substring
+    - 'name_or_token' může být ':name:' nebo '<:name:id>'
+    - Matchuje ':name:', '<:name:any_id>', '<:name:specific_id>'
     """
     token = name_or_token.strip()
+    
+    # CASE A: Config is full object <...:id>
     if token.startswith("<") and token.endswith(">"):
-        return token in content
+        if token in content:
+            return True
+        
+        # Try matching by name (ignoring ID) or alias
+        m = re.match(r"<a?:([^:]+):\d+>", token)
+        if m:
+            name = m.group(1)
+            # 1. Check text alias :name:
+            if f":{name}:" in content:
+                return True
+            # 2. Check any ID with same name <a:name:...>
+            if re.search(rf"<a?:{re.escape(name)}:\d+>", content):
+                return True
+        return False
 
+    # CASE B: Config is just :name:
     m = re.fullmatch(r":([a-zA-Z0-9_~\-]+):", token)
     if not m:
         return token in content
-    name = m.group(1)
 
+    name = m.group(1)
+    # 1. Text alias :name:
     if f":{name}:" in content:
         return True
+    # 2. Full object <a:name:id>
     pattern = rf"<a?:{re.escape(name)}:\d+>"
     return re.search(pattern, content) is not None
 
 
 def _message_contains_all_targets(content: str, targets: list[str]) -> bool:
+    # Normalize content: remove VS16 (\ufe0f) for easier unicode matching
+    content_norm = content.replace("\ufe0f", "")
+
     for t in targets:
         t = t.strip()
         if not t:
             continue
         
+        # Normalize target too
+        t_norm = t.replace("\ufe0f", "")
+        
         if not (t.startswith(":") and t.endswith(":")) and not (t.startswith("<") and t.endswith(">")):
-            ok = t in content
+            # Standard emoji check -> use normalized
+            ok = t_norm in content_norm
         else:
+            # Custom emoji check -> use original content
             ok = _match_custom_emoji(t, content)
+            
         if not ok:
             return False
     return True
@@ -191,7 +217,7 @@ class ChallengeCog(commands.Cog):
         except Exception as e:
             print(f"❌ Error saving challenge_config.json: {e}")
 
-    def get_config(self, guild_id: int) -> ChallengeConfig | None:
+    def get_config(self, guild_id: int) -> Optional[ChallengeConfig]:
         """Vrátí config z cache (velmi rychlé)."""
         return self.cache.get(guild_id)
 
@@ -251,22 +277,27 @@ class ChallengeCog(commands.Cog):
 
     @challenge.command(name="show", description="Zobrazí aktuální konfiguraci.")
     async def slash_show(self, itx: discord.Interaction):
+        await itx.response.defer(ephemeral=True)
         cfg = self.get_config(itx.guild_id)
         if not cfg or not cfg.role_id or not cfg.channel_id or not cfg.emojis:
-            await itx.response.send_message("ℹ️ Konfigurace zatím není nastavená.", ephemeral=True)
+            await itx.followup.send("ℹ️ Konfigurace zatím není nastavená.", ephemeral=True)
             return
         role = itx.guild.get_role(cfg.role_id)
         ch = itx.guild.get_channel(cfg.channel_id)
-        await itx.response.send_message(
+        
+        # Format emojis for display
+        emojis_display = ' '.join(cfg.emojis)
+        
+        await itx.followup.send(
             f"• Role: {role.mention if role else cfg.role_id}\n"
             f"• Kanál: {ch.mention if ch else cfg.channel_id}\n"
-            f"• Emojis: {' '.join(cfg.emojis)}",
+            f"• Emojis: {emojis_display}",
             ephemeral=True,
         )
 
     @challenge.command(name="messages", description="Správa přihláškových zpráv.")
     @app_commands.describe(action="add|list|clear", text="Text nové zprávy (pro 'add').")
-    async def slash_messages(self, itx: discord.Interaction, action: str, text: str | None = None):
+    async def slash_messages(self, itx: discord.Interaction, action: str, text: Optional[str] = None):
         action = action.lower().strip()
         cfg = self.get_config(itx.guild_id) or ChallengeConfig(guild_id=itx.guild_id)
 
@@ -304,9 +335,9 @@ class ChallengeCog(commands.Cog):
     async def slash_settings(
         self,
         itx: discord.Interaction,
-        react_ok: bool | None = None,
-        reply_on_success: bool | None = None,
-        require_all: bool | None = None,
+        react_ok: Optional[bool] = None,
+        reply_on_success: Optional[bool] = None,
+        require_all: Optional[bool] = None,
     ):
         cfg = self.get_config(itx.guild_id) or ChallengeConfig(guild_id=itx.guild_id)
         if react_ok is not None:
@@ -332,7 +363,57 @@ class ChallengeCog(commands.Cog):
         else:
             await itx.response.send_message("ℹ️ Nebyla nalezena žádná konfigurace.", ephemeral=True)
 
-    
+    @challenge.command(name="claim", description="Splnit výzvu zadáním emoji (pokud nefunguje automatika).")
+    @app_commands.describe(emojis="Zadej emoji kombinaci (např. '❄️ 🐼 🐸')")
+    async def slash_claim(self, itx: discord.Interaction, emojis: str):
+        await itx.response.defer(ephemeral=True) # Prevent timeout
+        
+        cfg = self.get_config(itx.guild_id)
+        if not cfg or not cfg.role_id:
+            await itx.followup.send("❌ Výzva není nastavena.", ephemeral=True)
+            return
+
+        # Optional: check channel
+        if cfg.channel_id and itx.channel_id != cfg.channel_id:
+             ch = itx.guild.get_channel(cfg.channel_id)
+             ch_mention = ch.mention if ch else f"<#{cfg.channel_id}>"
+             await itx.followup.send(f"❌ Tento příkaz lze použít pouze v kanálu {ch_mention}.", ephemeral=True)
+             return
+
+        content = emojis.strip()
+        hit = _message_contains_all_targets(content, cfg.emojis) if cfg.require_all else any(
+            _message_contains_all_targets(content, [e]) for e in cfg.emojis
+        )
+
+        if not hit:
+            debug_received = f"'{content}'"
+            debug_expected = " ".join(cfg.emojis)
+            await itx.followup.send(
+                f"❌ **Nesprávná kombinace**\n"
+                f"📝 Zadal jsi: {debug_received}\n"
+                f"🎯 Očekávám: {debug_expected}\n\n"
+                "💡 *Tip: Pro vlastní emoji použij přesný název (např. `:panda:`) nebo je vyber z menu.*", 
+                ephemeral=True
+            )
+            return
+            
+        role = itx.guild.get_role(cfg.role_id)
+        if not role:
+             await itx.followup.send("❌ Nastavená role neexistuje.", ephemeral=True)
+             return
+             
+        if role in itx.user.roles:
+            await itx.followup.send("✅ Tuto roli už máš.", ephemeral=True)
+            return
+
+        try:
+            await itx.user.add_roles(role, reason="Challenge: slash claim")
+            msg = "✅"
+            if cfg.success_messages:
+                 msg = random.choice(cfg.success_messages)
+            await itx.followup.send(f"{msg}\n(Role {role.mention} přidána)", ephemeral=True)
+        except Exception as e:
+            await itx.followup.send(f"❌ Nepodařilo se přidat roli: {e}", ephemeral=True)
 
     @commands.command(name="challenge")
     @commands.has_permissions(administrator=True)
@@ -460,26 +541,24 @@ class ChallengeCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        
         if message.author.bot or not message.guild or not message.content:
             return
 
-        
         cfg = self.get_config(message.guild.id)
         if not cfg or not cfg.role_id or not cfg.channel_id or not cfg.emojis:
             return
+        
         if message.channel.id != cfg.channel_id:
             return
 
-        content = message.content
-
-        
+        content = message.content.strip()
         hit = _message_contains_all_targets(content, cfg.emojis) if cfg.require_all else any(
             _message_contains_all_targets(content, [e]) for e in cfg.emojis
         )
 
         if hit:
-            
+            import os, socket
+            print(f"[DEBUG-DUPLICITY] PID: {os.getpid()}, Host: {socket.gethostname()}, MsgID: {message.id} processing hit.")
             if cfg.react_ok:
                 try:
                     await message.add_reaction("✅")

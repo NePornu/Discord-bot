@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="cs">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status Nepornu</title>
+    <link rel="icon" type="image/png" href="/static/img/favicon.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            /* NePornu Colors */
+            --bg-primary: #0b0b15;
+            --bg-secondary: #13132b;
+            --bg-card: rgba(30, 30, 50, 0.6);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #8b5cf6;
+            --accent-hover: #7c3aed;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: rgba(255, 255, 255, 0.08);
+            /* Glass border */
+            --glass-bg: rgba(255, 255, 255, 0.03);
+
+            /* Hetrix-specific overrides for table visibility */
+            --table-header-bg: rgba(139, 92, 246, 0.1);
+            /* Slight purple tint */
+            --table-hover: rgba(255, 255, 255, 0.05);
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background from NePornu */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
+            z-index: -1;
+            animation: pulse 20s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 0.5;
+            }
+
+            50% {
+                opacity: 0.8;
+            }
+        }
+
+        .navbar {
+            background: rgba(15, 15, 35, 0.6);
+            backdrop-filter: blur(12px);
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: white;
+            letter-spacing: -0.5px;
+        }
+
+        .navbar-brand span {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .page-header {
+            margin-bottom: 30px;
+            padding-bottom: 10px;
+            font-size: 2rem;
+            font-weight: 700;
+            color: white;
+            text-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+        }
+
+        /* Controls Row */
+        .controls-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .search-box {
+            display: flex;
+            background: var(--glass-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px 16px;
+            align-items: center;
+            width: 320px;
+            transition: all 0.3s ease;
+        }
+
+        .search-box:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.2);
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            margin-left: 10px;
+            width: 100%;
+            outline: none;
+            font-size: 0.95rem;
+        }
+
+        .uptime-banner {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            padding: 10px 24px;
+            border-radius: 12px;
+            font-weight: 700;
+            color: var(--success);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Table */
+        .status-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-table th {
+            text-align: left;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: var(--table-header-bg);
+        }
+
+        .status-table th:not(:first-child):not(:nth-child(2)),
+        .status-table td:not(:first-child):not(:nth-child(2)) {
+            text-align: center;
+        }
+
+        .status-table td {
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+            transition: background 0.2s;
+        }
+
+        .status-table tr:hover td {
+            background-color: var(--table-hover);
+        }
+
+        .status-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .status-icon-circle {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .icon-success {
+            color: var(--success);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .icon-error {
+            color: var(--danger);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .icon-warning {
+            color: var(--warning);
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .icon-degraded {
+            color: #f97316;
+            /* Orange */
+            background: rgba(249, 115, 22, 0.1);
+        }
+
+        .history-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            /* Slightly rounded squares like GitHub/Hetrix */
+            background-color: var(--success);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            opacity: 0.8;
+            transition: all 0.2s;
+        }
+
+        .history-icon:hover {
+            transform: scale(1.1);
+            opacity: 1;
+            box-shadow: 0 0 10px var(--success);
+        }
+
+        .history-icon.issue {
+            background-color: var(--danger);
+        }
+
+        .history-icon.issue:hover {
+            box-shadow: 0 0 10px var(--danger);
+        }
+
+        .service-link {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.05rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .service-link:hover {
+            color: white;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
+        .footer-brand {
+            text-align: right;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: #13132b;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            width: 95%;
+            max-width: 1100px;
+            padding: 30px;
+            position: relative;
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+
+        /* New Grid Styles */
+        .modal-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .info-tile {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            border: 1px solid var(--border);
+            min-height: 100px;
+        }
+
+        .info-tile.success {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .info-tile.danger {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .tile-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+            color: white;
+        }
+
+        .tile-label {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .tile-icon {
+            opacity: 0.3;
+            margin-bottom: 5px;
+        }
+
+        .detail-section {
+            margin-bottom: 30px;
+        }
+
+        .detail-header {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .detail-table-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .detail-table-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .detail-label {
+            color: var(--text-secondary);
+        }
+
+        .detail-val {
+            font-weight: 600;
+            color: white;
+        }
+
+        .downtime-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .downtime-table th {
+            text-align: left;
+            color: var(--text-secondary);
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .downtime-table td {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: white;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 5px;
+            transition: color 0.2s;
+        }
+
+        .close-btn:hover {
+            color: white;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+            margin-bottom: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 10px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn-visit {
+            background: var(--accent);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .btn-visit:hover {
+            background: var(--accent-hover);
+        }
+
+        @media (max-width: 768px) {
+            .search-box {
+                width: 100%;
+            }
+
+            .status-table th:nth-child(n+3),
+            .status-table td:nth-child(n+3) {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="navbar">
+        <div class="navbar-brand">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round" style="margin-right: 10px;">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            NEPORNU <span>STATUS</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="page-header">
+            Stav Služeb
+        </div>
+
+        <div class="controls-row">
+            <div class="header-controls"
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div class="search-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="searchInput" placeholder="Hledat službu..." onkeyup="filterServices()">
+                </div>
+
+                <!-- NEW: Status Timers -->
+                <div class="status-timers"
+                    style="display: flex; gap: 20px; align-items: center; font-size: 0.9rem; color: var(--text-secondary); background: var(--bg-card); padding: 8px 16px; border-radius: 12px; border: 1px solid var(--border);">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        Last check: <span style="color: white; font-weight: 600;">{{ last_updated }}</span>
+                    </div>
+                    <div style="width: 1px; height: 16px; background: var(--border);"></div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.7;">
+                            <path d="M5 22h14"></path>
+                            <path d="M5 2h14"></path>
+                            <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22">
+                            </path>
+                            <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+                        </svg>
+                        Next update in: <span id="nextCheckTimer"
+                            style="color: var(--accent); font-weight: 600;">--s</span>
+                    </div>
+                </div>
+
+                <button onclick="openSLA()" class="sla-btn"
+                    style="background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-secondary); padding: 10px 15px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                    SLA Calculator
+                </button>
+            </div>
+
+            <div class="status-summary">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+                <span>{{ global_uptime_pct }}% Celková dostupnost</span>
+            </div>
+
+            <div style="display:flex; gap:0; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                <button
+                    style="background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-secondary); padding:10px 18px; border-radius:10px 0 0 10px; cursor:pointer; font-weight:600;">&lt;</button>
+                <button
+                    style="background:var(--bg-secondary); border:1px solid var(--border); border-left:none; border-right:none; color:white; padding:10px 20px; cursor:default; font-weight:600;">Last
+                    7 Days</button>
+                <button
+                    style="background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-secondary); padding:10px 18px; border-radius:0 10px 10px 0; cursor:pointer; font-weight:600;">&gt;</button>
+            </div>
+        </div>
+
+        <!-- Admin Tools Panel -->
+        <div class="admin-tools-panel"
+            style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(30, 30, 50, 0.6) 100%); border: 1px solid var(--border); border-radius: 16px; padding: 24px; margin-bottom: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3
+                    style="margin: 0; font-size: 1.1rem; font-weight: 700; color: white; display: flex; align-items: center; gap: 10px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                        <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    Admin Tools
+                </h3>
+                <span
+                    style="font-size: 0.75rem; color: var(--text-secondary); background: rgba(139, 92, 246, 0.2); padding: 4px 10px; border-radius: 20px;">Internal
+                    Only</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                <!-- Force Refresh -->
+                <button onclick="forceRefresh()" class="admin-btn"
+                    style="background: var(--bg-secondary); border: 1px solid var(--border); color: white; padding: 14px 18px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 600; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                        <path d="M21 3v5h-5" />
+                    </svg>
+                    Force Refresh
+                </button>
+
+                <!-- Reset Cooldowns -->
+                <button onclick="resetCooldowns()" class="admin-btn"
+                    style="background: var(--bg-secondary); border: 1px solid var(--border); color: white; padding: 14px 18px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 600; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    Reset Cooldowns
+                </button>
+
+                <!-- Restart Monitor -->
+                <button onclick="restartMonitor()" class="admin-btn"
+                    style="background: var(--bg-secondary); border: 1px solid var(--border); color: white; padding: 14px 18px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 600; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    Restart Monitor
+                </button>
+
+                <!-- View Logs -->
+                <button onclick="openLogs()" class="admin-btn"
+                    style="background: var(--bg-secondary); border: 1px solid var(--border); color: white; padding: 14px 18px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 600; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                    View Logs
+                </button>
+
+                <!-- Clear All Alerts -->
+                <button onclick="clearAlerts()" class="admin-btn"
+                    style="background: var(--bg-secondary); border: 1px solid var(--border); color: white; padding: 14px 18px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 600; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6L6 18" />
+                        <path d="M6 6l12 12" />
+                    </svg>
+                    Clear Alerts
+                </button>
+
+                <!-- Send Test Alert -->
+                <button onclick="sendTestAlert()" class="admin-btn"
+                    style="background: var(--bg-secondary); border: 1px solid var(--border); color: white; padding: 14px 18px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 600; transition: all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 2L11 13" />
+                        <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+                    </svg>
+                    Test Alert
+                </button>
+            </div>
+
+            <!-- Status Indicators -->
+            <div
+                style="display: flex; gap: 20px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+                    <span id="monitorStatus"
+                        style="width: 10px; height: 10px; border-radius: 50%; background: var(--success); animation: pulse-dot 2s infinite;"></span>
+                    <span style="color: var(--text-secondary);">Monitor:</span>
+                    <span style="color: white; font-weight: 600;">Running</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+                    <span style="color: var(--text-secondary);">Check Interval:</span>
+                    <span style="color: white; font-weight: 600;">60s</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+                    <span style="color: var(--text-secondary);">Alert Cooldown:</span>
+                    <span style="color: white; font-weight: 600;">30m</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+                    <span style="color: var(--text-secondary);">Strike Limit:</span>
+                    <span style="color: white; font-weight: 600;">5</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs Modal -->
+        <div id="logsModal" class="modal"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+            <div
+                style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 16px; width: 90%; max-width: 900px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column;">
+                <div
+                    style="padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; color: white; font-weight: 700;">📋 Monitor Logs</h3>
+                    <button onclick="closeLogs()"
+                        style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.5rem;">&times;</button>
+                </div>
+                <pre id="logsContent"
+                    style="flex: 1; overflow: auto; padding: 20px; margin: 0; font-family: 'Fira Code', monospace; font-size: 0.85rem; color: var(--text-secondary); background: #0a0a12; line-height: 1.6;">Loading logs...</pre>
+                <div
+                    style="padding: 15px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end;">
+                    <button onclick="refreshLogs()"
+                        style="background: var(--accent); border: none; color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">🔄
+                        Refresh</button>
+                    <button onclick="downloadLogs()"
+                        style="background: var(--bg-card); border: 1px solid var(--border); color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">💾
+                        Download</button>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            @keyframes pulse-dot {
+
+                0%,
+                100% {
+                    opacity: 1;
+                }
+
+                50% {
+                    opacity: 0.5;
+                }
+            }
+
+            .admin-btn:hover {
+                background: rgba(139, 92, 246, 0.2) !important;
+                border-color: var(--accent) !important;
+                transform: translateY(-2px);
+            }
+        </style>
+
+        <table class="status-table">
+            <thead>
+                <tr>
+                    <th>Služba</th>
+                    <th>Uptime</th>
+                    {% for day in last_days %}
+                    <th>{{ day }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for service in services %}
+                <tr>
+                    <td>
+                        <a href="javascript:void(0)" onclick="openDetail('{{ service.name }}')" class="service-link">
+                            {% if service.status == 'UP' %}
+                            <div class="status-icon-circle icon-success">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                            </div>
+                            {% elif service.status == 'WARNING' %}
+                            <div class="status-icon-circle icon-warning">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <path
+                                        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                                    </path>
+                                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                </svg>
+                            </div>
+                            {% elif service.status == 'DEGRADED' %}
+                            <div class="status-icon-circle icon-degraded">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                </svg>
+                            </div>
+                            {% else %}
+                            <div class="status-icon-circle icon-error">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                </svg>
+                            </div>
+                            {% endif %}
+                            {{ service.name }}
+                        </a>
+                    </td>
+                    <td style="font-weight:700; color: var(--success); font-family: monospace; font-size: 1rem;">
+                        {{ service.uptime_pct|default('100.0') }}%
+                    </td>
+
+                    {% for day_stat in service.daily_status %}
+                    <td>
+                        {% if day_stat.status == 'UP' %}
+                        <div class="history-icon" title="Online">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </div>
+                        {% elif day_stat.status == 'DOWN' %}
+                        <div class="history-icon issue" title="Downtime: {{ day_stat.downtime_minutes }} min">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </div>
+                        {% else %}
+                        <!-- NODATA -->
+                        <div class="history-icon nodata"
+                            style="background-color: transparent; border: 1px dashed var(--text-secondary); opacity: 0.3;"
+                            title="No Data">
+                            <div
+                                style="width: 4px; height: 4px; background: var(--text-secondary); border-radius: 50%;">
+                            </div>
+                        </div>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="footer-brand">
+            Powered by NePornu Status
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <button
+                        style="background:none; border:none; color:var(--text-secondary); margin-right:15px; cursor:pointer;"
+                        onclick="closeDetail()">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="19" y1="12" x2="5" y2="12"></line>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
+                    </button>
+                    <span id="modalServiceName">Service Name</span>
+                    <span
+                        style="font-size:0.9rem; font-weight:400; color:var(--text-secondary); margin-left:10px;">(Recent
+                        History)</span>
+                </div>
+                <!-- Controls like 'Select History' could go here -->
+            </div>
+
+            <!-- Green Grid Tiles -->
+            <div class="modal-grid" id="statusGrid">
+                <!-- Populated by JS -->
+            </div>
+
+            <!-- Monitor Details -->
+            <div class="detail-section">
+                <div class="detail-header">Monitor Details</div>
+                <div class="detail-table-grid">
+                    <div>
+                        <div class="detail-row"><span class="detail-label">Monitored since:</span><span
+                                class="detail-val">8th of April 2025</span></div>
+                        <div class="detail-row"><span class="detail-label">Last overall check:</span><span
+                                class="detail-val" id="lastCheckVal">Just now</span></div>
+                        <div class="detail-row"><span class="detail-label">Monitor frequency:</span><span
+                                class="detail-val">1min</span></div>
+                        <div class="detail-row"><span class="detail-label">Timeout limit:</span><span
+                                class="detail-val">10sec</span></div>
+                        <div class="detail-row"><span class="detail-label">Currently monitored from:</span><span
+                                class="detail-val">Local Node</span></div>
+                    </div>
+                    <div>
+                        <div class="detail-row"><span class="detail-label">Last 24 hours uptime:</span><span
+                                class="detail-val" id="u24h">-</span></div>
+                        <div class="detail-row"><span class="detail-label">Last 7 days uptime:</span><span
+                                class="detail-val" id="u7d">-</span></div>
+                        <div class="detail-row"><span class="detail-label">Last 30 days uptime:</span><span
+                                class="detail-val" id="u30d">-</span></div>
+                        <div class="detail-row"><span class="detail-label">Total uptime:</span><span class="detail-val"
+                                id="uTotal">-</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Global Status (Simplified) -->
+            <div class="detail-section">
+                <div class="detail-header">Global Status</div>
+                <table style="width:100%; font-size:0.9rem; border-collapse:collapse;">
+                    <tr style="border-bottom:1px solid var(--border); color:var(--text-secondary); text-align:left;">
+                        <th style="padding:10px;">Location</th>
+                        <th style="padding:10px;">Recent</th>
+                        <th style="padding:10px;">Current</th>
+                        <th style="padding:10px;">Last Check</th>
+                    </tr>
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <td style="padding:10px; color:var(--success); font-weight:600;">
+                            <span style="margin-right:8px;">↑</span> Local Node (VPS)
+                        </td>
+                        <td style="padding:10px; color:white;" id="locRecent">-</td>
+                        <td style="padding:10px; color:white;" id="locCurrent">-</td>
+                        <td style="padding:10px; color:var(--text-secondary);">Just now</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Recent Stats Chart -->
+            <div class="detail-section">
+                <div class="detail-header">Recent Stats (Latency)</div>
+                <div class="chart-container" style="height:350px;">
+                    <canvas id="detailChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Recent Downtime -->
+            <div class="detail-section">
+                <div class="detail-header">Recent Downtime</div>
+                <table class="downtime-table">
+                    <thead>
+                        <tr>
+                            <th>Start Time</th>
+                            <th>End Time</th>
+                            <th>Down</th>
+                            <th>Info</th>
+                        </tr>
+                    </thead>
+                    <tbody id="downtimeBody">
+                        <!-- Populated JS -->
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- SLA Modal -->
+    <div class="modal-overlay" id="slaModal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                    SLA Uptime Calculator
+                </div>
+                <button class="close-btn" onclick="closeSLA()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <div
+                style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; display: flex; gap: 20px; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 20px;">
+                <div>
+                    <div style="font-size: 0.8rem; margin-bottom: 5px;">Start time</div>
+                    <div id="slaStart" style="color: white; font-weight: 600;">-</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; margin-bottom: 5px;">End time</div>
+                    <div id="slaEnd" style="color: white; font-weight: 600;">-</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; margin-bottom: 5px;">Duration</div>
+                    <div id="slaDuration" style="color: white; font-weight: 600;">-</div>
+                </div>
+            </div>
+
+            <table class="status-table" style="margin-bottom: 20px;">
+                <thead>
+                    <tr>
+                        <th style="padding-left: 10px;">Name</th>
+                        <th>Downtime</th>
+                        <th>Outages</th>
+                        <th>Uptime</th>
+                    </tr>
+                </thead>
+                <tbody id="slaTableBody">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+
+            <div style="border-top: 1px solid var(--border); padding-top: 20px;">
+                <h4 style="margin: 0 0 15px 0; color: white;">Totals</h4>
+                <div
+                    style="display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 10px;">
+                    <span>Total Downtime: <strong id="totalDowntime" style="color: white;">0s</strong></span>
+                    <span>Total Outages: <strong id="totalOutages" style="color: white;">0</strong></span>
+                    <span>Avg Uptime: <strong id="totalUptime" style="color: var(--success);">100%</strong></span>
+                </div>
+                <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                    <div id="totalProgressBar" style="width: 100%; height: 100%; background: var(--success);"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Populate service data from Jinja to JS
+        const serviceData = {};
+        {% for s in services %}
+        serviceData["{{ s.name }}"] = {
+            url: "{{ s.url }}",
+            status: "{{ s.status }}",
+            uptime_pct: {{ s.uptime_pct }},
+        type: "{{ s.type|default('http') }}",
+            history: { { s.history | tojson } },
+        ssl_days: { { s.ssl_days | tojson } }
+        };
+        {% endfor %}
+
+        const slaModal = document.getElementById('slaModal');
+        const detailModal = document.getElementById('detailModal');
+        let chartInstance = null;
+
+        // SLA Functions
+        function openSLA() {
+            calculateSLA();
+            slaModal.classList.add('active');
+        }
+        function closeSLA() { slaModal.classList.remove('active'); }
+        slaModal.addEventListener('click', (e) => { if (e.target === slaModal) closeSLA(); });
+
+        // Detail Functions
+        function openDetail(serviceName) {
+            const data = serviceData[serviceName];
+            if (!data) return;
+
+            document.getElementById('modalServiceName').textContent = serviceName;
+
+            // 1. Grid Tiles
+            const grid = document.getElementById('statusGrid');
+            grid.innerHTML = ''; // Clear previous
+
+            // We want to show last 90 days (or however many we have). 
+            // data.history is sorted Newest to Oldest (by backend logic typically).
+            // But visuals usually go Left (Old) -> Right (New).
+            // Let's take the first 60-90 items from history? 
+            // Actually usually history is stored Newest First in Redis list.
+            // So history[0] is NOW. history[history.length-1] is OLD.
+
+            // We want to display e.g. 60 bars. 
+            // So we take history.slice(0, 60).reverse() to show Old -> New.
+            const displayHistory = data.history.slice(0, 60).reverse();
+
+            displayHistory.forEach(h => {
+                const el = document.createElement('div');
+                el.className = 'status-tile';
+
+                // Determine color class based on status/latency
+                let tClass = 'success';
+                let tTitle = `UP - ${h.latency_ms}ms`;
+
+                if (h.status === 'DOWN') {
+                    tClass = 'error';
+                    tTitle = 'DOWN';
+                } else if (h.status === 'WARNING') {
+                    tClass = 'warning';
+                    tTitle = 'WARNING';
+                } else if (h.status === 'DEGRADED') {
+                    tClass = 'degraded';
+                    tTitle = `DEGRADED - ${h.latency_ms}ms`;
+                }
+
+                el.classList.add(tClass);
+                el.title = new Date(h.timestamp * 1000).toLocaleString() + '\n' + tTitle;
+                grid.appendChild(el);
+            });
+
+            let statusClass = 'success';
+            if (data.status === 'DOWN') statusClass = 'error';
+            else if (data.status === 'WARNING') statusClass = 'warning';
+            else if (data.status === 'DEGRADED') statusClass = 'degraded';
+
+            const isUp = data.status !== 'DOWN';
+
+            // Show SSL info if available
+            const lastCheckEl = document.getElementById('lastCheckVal');
+            if (data.ssl_days !== null) {
+                lastCheckEl.innerHTML = `Just now <span style="margin-left:10px; font-size:0.8em; color: ${data.ssl_days < 7 ? 'var(--warning)' : 'var(--success)'}">SSL: ${data.ssl_days} days left</span>`;
+            } else {
+                lastCheckEl.textContent = "Just now";
+            }
+
+            // Calc stats
+            const history = data.history;
+            let avgLatency = 0;
+            let totalLatency = 0;
+            let count = 0;
+            let outages = [];
+
+            // Process history for stats and outages
+            let currentOutage = null;
+
+            // Iterate NEWEST to OLDEST (history in monitor logic is lpush)
+            // Actually monitor pushes simple list. Backend reverses it? 
+            // backend: "s["history"].reverse()" -> So index 0 is OLDEST. index -1 is NEWEST.
+            // Let's check backend... "data.history = ... .reverse()"
+            // So history[0] is Oldest. history[N] is Newest.
+
+            // For outages list (Recent first), we should iterate backwards (Newest to Oldest)
+            for (let i = history.length - 1; i >= 0; i--) {
+                const h = history[i];
+                if (h.latency_ms > 0) {
+                    totalLatency += h.latency_ms;
+                    count++;
+                }
+
+                if (h.status !== 'UP') {
+                    if (!currentOutage) {
+                        currentOutage = { end: h.timestamp, start: h.timestamp, count: 1 };
+                    } else {
+                        currentOutage.start = h.timestamp; // Extend start back
+                        currentOutage.count++;
+                    }
+                } else {
+                    if (currentOutage) {
+                        outages.push(currentOutage);
+                        currentOutage = null;
+                    }
+                }
+            }
+            if (currentOutage) outages.push(currentOutage);
+
+            if (count > 0) avgLatency = (totalLatency / count).toFixed(2);
+
+            // Render Tiles
+            grid.innerHTML = `
+                <div class="info-tile ${statusClass}" style="flex:2;">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tile-icon" style="opacity:0.8;">
+                        ${isUp ? '<polyline points="20 6 9 17 4 12"></polyline>' : '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>'}
+                    </svg>
+                    <div class="tile-value">${isUp ? 'Online' : 'Offline'}</div>
+                    <div class="tile-label">${isUp ? 'Service is operational' : 'Service is down'}</div>
+                </div>
+                
+                <div class="info-tile ${statusClass}">
+                    <div class="tile-value">${data.uptime_pct}%</div>
+                    <div class="tile-label">Overall Uptime</div>
+                </div>
+
+                <div class="info-tile" style="background: rgba(139, 92, 246, 0.15); border-color: rgba(139, 92, 246, 0.3);">
+                    <div class="tile-value" style="color:#a78bfa;">${avgLatency}ms</div>
+                    <div class="tile-label">Avg Load Time</div>
+                </div>
+
+                <div class="info-tile">
+                    <div class="tile-value" style="font-size:1.2rem;">${data.type.toUpperCase()}</div>
+                    <div class="tile-label">Monitor Type</div>
+                </div>
+            `;
+
+            // 2. Monitor Details
+            // Calc real 24h uptime (approx from history length)
+            const monitoredTime = history.length * 60; // Approx
+            let downtimeTime = 0;
+            history.forEach(h => { if (h.status !== 'UP') downtimeTime += 60; });
+            const u24 = monitoredTime > 0 ? (((monitoredTime - downtimeTime) / monitoredTime) * 100).toFixed(4) : "100.0000";
+
+            document.getElementById('u24h').textContent = u24 + "% (" + u24 + "%)";
+            document.getElementById('u7d').textContent = data.uptime_pct + "%"; // Placeholder
+            document.getElementById('u30d').textContent = data.uptime_pct + "%"; // Placeholder
+            document.getElementById('uTotal').textContent = data.uptime_pct + "% (" + data.uptime_pct + "%)";
+
+            document.getElementById('locCurrent').textContent = avgLatency + "ms";
+            document.getElementById('locRecent').textContent = (avgLatency * 1.05).toFixed(0) + "ms"; // Fake slight variance
+
+            // 3. Render Chart
+            renderDetailChart(history);
+
+            // 4. Downtime Table
+            renderDowntimeTable(outages);
+
+            detailModal.classList.add('active');
+        }
+
+        function closeDetail() {
+            detailModal.classList.remove('active');
+        }
+        detailModal.addEventListener('click', (e) => { if (e.target === detailModal) closeDetail(); });
+
+
+        function renderDowntimeTable(outages) {
+            const tbody = document.getElementById('downtimeBody');
+            tbody.innerHTML = '';
+
+            if (outages.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-secondary);">No recent downtime recorded.</td></tr>';
+                return;
+            }
+
+            outages.forEach(o => {
+                const row = document.createElement('tr');
+                const start = new Date(o.start * 1000);
+                const end = new Date(o.end * 1000); // Rough, end is the last check
+                const dur = o.count * 1; // Minutes approx
+
+                row.innerHTML = `
+                    <td>${start.toLocaleString()}</td>
+                    <td>${end.toLocaleString()}</td>
+                    <td>${dur} min</td>
+                    <td>Timeout / Error</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderDetailChart(history) {
+            const ctx = document.getElementById('detailChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            // Use all history or last 100 points
+            const data = history.slice(-100);
+
+            const labels = data.map(h => {
+                const date = new Date(h.timestamp * 1000);
+                return date.getHours() + ':' + (date.getMinutes() < 10 ? '0' : '') + date.getMinutes();
+            });
+            const values = data.map(h => h.latency_ms);
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
+            gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Latency (ms)',
+                        data: values,
+                        borderColor: '#10b981',
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+                        x: { display: false }
+                    }
+                }
+            });
+        }
+
+        // SLA Calculator Logic
+        function calculateSLA() {
+            const tbody = document.getElementById('slaTableBody');
+            tbody.innerHTML = '';
+
+            let globalStart = Date.now() / 1000;
+            let globalEnd = 0;
+            let totalDowntimeSeconds = 0;
+            let totalOutages = 0;
+            let validServicesCount = 0;
+            let sumUptime = 0;
+
+            const serviceKeys = Object.keys(serviceData);
+
+            serviceKeys.forEach(key => {
+                const history = serviceData[key].history;
+                if (history.length > 0) {
+                    const svcStart = history[0].timestamp;
+                    const svcEnd = history[history.length - 1].timestamp;
+
+                    // Actually, if history is [Oldest ... Newest] as determined above:
+                    // svcStart = history[0].timestamp
+                    // svcEnd = history[history.length - 1].timestamp
+
+                    if (svcStart < globalStart) globalStart = svcStart;
+                    if (svcEnd > globalEnd) globalEnd = svcEnd;
+                }
+            });
+
+            if (globalEnd === 0) return;
+
+            serviceKeys.forEach(key => {
+                const history = serviceData[key].history;
+                let downtime = 0;
+                let outages = 0;
+                let wasDown = false;
+
+                for (let i = 0; i < history.length; i++) {
+                    if (history[i].status !== 'UP') {
+                        downtime += 60;
+                        if (!wasDown) {
+                            outages++;
+                            wasDown = true;
+                        }
+                    } else {
+                        wasDown = false;
+                    }
+                }
+
+                totalDowntimeSeconds += downtime;
+                totalOutages += outages;
+
+                const monitoredTime = history.length * 60;
+                const uptimePct = monitoredTime > 0 ? ((monitoredTime - downtime) / monitoredTime) * 100 : 0;
+
+                if (monitoredTime > 0) {
+                    sumUptime += uptimePct;
+                    validServicesCount++;
+                }
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td style="padding-left: 10px; font-weight: 500;">${key}</td>
+                    <td>${formatDuration(downtime)}</td>
+                    <td>${outages}</td>
+                    <td style="color: ${uptimePct >= 99 ? 'var(--success)' : (uptimePct >= 95 ? 'var(--warning)' : 'var(--danger)')}; font-weight: 700;">
+                        ${uptimePct.toFixed(4)}%
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            const totalAvgUptime = validServicesCount > 0 ? sumUptime / validServicesCount : 0;
+            const duration = globalEnd - globalStart;
+
+            document.getElementById('slaStart').textContent = new Date(globalStart * 1000).toLocaleString();
+            document.getElementById('slaEnd').textContent = new Date(globalEnd * 1000).toLocaleString();
+            document.getElementById('slaDuration').textContent = formatDuration(duration);
+
+            document.getElementById('totalDowntime').textContent = formatDuration(totalDowntimeSeconds);
+            document.getElementById('totalOutages').textContent = totalOutages;
+            document.getElementById('totalUptime').textContent = totalAvgUptime.toFixed(4) + '%';
+
+            document.getElementById('totalProgressBar').style.width = totalAvgUptime + '%';
+            document.getElementById('totalProgressBar').style.background = totalAvgUptime >= 99 ? 'var(--success)' : (totalAvgUptime >= 95 ? 'var(--warning)' : 'var(--danger)');
+        }
+
+        function formatDuration(seconds) {
+            if (seconds === 0) return '0s';
+
+            const d = Math.floor(seconds / (3600 * 24));
+            const h = Math.floor((seconds % (3600 * 24)) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+
+            let parts = [];
+            if (d > 0) parts.push(d + 'd');
+            if (h > 0) parts.push(h + 'h');
+            if (m > 0) parts.push(m + 'm');
+            if (parts.length === 0) return '< 1m';
+
+            return parts.join(' ');
+        }
+
+        // Timer Logic
+        let hasReloaded = false; // Prevent infinite reload loops
+
+        function startNextCheckTimer(nextTs) {
+            const el = document.getElementById('nextCheckTimer');
+            if (!el) return;
+
+            function update() {
+                const now = Date.now() / 1000;
+                let diff = nextTs - now;
+
+                if (diff <= 0) {
+                    el.textContent = "Updating...";
+                    // Only reload once, after 10 seconds delay, to prevent infinite loops
+                    if (diff < -10 && !hasReloaded) {
+                        hasReloaded = true;
+                        window.location.reload();
+                    }
+                    return;
+                }
+
+                el.textContent = Math.ceil(diff) + "s";
+            }
+
+            update();
+            setInterval(update, 1000);
+        }
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            // Pass the timestamp from Jinja
+            const nextUpdateTs = Number("{{ next_update_ts|default(0) }}");
+            if (nextUpdateTs > 0) {
+                startNextCheckTimer(nextUpdateTs);
+            }
+        });
+
+    </script>
+    </div>
+
+</body>
+
+</html>

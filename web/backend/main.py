@@ -1,5 +1,17 @@
 from fastapi import FastAPI, Request, Form, Cookie, Response, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
+import os
+
+# Manual .env loading
+env_path = "/root/discord-bot/.env"
+if os.path.exists(env_path):
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                os.environ[key] = val.strip('"').strip("'")
+
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -59,6 +71,120 @@ app = FastAPI(title="Metricord", docs_url=None, redoc_url=None)
 
 
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=SESSION_EXPIRY_HOURS * 3600, same_site="lax", https_only=False)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"REQUEST: {request.method} {request.url.path}")
+    response = await call_next(request)
+    return response
+
+@app.get("/dashboard/status", response_class=HTMLResponse)
+@app.get("/status", response_class=HTMLResponse)
+async def status_page(request: Request):
+    """Simple status page showing service health."""
+    import json
+    import time
+    
+    services = []
+    last_updated_ts = 0
+    overall_status = "UP"
+    
+    try:
+        r = await get_redis_client()
+        data = await r.get("monitoring:status")
+        await r.close() 
+        
+        if data:
+            status_data = json.loads(data)
+            services = status_data.get("services", [])
+            last_updated_ts = status_data.get("last_updated", 0)
+            next_update_ts = status_data.get("next_update", 0)
+            
+            # Determine overall status
+            for s in services:
+                if s.get("status") != "UP":
+                    overall_status = "DOWN"
+                
+                # Fetch history
+                # Key: monitoring:history:ServiceName
+                history_key = f"monitoring:history:{s['name']}"
+                history_raw = await r.lrange(history_key, 0, -1) # Get all entries
+                
+                # Parse history
+                s["history"] = [json.loads(entry) for entry in history_raw]
+                # Reverse to have oldest first for charts
+                s["history"].reverse() 
+
+        else:
+             print("[DEBUG] No monitoring:status key found in Redis")
+    except Exception as e:
+        print(f"Status page error: {e}")
+        import traceback
+        traceback.print_exc()
+
+    last_updated_str = time.strftime('%H:%M:%S', time.localtime(last_updated_ts)) if last_updated_ts else "Neznámé"
+    
+    # Calculate last 7 days for the table header (e.g., ["Jan 29", "Jan 30"...])
+    last_days = []
+    last_days_names = []
+    current_time = time.time()
+    
+    # 0 = Today, 1 = Yesterday, etc.
+    for i in range(6, -1, -1):
+        day_ts = current_time - (i * 86400)
+        day_struct = time.localtime(day_ts)
+        last_days.append(day_struct) # Keep struct/ts for comparison
+        # Format like "Feb 04"
+        last_days_names.append(time.strftime('%b %d', day_struct))
+        
+    # Process history to determine daily status (UP, DOWN, NODATA)
+    for s in services:
+        history = s.get("history", [])
+        daily_status = []
+        
+        for i in range(6, -1, -1):
+            # Define day start/end
+            day_struct = last_days[6-i] # accessing correct index from previous loop
+            # Start of day: d at 00:00:00
+            start_of_day = time.mktime((day_struct.tm_year, day_struct.tm_mon, day_struct.tm_mday, 0, 0, 0, 0, 0, -1))
+            end_of_day = start_of_day + 86400
+            
+            # Find entries for this day
+            day_entries = [h for h in history if start_of_day <= h.get("timestamp", 0) < end_of_day]
+            
+            if not day_entries:
+                status_code = "NODATA"
+                downtime_min = 0
+            else:
+                # If ANY entry is bad (DOWN), mark the day as affected
+                # Count downtime minutes (1 failing check = ~1 minute)
+                failed_entries = [h for h in day_entries if h.get("status") != "UP"]
+                downtime_count = len(failed_entries)
+                
+                has_downtime = downtime_count > 0
+                status_code = "DOWN" if has_downtime else "UP"
+                downtime_min = downtime_count
+            
+            daily_status.append({
+                "status": status_code,
+                "downtime_minutes": downtime_min
+            })
+            
+        s["daily_status"] = daily_status
+
+    # Calculate global uptime average
+    total_uptimes = [s.get("uptime_pct", 100.0) for s in services]
+    global_uptime_pct = sum(total_uptimes) / len(total_uptimes) if total_uptimes else 100.0
+
+    return templates.TemplateResponse("status.html", {
+        "request": request,
+        "services": services,
+        "last_updated": last_updated_str,
+        "overall_status": overall_status,
+        "last_days": last_days_names,
+        "global_uptime_pct": round(global_uptime_pct, 4),
+        "next_update_ts": next_update_ts
+    })
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
@@ -200,6 +326,10 @@ async def support_page(request: Request):
 
 async def _dashboard_logic(request: Request, start_date: str = None, end_date: str = None, role_id: str = None):
     """Main Dashboard Overview."""
+    
+    # WORKAROUND: Serve status page via query param to bypass proxy path issues
+    if request.query_params.get("view") == "status":
+        return await status_page(request)
     
     user = request.session.get("discord_user")
     
@@ -2084,8 +2214,15 @@ async def trigger_backfill(request: Request, guild_id: Optional[str] = Form(None
     if os.path.exists(script_path) and bot_token_val:
         cmd = [sys.executable, script_path, "--guild_id", str(target_gid), "--token", bot_token_val]
         
+        # Log to file for debugging
+        log_path = os.path.join(os.path.dirname(script_path), "backfill.log")
+        
         try:
-             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+             with open(log_path, 'a') as log_file:
+                 log_file.write(f"\n\n=== Backfill triggered at {datetime.now().isoformat()} for guild {target_gid} ===\n")
+             
+             log_file_handle = open(log_path, 'a')
+             subprocess.Popen(cmd, stdout=log_file_handle, stderr=log_file_handle)
              return JSONResponse({"status": "ok", "message": f"Backfill started for {target_gid}"})
         except Exception as e:
              return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
