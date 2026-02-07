@@ -1057,6 +1057,212 @@
         function closeSLA() { slaModal.classList.remove('active'); }
         slaModal.addEventListener('click', (e) => { if (e.target === slaModal) closeSLA(); });
 
+        // Search/Filter Function
+        function filterServices() {
+            const input = document.getElementById('searchInput');
+            const filter = input.value.toLowerCase();
+            const table = document.querySelector('.status-table tbody');
+            const rows = table.getElementsByTagName('tr');
+
+            for (let i = 0; i < rows.length; i++) {
+                const serviceLink = rows[i].querySelector('.service-link');
+                if (serviceLink) {
+                    const txtValue = serviceLink.textContent || serviceLink.innerText;
+                    if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                        rows[i].style.display = '';
+                    } else {
+                        rows[i].style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        // Admin Tool Functions
+        function forceRefresh() {
+            if (confirm('Force refresh all service checks?')) {
+                fetch('/api/admin/force-refresh', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        alert(data.message || 'Refresh triggered');
+                        setTimeout(() => window.location.reload(), 2000);
+                    })
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+        function resetCooldowns() {
+            if (confirm('Reset all alert cooldowns?')) {
+                fetch('/api/admin/reset-cooldowns', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => alert(data.message || 'Cooldowns reset'))
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+        function restartMonitor() {
+            if (confirm('Restart the monitor service? This may cause a brief interruption.')) {
+                fetch('/api/admin/restart-monitor', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        alert(data.message || 'Monitor restarting...');
+                        setTimeout(() => window.location.reload(), 3000);
+                    })
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+        function openLogs() {
+            const modal = document.getElementById('logsModal');
+            modal.style.display = 'flex';
+            refreshLogs();
+        }
+
+        function closeLogs() {
+            const modal = document.getElementById('logsModal');
+            modal.style.display = 'none';
+        }
+
+        function refreshLogs() {
+            const content = document.getElementById('logsContent');
+            content.textContent = 'Loading logs...';
+
+            fetch('/api/admin/logs')
+                .then(res => res.text())
+                .then(data => {
+                    content.textContent = data || 'No logs available';
+                    content.scrollTop = content.scrollHeight;
+                })
+                .catch(err => {
+                    content.textContent = 'Error loading logs: ' + err;
+                });
+        }
+
+        function downloadLogs() {
+            fetch('/api/admin/logs')
+                .then(res => res.text())
+                .then(data => {
+                    const blob = new Blob([data], { type: 'text/plain' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'monitor-logs-' + new Date().toISOString().split('T')[0] + '.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(err => alert('Error downloading logs: ' + err));
+        }
+
+        function clearAlerts() {
+            if (confirm('Clear all active alerts?')) {
+                fetch('/api/admin/clear-alerts', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => alert(data.message || 'Alerts cleared'))
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+        function sendTestAlert() {
+            if (confirm('Send a test alert to Discord?')) {
+                fetch('/api/admin/test-alert', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => alert(data.message || 'Test alert sent'))
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+        // Search/Filter Function
+        function filterServices() {
+            const input = document.getElementById('searchInput');
+            const filter = input.value.toLowerCase();
+            const table = document.querySelector('.status-table tbody');
+            const rows = table.getElementsByTagName('tr');
+
+            for (let i = 0; i < rows.length; i++) {
+                const serviceLink = rows[i].querySelector('.service-link');
+                if (serviceLink) {
+                    const txtValue = serviceLink.textContent || serviceLink.innerText;
+                    if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                        rows[i].style.display = '';
+                    } else {
+                        rows[i].style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        // Admin Tool Functions
+        function forceRefresh() {
+            if (confirm('Force refresh all service checks?')) {
+                fetch('/api/admin/force-refresh', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        alert(data.message || 'Refresh triggered');
+                        setTimeout(() => window.location.reload(), 2000);
+                    })
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+        function resetCooldowns() {
+            if (confirm('Reset all alert cooldowns?')) {
+                fetch('/api/admin/reset-cooldowns', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => alert(data.message || 'Cooldowns reset'))
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+        function restartMonitor() {
+            if (confirm('Restart the monitor service? This may cause a brief interruption.')) {
+                fetch('/api/admin/restart-monitor', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        alert(data.message || 'Monitor restarting...');
+                        setTimeout(() => window.location.reload(), 3000);
+                    })
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+
+
+        function downloadLogs() {
+            fetch('/api/admin/logs')
+                .then(res => res.text())
+                .then(data => {
+                    const blob = new Blob([data], { type: 'text/plain' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'monitor-logs-' + new Date().toISOString().split('T')[0] + '.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(err => alert('Error downloading logs: ' + err));
+        }
+
+        function clearAlerts() {
+            if (confirm('Clear all active alerts?')) {
+                fetch('/api/admin/clear-alerts', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => alert(data.message || 'Alerts cleared'))
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
+        function sendTestAlert() {
+            if (confirm('Send a test alert to Discord?')) {
+                fetch('/api/admin/test-alert', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => alert(data.message || 'Test alert sent'))
+                    .catch(err => alert('Error: ' + err));
+            }
+        }
+
         // Detail Functions
         function openDetail(serviceName) {
             const data = serviceData[serviceName];
