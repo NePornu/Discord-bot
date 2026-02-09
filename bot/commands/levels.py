@@ -83,14 +83,7 @@ class Levels(commands.Cog):
         prev_xp = int(new_xp) - xp_gain
         prev_level = await self._calculate_level(prev_xp)
         
-        if current_level > prev_level:
-            
-            
-            
-            
-            try:
-                await message.add_reaction("🎉")
-            except: pass
+
 
     
 
