@@ -494,6 +494,20 @@ async def _dashboard_logic(request: Request, start_date: str = None, end_date: s
 
     
     summary = await get_summary_card_data(guild_id=guild_id)
+    # Ensure member_stats total series aligns with authoritative summary total.
+    # Apply an offset so the final point of the reconstructed series matches
+    # `summary["discord"]["users"]`. This preserves the trend while fixing
+    # discrepancies coming from monthly-aggregated joins/leaves approximations.
+    try:
+        real_total_users = summary["discord"]["users"]
+        if member_stats and member_stats.get("total"):
+            last_calc = int(member_stats["total"][-1])
+            offset = int(real_total_users) - last_calc
+            if offset != 0:
+                member_stats["total"] = [int(x) + offset for x in member_stats["total"]]
+    except Exception:
+        pass
+
     has_any_data = summary["discord"]["msgs"] > 0
 
     
@@ -561,6 +575,14 @@ async def _dashboard_logic(request: Request, start_date: str = None, end_date: s
         "weekly_data": deep_stats.get("weekly_data", []),
         "widget_order": request.session.get("overview_order", [])
     }
+
+    # DEBUG: log member series vs summary to help trace mismatch between
+    # the chart (member_stats["total"]) and the KPI card (summary_stats).
+    try:
+        last_series = member_stats.get("total", [])[-1] if member_stats and member_stats.get("total") else None
+        print(f"[DEBUG] member_stats.total_last={last_series} | summary.discord.users={summary_stats['discord']['users']} | member_stats.labels_len={len(member_stats.get('labels', [])) if member_stats else 0}")
+    except Exception as e:
+        print(f"[DEBUG] error printing member stats debug: {e}")
 
     
     sidebar_ctx = await get_sidebar_context(request)
@@ -2361,18 +2383,21 @@ async def get_analytics_tools(request: Request, start_date: Optional[str] = None
          return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @app.get("/api/extended-stats")
-async def get_extended_stats(request: Request, start_date: str = None, end_date: str = None, _=Depends(require_auth)):
+async def get_extended_stats(request: Request, start_date: str = None, end_date: str = None, role_id: str = None, _=Depends(require_auth)):
     """Get extended statistics for new widgets."""
     guild_id = request.session.get("guild_id")
     if not guild_id: return JSONResponse({"status": "error"}, status_code=400)
+    
+    guild_id = int(guild_id)
+    role_id = role_id or "all"
     
     from .utils import get_deep_stats_redis, get_redis_dashboard_stats, load_member_stats
     
     try:
         
         
-        deep = await get_deep_stats_redis(guild_id, start_date=start_date, end_date=end_date, days=30)
-        dash = await get_redis_dashboard_stats(guild_id, start_date=start_date, end_date=end_date)
+        deep = await get_deep_stats_redis(guild_id, start_date=start_date, end_date=end_date, role_id=role_id)
+        dash = await get_redis_dashboard_stats(guild_id, start_date=start_date, end_date=end_date, role_id=role_id)
         growth = await load_member_stats(guild_id, start_date=start_date, end_date=end_date)
         
         
@@ -2395,7 +2420,7 @@ async def get_extended_stats(request: Request, start_date: str = None, end_date:
             "status": "ok",
             "hourly_dist": hourly_dist,
             "weekly_dist": weekly,
-            "msg_length_dist": deep.get('msglen_data', [0]*5),
+            "msg_length_dist": dash.get('msglen_data', [0]*5),
             "avg_msg_len": deep.get('avg_msg_len', 0),
             "dates": growth.get('labels', []),
             "growth_total": growth.get('total', []),

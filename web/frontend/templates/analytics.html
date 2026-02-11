@@ -271,22 +271,43 @@
             </div>
         </div>
         <div style="flex: 1;">
-            <div style="font-size: 12px; color: var(--text-secondary);">Aktivita</div>
+            <div style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                <span>Aktivita</span>
+                <span class="dash-tooltip" style="position: relative; display: inline-block; cursor: help;">
+                    <span style="font-size: 10px; color: #8b5cf6; font-weight: bold;">?</span>
+                    <span class="dash-tooltip-text" style="font-size: 11px; width: 150px; bottom: 120%;">Počet zpráv a textové aktivity v komunitě</span>
+                </span>
+                <span id="msg-activity-pct" style="margin-left: auto; font-weight: 600; color: #8b5cf6;">0%</span>
+            </div>
             <div style="height: 8px; background: var(--bg-tertiary); border-radius: 4px; margin: 4px 0 12px;">
                 <div id="msg-activity-bar"
-                    style="height:100%;width:0%;background:linear-gradient(90deg, #8b5cf6, #ec4899);border-radius:4px;">
+                        style="height:100%;width:0%;background:linear-gradient(90deg, #8b5cf6, #ec4899);border-radius:4px;transition:width 0.3s ease;">
                 </div>
             </div>
-            <div style="font-size: 12px; color: var(--text-secondary);">Voice</div>
+                <div style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                    <span>Voice</span>
+                    <span class="dash-tooltip" style="position: relative; display: inline-block; cursor: help;">
+                        <span style="font-size: 10px; color: #10b981; font-weight: bold;">?</span>
+                        <span class="dash-tooltip-text" style="font-size: 11px; width: 150px; bottom: 120%;">Čas strávený ve voice kanálech</span>
+                    </span>
+                    <span id="voice-activity-pct" style="margin-left: auto; font-weight: 600; color: #10b981;">0%</span>
+                </div>
             <div style="height: 8px; background: var(--bg-tertiary); border-radius: 4px; margin: 4px 0 12px;">
                 <div id="voice-activity-bar"
-                    style="height:100%;width:0%;background:linear-gradient(90deg, #10b981, #34d399);border-radius:4px;">
+                        style="height:100%;width:0%;background:linear-gradient(90deg, #10b981, #34d399);border-radius:4px;transition:width 0.3s ease;">
                 </div>
             </div>
-            <div style="font-size: 12px; color: var(--text-secondary);">Retence</div>
+                <div style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                    <span>Retence</span>
+                    <span class="dash-tooltip" style="position: relative; display: inline-block; cursor: help;">
+                        <span style="font-size: 10px; color: #f59e0b; font-weight: bold;">?</span>
+                        <span class="dash-tooltip-text" style="font-size: 11px; width: 150px; bottom: 120%;">Podíl uživatelů, kteří se vracejí</span>
+                    </span>
+                    <span id="retention-pct" style="margin-left: auto; font-weight: 600; color: #f59e0b;">0%</span>
+                </div>
             <div style="height: 8px; background: var(--bg-tertiary); border-radius: 4px; margin: 4px 0 0;">
                 <div id="retention-bar"
-                    style="height:100%;width:0%;background:linear-gradient(90deg, #f59e0b, #fbbf24);border-radius:4px;">
+                    style="height:100%;width:0%;background:linear-gradient(90deg, #f59e0b, #fbbf24);border-radius:4px;transition:width 0.3s ease;">
                 </div>
             </div>
         </div>
@@ -309,35 +330,35 @@
 
 {% macro render_growth() %}
 <div class="card widget-item" data-id="growth_chart">
-    <h3 style="margin-bottom: 16px;">📈 Růst členů</h3>
+    <h3 style="margin-bottom: 16px;">📈 Růst členů <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Celkový počet členů v čase. Ukazuje trend růstu nebo poklesu komunity.</span></span></h3>
     <div class="chart-container" style="height: 300px;"><canvas id="growthChart"></canvas></div>
 </div>
 {% endmacro %}
 
 {% macro render_hourly() %}
 <div class="card widget-item" data-id="hourly_chart">
-    <h3 style="margin-bottom: 16px;">⏰ Denní aktivita (0-24h)</h3>
+    <h3 style="margin-bottom: 16px;">⏰ Denní aktivita (0-24h) <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Rozložení aktivity podle hodin v den. Pomáhá identifikovat špičku aktivity.</span></span></h3>
     <div class="chart-container" style="height: 300px;"><canvas id="hourlyChart"></canvas></div>
 </div>
 {% endmacro %}
 
 {% macro render_weekday() %}
 <div class="card widget-item" data-id="weekday_chart">
-    <h3 style="margin-bottom: 16px;">📅 Aktivita v týdnu</h3>
+    <h3 style="margin-bottom: 16px;">📅 Aktivita v týdnu <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Aktivita rozložená po jednotlivých dnech v týdnu. Ukazuje, kdy je komunita nejaktivnější.</span></span></h3>
     <div class="chart-container" style="height: 300px;"><canvas id="weekdayChart"></canvas></div>
 </div>
 {% endmacro %}
 
 {% macro render_msg_len() %}
 <div class="card widget-item" data-id="msg_len_chart">
-    <h3 style="margin-bottom: 16px;">📏 Délka zpráv <small style="color:var(--text-secondary);">(znaky)</small></h3>
+    <h3 style="margin-bottom: 16px;">📏 Délka zpráv <small style="color:var(--text-secondary);">(znaky)</small> <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Distribuce délek zpráv. Kratší zprávy mohou znamenat spam, delší zprávy kvalitní diskuze.</span></span></h3>
     <div class="chart-container" style="height: 300px;"><canvas id="msgLenChart"></canvas></div>
 </div>
 {% endmacro %}
 
 {% macro render_weekend_ratio() %}
 <div class="card widget-item" data-id="weekend_chart">
-    <h3 style="margin-bottom: 16px;">🎉 Víkend vs Týden</h3>
+    <h3 style="margin-bottom: 16px;">🎉 Víkend vs Týden <span class="info-icon dash-tooltip">? <span class="dash-tooltip-text">Porovnání aktivity v pracovních dnech vs. víkend. Ukazuje charakter komunity.</span></span></h3>
     <div class="chart-container" style="height: 300px;"><canvas id="weekendChart"></canvas></div>
 </div>
 {% endmacro %}
@@ -901,6 +922,11 @@
             document.getElementById('msg-activity-bar').style.width = data.engagement.msg_activity + '%';
             document.getElementById('voice-activity-bar').style.width = data.engagement.voice_activity + '%';
             document.getElementById('retention-bar').style.width = data.engagement.retention + '%';
+
+            // Update percentage labels
+            document.getElementById('msg-activity-pct').textContent = Math.round(data.engagement.msg_activity) + '%';
+            document.getElementById('voice-activity-pct').textContent = Math.round(data.engagement.voice_activity) + '%';
+            document.getElementById('retention-pct').textContent = Math.round(data.engagement.retention) + '%';
 
             // Insights
             const cont = document.getElementById('insights-container');

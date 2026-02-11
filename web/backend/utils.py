@@ -30,6 +30,7 @@ def K_DAU(gid: int, d: str) -> str:
 async def load_member_stats(guild_id: int, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
     """
     Načte Member Growth data z Redis (Joins/Leaves) a filtruje podle data.
+    Vrací denní data pokud je zadáno start_date a end_date, jinak měsíční data.
     """
     r = await get_redis()
     try:
@@ -37,7 +38,64 @@ async def load_member_stats(guild_id: int, start_date: str = None, end_date: str
         joins_data = await r.hgetall(f"stats:joins:{guild_id}")
         leaves_data = await r.hgetall(f"stats:leaves:{guild_id}")
         
+        # Pokud máme specifické datumy, vrátíme denní granularitu
+        if start_date and end_date:
+            from datetime import datetime, timedelta
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            
+            # Spočítáme kumulativní počet před start_date
+            cumulative_count = 0
+            for month_key in sorted(joins_data.keys()):
+                if month_key < start_date[:7]:
+                    j = int(joins_data.get(month_key, 0))
+                    l = int(leaves_data.get(month_key, 0))
+                    cumulative_count += (j - l)
+            
+            # Nyní projdeme všechny dny v rozsahu
+            labels = []
+            total_counts = []
+            joins = []
+            leaves = []
+            
+            current_date = start_dt
+            while current_date <= end_dt:
+                date_str = current_date.strftime("%Y-%m-%d")
+                month_str = current_date.strftime("%Y-%m")
+                
+                # Předpokládáme, že joins/leaves jsou rozloženy rovnoměrně po mesíci
+                # Toto je aproximace - ideálně bychom měli denní data
+                j_total = int(joins_data.get(month_str, 0))
+                l_total = int(leaves_data.get(month_str, 0))
+                
+                # Počet dní v měsíci
+                if current_date.month == 12:
+                    next_month = current_date.replace(year=current_date.year+1, month=1, day=1)
+                else:
+                    next_month = current_date.replace(month=current_date.month+1, day=1)
+                days_in_month = (next_month - current_date.replace(day=1)).days
+                
+                # Rozděl na dny
+                j_daily = j_total / days_in_month if days_in_month > 0 else 0
+                l_daily = l_total / days_in_month if days_in_month > 0 else 0
+                
+                cumulative_count += j_daily - l_daily
+                
+                labels.append(date_str)
+                total_counts.append(int(cumulative_count))
+                joins.append(int(j_daily))
+                leaves.append(int(l_daily))
+                
+                current_date += timedelta(days=1)
+            
+            return {
+                "labels": labels,
+                "total": total_counts,
+                "joins": joins,
+                "leaves": leaves
+            }
         
+        # Pokud nemáme specifické datumy, vrátíme měsíční data
         all_keys = set(joins_data.keys()) | set(leaves_data.keys())
         sorted_keys = sorted(all_keys)
         
@@ -83,6 +141,8 @@ async def load_member_stats(guild_id: int, start_date: str = None, end_date: str
         }
     except Exception as e:
         print(f"Error loading member stats from Redis: {e}")
+        import traceback
+        traceback.print_exc()
         return {"labels": [], "total": [], "joins": [], "leaves": []}
     finally:
         pass
