@@ -258,6 +258,25 @@ async def on_ready():
     except Exception as e:
         await send_console_log(f"❌ Sync selhal: {e}")
 
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: Exception):
+    try:
+        import discord.app_commands as app_errors
+        if isinstance(error, app_errors.errors.CommandNotFound):
+            try:
+                await interaction.response.send_message(
+                    "Tento příkaz momentálně není dostupný. Zkuste to prosím znovu za chvíli.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
+            return
+        # log other app command errors
+        await send_console_log(f"⚠️ App command error: {error}")
+    except Exception as e:
+        print(f"Error in on_app_command_error handler: {e}")
+
 @bot.event
 async def on_guild_join(guild: discord.Guild):
     await send_console_log(f"🆕 PŘIPOJEN NA GUIDLU: {guild.name} ({guild.id})")
