@@ -113,7 +113,7 @@ class ChallengeManager(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.configs: Dict[int, ChallengeConfig] = {}
+        self.configs: Dict[int, ChallengeConfig] = {}  # Now keyed by channel_id
         self._load_configs()
 
         # redis for streaks
@@ -127,25 +127,42 @@ class ChallengeManager(commands.Cog):
         try:
             raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
             for k, v in raw.items():
-                self.configs[int(k)] = ChallengeConfig.from_json(v)
-            print(f"📦 Challenge config loaded ({len(self.configs)} guilds).")
+                cfg = ChallengeConfig.from_json(v)
+                # Store by channel_id if available, otherwise by guild_id for backwards compatibility
+                key = cfg.channel_id if cfg.channel_id else int(k)
+                self.configs[key] = cfg
+            print(f"📦 Challenge config loaded ({len(self.configs)} configs).")
         except Exception as e:
             print(f"❌ Error loading config: {e}")
 
     def _save_configs(self):
-        data = {str(gid): cfg.to_json() for gid, cfg in self.configs.items()}
+        # Save by channel_id as key
+        data = {}
+        for key, cfg in self.configs.items():
+            # Use channel_id as string key if available
+            save_key = str(cfg.channel_id) if cfg.channel_id else str(cfg.guild_id)
+            data[save_key] = cfg.to_json()
         CONFIG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def get_config(self, guild_id: int) -> Optional[ChallengeConfig]:
-        return self.configs.get(guild_id)
+    def get_config(self, channel_id: int) -> Optional[ChallengeConfig]:
+        """Get config by channel_id"""
+        return self.configs.get(channel_id)
+    
+    def get_config_by_guild(self, guild_id: int) -> Optional[ChallengeConfig]:
+        """Get any config for this guild (for backwards compatibility)"""
+        for cfg in self.configs.values():
+            if cfg.guild_id == guild_id:
+                return cfg
+        return None
 
-    def set_config(self, guild_id: int, cfg: ChallengeConfig):
-        self.configs[guild_id] = cfg
+    def set_config(self, channel_id: int, cfg: ChallengeConfig):
+        """Set config by channel_id"""
+        self.configs[channel_id] = cfg
         self._save_configs()
 
-    def delete_config(self, guild_id: int):
-        if guild_id in self.configs:
-            del self.configs[guild_id]
+    def delete_config(self, channel_id: int):
+        if channel_id in self.configs:
+            del self.configs[channel_id]
             self._save_configs()
             return True
         return False
@@ -181,20 +198,23 @@ class ChallengeManager(commands.Cog):
     ):
         await interaction.response.defer(ephemeral=True)
         guild_id = interaction.guild.id
+        channel_id = channel.id
         
         em_list = _split_emoji_list(emojis)
         if not em_list:
             await interaction.followup.send("❌ Zadej alespoň jedno emoji.", ephemeral=True)
             return
         
-        cfg = self.get_config(guild_id) or ChallengeConfig(guild_id=guild_id)
+        # Get or create config for THIS channel
+        cfg = self.get_config(channel_id) or ChallengeConfig(guild_id=guild_id)
+        cfg.guild_id = guild_id
         cfg.role_id = role.id
-        cfg.channel_id = channel.id
+        cfg.channel_id = channel_id
         cfg.emojis = em_list
         cfg.quest_pattern = cfg.quest_pattern or "Quest —"
         cfg.enabled = True
         
-        self.set_config(guild_id, cfg)
+        self.set_config(channel_id, cfg)
         
         await interaction.followup.send(
             f"✅ Výzva nastavena!\n• Role: {role.mention}\n• Kanál: {channel.mention}\n• Emojis: {' '.join(em_list)}",
@@ -206,40 +226,40 @@ class ChallengeManager(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def set_role(self, interaction: discord.Interaction, role: discord.Role):
         await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild.id
-        cfg = self.get_config(guild_id) or ChallengeConfig(guild_id=guild_id)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id) or ChallengeConfig(guild_id=interaction.guild.id, channel_id=channel_id)
         cfg.role_id = role.id
-        self.set_config(guild_id, cfg)
-        await interaction.followup.send(f"✅ Role pro výzvu nastavena: {role.mention}", ephemeral=True)
+        self.set_config(channel_id, cfg)
+        await interaction.followup.send(f"✅ Role pro výzvu v tomto kanále nastavena: {role.mention}", ephemeral=True)
 
     @challenge.command(name="pattern", description="Nastav pattern pro text nebo emoji (.emoji)")
     @app_commands.describe(pattern="Text pattern (obsahuje 'Quest') nebo .emoji")
     @commands.has_permissions(administrator=True)
     async def set_pattern(self, interaction: discord.Interaction, pattern: str):
         await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild.id
-        cfg = self.get_config(guild_id) or ChallengeConfig(guild_id=guild_id)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id) or ChallengeConfig(guild_id=interaction.guild.id, channel_id=channel_id)
         cfg.quest_pattern = pattern
-        self.set_config(guild_id, cfg)
-        await interaction.followup.send(f"✅ Pattern nastaven na `{pattern}`", ephemeral=True)
+        self.set_config(channel_id, cfg)
+        await interaction.followup.send(f"✅ Pattern v tomto kanále nastaven na `{pattern}`", ephemeral=True)
 
     @challenge.command(name="emojis", description="Nastav seznam emoji pro výzvu")
     @app_commands.describe(emojis="Seznam emoji (např. '🍁 :strongdoge: 🔥')")
     @commands.has_permissions(administrator=True)
     async def set_emojis(self, interaction: discord.Interaction, emojis: str):
         await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild.id
+        channel_id = interaction.channel_id
         
         em_list = _split_emoji_list(emojis)
         if not em_list:
             await interaction.followup.send("❌ Zadej alespoň jedno emoji.", ephemeral=True)
             return
             
-        cfg = self.get_config(guild_id) or ChallengeConfig(guild_id=guild_id)
+        cfg = self.get_config(channel_id) or ChallengeConfig(guild_id=interaction.guild.id, channel_id=channel_id)
         cfg.emojis = em_list
-        self.set_config(guild_id, cfg)
+        self.set_config(channel_id, cfg)
         
-        await interaction.followup.send(f"✅ Emojis nastaveny: {' '.join(em_list)}", ephemeral=True)
+        await interaction.followup.send(f"✅ Emojis v tomto kanále nastaveny: {' '.join(em_list)}", ephemeral=True)
 
     @challenge.command(name="milestone", description="Přidej nebo odeber milník (streak → role)")
     @app_commands.describe(
@@ -256,14 +276,14 @@ class ChallengeManager(commands.Cog):
         role: Optional[discord.Role] = None
     ):
         await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild.id
-        cfg = self.get_config(guild_id) or ChallengeConfig(guild_id=guild_id)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id) or ChallengeConfig(guild_id=interaction.guild.id, channel_id=channel_id)
         
         action = action.lower()
         
         if action == "list":
             if not cfg.milestones:
-                await interaction.followup.send("📋 Žádné milníky nejsou nastaveny.", ephemeral=True)
+                await interaction.followup.send("📋 Žádné milníky nejsou nastaveny v tomto kanále.", ephemeral=True)
                 return
             
             lines = ["📋 **Milníky:**"]
@@ -286,10 +306,10 @@ class ChallengeManager(commands.Cog):
                 return
             
             cfg.milestones[days] = role.id
-            self.set_config(guild_id, cfg)
+            self.set_config(channel_id, cfg)
             
             await interaction.followup.send(
-                f"✅ Milník přidán: **{days} dní** → {role.mention}", 
+                f"✅ Milník přidán v tomto kanále: **{days} dní** → {role.mention}", 
                 ephemeral=True
             )
             return
@@ -301,7 +321,7 @@ class ChallengeManager(commands.Cog):
             
             if days in cfg.milestones:
                 del cfg.milestones[days]
-                self.set_config(guild_id, cfg)
+                self.set_config(channel_id, cfg)
                 await interaction.followup.send(f"✅ Milník pro {days} dní odstraněn.", ephemeral=True)
             else:
                 await interaction.followup.send(f"❌ Milník pro {days} dní neexistuje.", ephemeral=True)
@@ -321,10 +341,10 @@ class ChallengeManager(commands.Cog):
 
     async def _send_info(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild.id
-        cfg = self.get_config(guild_id)
-        if not cfg or not cfg.channel_id:
-            await interaction.followup.send("❌ Žádná výzva nenastavena.", ephemeral=True)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id)
+        if not cfg:
+            await interaction.followup.send("❌ Žádná výzva není nastavena v tomto kanále.", ephemeral=True)
             return
             
         embed = discord.Embed(title="📋 Výzva - konfigurace", color=discord.Color.blue())
@@ -471,14 +491,42 @@ class ChallengeManager(commands.Cog):
         return pattern and (pattern.startswith(".") or pattern.startswith(":"))
 
     def _matches_text_pattern(self, content: str, pattern: str) -> bool:
-        return ("✅" in content) and (pattern.lower() in content.lower())
+        """
+        Zkontroluje, zda zpráva obsahuje quest pattern.
+        Akceptuje varianty:
+        - "Quest —" (původní formát)
+        - "✅ Quest" (s checkmarkem)
+        - "✅Quest" (bez mezery)
+        - Pouze pattern pokud obsahuje "Quest" nebo podobně
+        """
+        if not content or not pattern:
+            return False
+        
+        content_lower = content.lower()
+        pattern_lower = pattern.lower()
+        
+        # Varianta 1: Pattern s checkmarkem a pomlčkou "✅ Quest —"
+        if "✅" in content and pattern_lower in content_lower:
+            return True
+        
+        # Varianta 2: Jen pattern bez checkmarku "Quest —"
+        if pattern_lower in content_lower:
+            return True
+        
+        # Varianta 3: Checkmark na začátku zprávy s patternem kdekoliv
+        if content.strip().startswith("✅") and pattern_lower in content_lower:
+            return True
+        
+        return False
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
-        cfg = self.get_config(message.guild.id)
-        if not cfg or not cfg.enabled or cfg.channel_id != message.channel.id:
+        
+        # Get config for THIS channel
+        cfg = self.get_config(message.channel.id)
+        if not cfg or not cfg.enabled:
             return
         
         # --- EMOJI-ROLE MODE ---
@@ -518,8 +566,8 @@ class ChallengeManager(commands.Cog):
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
         if user.bot or not reaction.message.guild:
             return
-        cfg = self.get_config(reaction.message.guild.id)
-        if not cfg or not cfg.enabled or cfg.channel_id != reaction.message.channel.id:
+        cfg = self.get_config(reaction.message.channel.id)
+        if not cfg or not cfg.enabled:
             return
         pattern = cfg.quest_pattern or ""
         if not self._is_emoji_pattern(pattern):
@@ -539,15 +587,21 @@ class ChallengeManager(commands.Cog):
         completed = streak.get("completed_dates", [])
         last = streak.get("last_update")
         days = streak.get("days", 0)
+        
+        # Don't count twice on same day
         if today in completed:
             return
+        
+        # Check if continuing streak (yesterday) or starting new
         yesterday = (date.today() - timedelta(days=1)).isoformat()
         if last == yesterday or last is None:
             days += 1
+            completed.append(today)
         else:
+            # Streak broken, start over
             days = 1
-            completed = []
-        completed.append(today)
+            completed = [today]
+        
         new = {"days": days, "last_update": today, "completed_dates": completed}
         await self.update_user_streak(guild_id, challenge_id, user_id, new)
         member = guild.get_member(user_id)
@@ -592,15 +646,15 @@ class ChallengeManager(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def messages(self, interaction: discord.Interaction, action: str, text: Optional[str] = None):
         await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild.id
-        cfg = self.get_config(guild_id) or ChallengeConfig(guild_id=guild_id)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id) or ChallengeConfig(guild_id=interaction.guild.id, channel_id=channel_id)
         action = action.lower()
         if action == "add":
             if not text:
                 await interaction.followup.send("❌ Musíš zadat text pro přidání.", ephemeral=True)
                 return
             cfg.success_messages.append(text)
-            self.set_config(guild_id, cfg)
+            self.set_config(channel_id, cfg)
             await interaction.followup.send("✅ Zpráva přidána.", ephemeral=True)
             return
         if action == "list":
@@ -609,7 +663,7 @@ class ChallengeManager(commands.Cog):
             return
         if action == "clear":
             cfg.success_messages = []
-            self.set_config(guild_id, cfg)
+            self.set_config(channel_id, cfg)
             await interaction.followup.send("✅ Seznam potvrzovacích zpráv smazán.", ephemeral=True)
             return
         await interaction.followup.send("❌ Neznámá akce. Použij add|list|clear.", ephemeral=True)
@@ -631,8 +685,8 @@ class ChallengeManager(commands.Cog):
         send_dm: Optional[bool] = None
     ):
         await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild.id
-        cfg = self.get_config(guild_id) or ChallengeConfig(guild_id=guild_id)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id) or ChallengeConfig(guild_id=interaction.guild.id, channel_id=channel_id)
         changed = []
         if react_ok is not None:
             cfg.react_ok = react_ok
@@ -646,7 +700,7 @@ class ChallengeManager(commands.Cog):
         if send_dm is not None:
             cfg.send_dm = send_dm
             changed.append(f"send_dm={send_dm}")
-        self.set_config(guild_id, cfg)
+        self.set_config(channel_id, cfg)
         await interaction.followup.send(
             f"✅ Nastavení aktualizováno: {', '.join(changed) if changed else 'žádné změny'}", 
             ephemeral=True
@@ -659,20 +713,10 @@ class ChallengeManager(commands.Cog):
         if not interaction.guild:
             await interaction.followup.send("❌ Tento příkaz funguje pouze na serveru.", ephemeral=True)
             return
-        guild_id = interaction.guild.id
-        cfg = self.get_config(guild_id)
-        if not cfg or not cfg.channel_id:
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id)
+        if not cfg:
             await interaction.followup.send("❌ Výzva v tomto kanálu není nakonfigurována.", ephemeral=True)
-            return
-        
-        # Optional: check channel
-        if cfg.channel_id and interaction.channel_id != cfg.channel_id:
-            ch = interaction.guild.get_channel(cfg.channel_id)
-            ch_mention = ch.mention if ch else f"<#{cfg.channel_id}>"
-            await interaction.followup.send(
-                f"❌ Tento příkaz lze použít pouze v kanálu {ch_mention}.", 
-                ephemeral=True
-            )
             return
         
         provided = _split_emoji_list(emojis)
@@ -711,15 +755,12 @@ class ChallengeManager(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def evaluate(self, interaction: discord.Interaction, limit: Optional[int] = 200):
         await interaction.response.defer(ephemeral=True)
-        guild_id = interaction.guild.id
-        cfg = self.get_config(guild_id)
-        if not cfg or not cfg.channel_id:
-            await interaction.followup.send("❌ Výzva nenastavena.", ephemeral=True)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id)
+        if not cfg:
+            await interaction.followup.send("❌ Výzva v tomto kanálu není nastavena.", ephemeral=True)
             return
-        channel = interaction.guild.get_channel(cfg.channel_id)
-        if not channel:
-            await interaction.followup.send("❌ Kanál nenalezen.", ephemeral=True)
-            return
+        channel = interaction.channel
         checked = 0
         assigned_count = 0
         target = self._normalize_emoji_list(cfg.emojis)
@@ -738,13 +779,278 @@ class ChallengeManager(commands.Cog):
             ephemeral=True
         )
 
-    @challenge.command(name="clear", description="Smaže konfiguraci pro tuto guildu")
+    @challenge.command(name="evaluate_quests", description="ADMIN: Vyhodnotí questy v historii a přiřadí role podle streaks")
+    @app_commands.describe(
+        limit="Kolik posledních zpráv zkontrolovat (0 = celá historie)",
+        dry_run="Pouze zobrazit, co by se stalo (nepřiřazovat role)"
+    )
+    @commands.has_permissions(administrator=True)
+    async def evaluate_quests(
+        self, 
+        interaction: discord.Interaction, 
+        limit: Optional[int] = 1000,
+        dry_run: Optional[bool] = False
+    ):
+        await interaction.response.defer(ephemeral=True)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id)
+        
+        if not cfg:
+            await interaction.followup.send("❌ Výzva v tomto kanálu není nastavena.", ephemeral=True)
+            return
+        
+        if not cfg.quest_pattern:
+            await interaction.followup.send("❌ Quest pattern není nastaven.", ephemeral=True)
+            return
+        
+        if not cfg.milestones:
+            await interaction.followup.send("❌ Žádné milníky nejsou nastaveny. Použij `/challenge milestone`", ephemeral=True)
+            return
+        
+        channel = interaction.channel
+        
+        # Status message
+        status_msg = await interaction.followup.send(
+            f"🔍 Analyzuji questy v {channel.mention}...\n"
+            f"Pattern: `{cfg.quest_pattern}`\n"
+            f"{'⚠️ DRY RUN - žádné role nebudou přidány' if dry_run else '✅ Role budou přiděleny'}",
+            ephemeral=True
+        )
+        
+        # Collect all quest messages grouped by user and date
+        from collections import defaultdict
+        user_quests = defaultdict(lambda: defaultdict(list))  # {user_id: {date_str: [messages]}}
+        
+        checked = 0
+        pattern_lower = cfg.quest_pattern.lower()
+        
+        # Fetch history
+        async for msg in channel.history(limit=limit if limit > 0 else None):
+            checked += 1
+            if msg.author.bot:
+                continue
+            
+            # Check if message matches quest pattern
+            content = msg.content or ""
+            if self._matches_text_pattern(content, cfg.quest_pattern):
+                date_str = msg.created_at.date().isoformat()
+                user_quests[msg.author.id][date_str].append(msg)
+        
+        # Calculate streaks for each user
+        user_streaks = {}  # {user_id: (current_streak, max_streak, dates)}
+        
+        for user_id, date_dict in user_quests.items():
+            dates = sorted(date_dict.keys())  # Oldest first for easier consecutive checking
+            
+            if not dates:
+                continue
+            
+            # Find longest consecutive streak
+            max_streak = 1
+            current_streak = 1
+            streak_dates = [dates[0]]
+            best_streak_dates = [dates[0]]
+            
+            for i in range(1, len(dates)):
+                prev_date = datetime.fromisoformat(dates[i-1]).date()
+                curr_date = datetime.fromisoformat(dates[i]).date()
+                
+                # Check if consecutive (exactly 1 day apart)
+                if curr_date == prev_date + timedelta(days=1):
+                    current_streak += 1
+                    streak_dates.append(dates[i])
+                    
+                    if current_streak > max_streak:
+                        max_streak = current_streak
+                        best_streak_dates = streak_dates.copy()
+                else:
+                    # Reset streak
+                    current_streak = 1
+                    streak_dates = [dates[i]]
+            
+            # Final check
+            if current_streak > max_streak:
+                max_streak = current_streak
+                best_streak_dates = streak_dates.copy()
+            
+            user_streaks[user_id] = (max_streak, max_streak, best_streak_dates)
+        
+        # Assign roles based on milestones
+        results = []
+        roles_assigned = 0
+        
+        for user_id, (current_streak, max_streak, streak_dates) in user_streaks.items():
+            member = interaction.guild.get_member(user_id)
+            if not member:
+                continue
+            
+            # Find which milestones this user qualifies for
+            qualified_milestones = sorted([days for days in cfg.milestones.keys() if current_streak >= days])
+            
+            for milestone_days in qualified_milestones:
+                role_id = cfg.milestones[milestone_days]
+                role = interaction.guild.get_role(role_id)
+                
+                if not role:
+                    continue
+                
+                if role not in member.roles:
+                    if not dry_run:
+                        try:
+                            await member.add_roles(role, reason=f"Quest evaluation: {current_streak} dní")
+                            roles_assigned += 1
+                            
+                            # Send DM if enabled
+                            if cfg.send_dm:
+                                try:
+                                    await member.send(
+                                        f"🎉 Gratuluji! Při vyhodnocení questů jsi získal/a roli **{role.name}** "
+                                        f"za **{current_streak} dní** série!"
+                                    )
+                                except:
+                                    pass
+                        except Exception as e:
+                            results.append(f"❌ {member.mention}: Chyba při přidání {role.mention} - {e}")
+                            continue
+                    
+                    results.append(
+                        f"{'🔹 [DRY]' if dry_run else '✅'} {member.mention}: "
+                        f"{role.mention} ({current_streak} dní)"
+                    )
+        
+        # Update Redis streaks if not dry run
+        if not dry_run:
+            challenge_id = "default"
+            for user_id, (current_streak, max_streak, streak_dates) in user_streaks.items():
+                if streak_dates:
+                    await self.update_user_streak(
+                        interaction.guild.id, 
+                        challenge_id, 
+                        user_id, 
+                        {
+                            "days": current_streak,
+                            "last_update": streak_dates[0],
+                            "completed_dates": streak_dates
+                        }
+                    )
+        
+        # Build summary
+        summary = [
+            f"📊 **Vyhodnocení questů dokončeno**",
+            f"",
+            f"🔍 Zkontrolováno zpráv: **{checked}**",
+            f"👥 Uživatelů s questy: **{len(user_streaks)}**",
+            f"🏆 Rolí přidáno: **{roles_assigned}**" if not dry_run else f"🏆 Rolí k přidání: **{len(results)}**",
+            f"",
+        ]
+        
+        if results:
+            summary.append("**Přidělené role:**")
+            summary.extend(results[:20])  # Limit to first 20
+            if len(results) > 20:
+                summary.append(f"... a další {len(results) - 20}")
+        else:
+            summary.append("ℹ️ Nikdo nesplnil podmínky pro získání role.")
+        
+        if dry_run:
+            summary.append("")
+            summary.append("⚠️ **DRY RUN** - žádné role nebyly skutečně přidány.")
+            summary.append("Spusť znovu s `dry_run:False` pro aplikaci změn.")
+        
+        summary_text = "\n".join(summary)
+        
+        # Send as file if too long
+        if len(summary_text) > 1900:
+            import io
+            file = discord.File(
+                io.BytesIO(summary_text.encode('utf-8')),
+                filename="quest_evaluation.txt"
+            )
+            await interaction.followup.send(
+                "📄 Výsledek je příliš dlouhý, posílám jako soubor:",
+                file=file,
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(summary_text, ephemeral=True)
+
+    @challenge.command(name="clear", description="Smaže konfiguraci pro tento kanál")
     @commands.has_permissions(administrator=True)
     async def clear(self, interaction: discord.Interaction):
-        if self.delete_config(interaction.guild.id):
-            await interaction.response.send_message("🗑️ Konfigurace smazána.", ephemeral=True)
+        channel_id = interaction.channel_id
+        if self.delete_config(channel_id):
+            await interaction.response.send_message("🗑️ Konfigurace tohoto kanálu smazána.", ephemeral=True)
         else:
-            await interaction.response.send_message("ℹ️ Nebyla nalezena žádná konfigurace.", ephemeral=True)
+            await interaction.response.send_message("ℹ️ V tomto kanálu není nastavena žádná konfigurace.", ephemeral=True)
+
+    @challenge.command(name="test_pattern", description="DEBUG: Test pattern matching na posledních X zprávách")
+    @app_commands.describe(limit="Kolik zpráv zkontrolovat")
+    @commands.has_permissions(administrator=True)
+    async def test_pattern(self, interaction: discord.Interaction, limit: int = 50):
+        await interaction.response.defer(ephemeral=True)
+        channel_id = interaction.channel_id
+        cfg = self.get_config(channel_id)
+        
+        if not cfg:
+            await interaction.followup.send("❌ Výzva v tomto kanále není nastavena.", ephemeral=True)
+            return
+        
+        channel = interaction.channel
+        
+        matches = []
+        non_matches = []
+        checked = 0
+        
+        async for msg in channel.history(limit=limit):
+            if msg.author.bot:
+                continue
+            checked += 1
+            
+            content = msg.content or ""
+            if self._matches_text_pattern(content, cfg.quest_pattern):
+                matches.append(f"✅ {msg.author.display_name}: `{content[:60]}`")
+            else:
+                if content.strip():  # Only show non-empty messages
+                    non_matches.append(f"❌ {msg.author.display_name}: `{content[:60]}`")
+        
+        result = [
+            f"🔍 **Pattern Test**",
+            f"Pattern: `{cfg.quest_pattern}`",
+            f"",
+            f"📊 Zkontrolováno: {checked} zpráv",
+            f"✅ Matches: {len(matches)}",
+            f"❌ Non-matches: {len(non_matches)}",
+            f"",
+        ]
+        
+        if matches:
+            result.append("**✅ Příklady matchů:**")
+            result.extend(matches[:10])
+            if len(matches) > 10:
+                result.append(f"... a dalších {len(matches) - 10}")
+            result.append("")
+        
+        if non_matches:
+            result.append("**❌ Příklady non-matchů:**")
+            result.extend(non_matches[:5])
+            if len(non_matches) > 5:
+                result.append(f"... a dalších {len(non_matches) - 5}")
+        
+        result_text = "\n".join(result)
+        
+        if len(result_text) > 1900:
+            import io
+            file = discord.File(
+                io.BytesIO(result_text.encode('utf-8')),
+                filename="pattern_test.txt"
+            )
+            await interaction.followup.send(
+                "📄 Výsledek je příliš dlouhý:",
+                file=file,
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(result_text, ephemeral=True)
 
     # --------------------- daily maintenance ---------------------
     @tasks.loop(hours=24)
