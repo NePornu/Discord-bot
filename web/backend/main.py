@@ -36,11 +36,11 @@ except ImportError:
     SECRET_KEY = secrets.token_urlsafe(32)
     ACCESS_TOKEN = secrets.token_urlsafe(32)
     SESSION_EXPIRY_HOURS = 24
-    DISCORD_CLIENT_ID = ""
-    DISCORD_CLIENT_SECRET = ""
-    DISCORD_REDIRECT_URI = "http://localhost:8092/auth/callback"
-    ADMIN_USER_IDS = []
-    BOT_TOKEN = ""
+    DISCORD_CLIENT_ID = "1227269599951589508"
+    DISCORD_CLIENT_SECRET = "KucYzPIvgrMnbVUW9BI4arnRdwh0OB-n"
+    DISCORD_REDIRECT_URI = "http://207.180.223.191:8092/auth/callback"
+    ADMIN_USER_IDS = [471218810964410368]
+    BOT_TOKEN = "MTIyNzI2OTU5OTk1MTU4OTUwOA.GsCoHP.OEpQd6iF6thu7cbvnBl3c5-48rIREWgoLEY6MY"
     print(f"WARNING: Using generated secrets.")
 
 

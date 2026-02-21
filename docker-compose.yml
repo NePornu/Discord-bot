@@ -7,6 +7,12 @@ services:
       - redis_data:/data
     networks:
       - botnet
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 64M
 
   discord-bot-primary:
     build: .
@@ -25,6 +31,12 @@ services:
       - ./data:/app/data
     networks:
       - botnet
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
   discord-bot-dashboard:
     build: .
@@ -42,6 +54,12 @@ services:
       - .:/app
     networks:
       - botnet
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
   web-dashboard:
     build: .
@@ -54,7 +72,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DASHBOARD_SECRET_KEY=${DASHBOARD_SECRET_KEY}
       - DASHBOARD_ACCESS_TOKEN=${DASHBOARD_ACCESS_TOKEN}
+      - DISCORD_CLIENT_ID=1462004084302151814
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - DISCORD_REDIRECT_URI=http://207.180.223.191:8092/auth/callback
       - BOT_TOKEN=${BOT_TOKEN}
       - TZ=Europe/Prague
     ports:
@@ -64,6 +84,12 @@ services:
       - ./dashboard_std.log:/app/dashboard_std.log
     networks:
       - botnet
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
   monitor:
     build: .
@@ -81,6 +107,12 @@ services:
       - .:/app
     networks:
       - botnet
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
 networks:
   botnet:

@@ -141,7 +141,7 @@ class VerificationModView(discord.ui.View):
             return await interaction.followup.send("❌ Uživatel už není na serveru.", ephemeral=True)
 
         st = cog.get_user_state(member.id)
-        if st.get("status") != "WChytréTING_FOR_APPROVAL":
+        if st.get("status") != "WAITING_FOR_APPROVAL":
              return await interaction.followup.send("❌ Uživatel zatím nezadal správný kód. (Použij /verify bypass pokud je to nutné)", ephemeral=True)
             
         success = await cog.approve_user(member, approver=interaction.user)
@@ -588,7 +588,7 @@ class VerificationCog(commands.Cog):
             return
             
         
-        if st.get("status") == "WChytréTING_FOR_APPROVAL":
+        if st.get("status") == "WAITING_FOR_APPROVAL":
             await message.channel.send("⏳ **Čekání na schválení.** Moderátoři byli upozorněni.")
             return
 
@@ -608,7 +608,7 @@ class VerificationCog(commands.Cog):
         
         if user_input == st["otp"] or (VERIFICATION_CODE and user_input.upper() == VERIFICATION_CODE.upper()):
             code_entered_time = datetime.now().timestamp()
-            self.update_user_state(member.id, status="WChytréTING_FOR_APPROVAL", code_entered_at=code_entered_time)
+            self.update_user_state(member.id, status="WAITING_FOR_APPROVAL", code_entered_at=code_entered_time)
             await message.channel.send("✅ **Kód je správný.** Nyní prosím čekej, než moderátor potvrdí tvůj přístup.")
             
             
@@ -698,10 +698,79 @@ class VerificationCog(commands.Cog):
     
     reverify = app_commands.Group(name="reverify", description="Hromadná re-verifikace")
 
-    @reverify.command(name="run", description="Spustí hromadné rozeslání kódů.")
+    @reverify.command(name="run", description="Spustí hromadné rozeslání kódů všem čekajícím uživatelům.")
     @app_commands.checks.has_permissions(administrator=True)
-    async def rev_run(self, itx: Interaction, delay: float = 0.5):
-        await itx.response.send_message("⚠️ Tato funkce je v režimu 2.1 omezena (vyžaduje manuální schválení každého člena).", ephemeral=True)
+    async def rev_run(self, itx: Interaction, delay: float = 0.5, send_apology: bool = True):
+        await itx.response.defer(ephemeral=True)
+        guild = itx.guild
+        if not guild:
+            return await itx.followup.send("❌ Tento příkaz lze použít pouze na serveru.")
+
+        pending_users = [
+            (uid, st) for uid, st in self.state.items()
+            if st.get("status") == "PENDING"
+        ]
+
+        if not pending_users:
+            return await itx.followup.send("✅ Žádní čekající uživatelé.")
+
+        sent = 0
+        failed = 0
+        not_found = 0
+
+        await itx.followup.send(f"⏳ Posílám re-verifikaci {len(pending_users)} čekajícím uživatelům...")
+
+        for uid_str, st in pending_users:
+            uid = int(uid_str)
+            member = guild.get_member(uid)
+            if not member:
+                not_found += 1
+                continue
+
+            # Generate new OTP
+            new_otp = generate_otp()
+            self.update_user_state(uid, otp=new_otp, attempts=0)
+
+            try:
+                if send_apology:
+                    msg = (
+                        f"**🔒 Re-verifikace účtu — Omlouváme se!**\n\n"
+                        f"Ahoj **{member.name}**!\n\n"
+                        f"Omlouváme se za prodlevu s ověřením — měli jsme technický problém "
+                        f"s naším ověřovacím systémem, který je nyní opraven.\n\n"
+                        f"Pro dokončení ověření prosím pošli sem do chatu tento nový kód:\n\n"
+                        f"> **`{new_otp}`**\n\n"
+                        f"Děkujeme za trpělivost! 🙏"
+                    )
+                else:
+                    msg = (
+                        f"**🔒 Re-verifikace účtu**\n\n"
+                        f"Ahoj **{member.name}**!\n"
+                        f"Pro dokončení ověření prosím pošli sem do chatu tento kód:\n\n"
+                        f"> **`{new_otp}`**\n"
+                    )
+                await member.send(msg)
+                sent += 1
+                logging.info(f"Re-verification DM sent to {member.name} ({uid})")
+            except Exception as e:
+                failed += 1
+                logging.error(f"Failed to send re-verification DM to {uid}: {e}")
+
+            await asyncio.sleep(delay)
+
+        await self.save_state()
+
+        verification_ch = guild.get_channel(VERIFICATION_CHANNEL_ID)
+        summary = (
+            f"📊 **Re-verifikace dokončena**\n"
+            f"✅ Odesláno: {sent}\n"
+            f"❌ Selhalo: {failed}\n"
+            f"👻 Nenalezeno na serveru: {not_found}\n"
+            f"📝 Celkem čekajících: {len(pending_users)}"
+        )
+        if verification_ch:
+            await verification_ch.send(summary)
+        await itx.followup.send(summary)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(VerificationCog(bot))

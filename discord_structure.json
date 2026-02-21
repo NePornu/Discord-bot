@@ -1,0 +1,614 @@
+[
+  {
+    "id": 1022059558086123600,
+    "name": "\ud83d\udc96|NePornu t\u00fdm",
+    "position": 0,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1022061462744735764,
+        "name": "veden\u00ed-nepornu",
+        "type": "text",
+        "position": 0
+      },
+      {
+        "id": 1022069327177977927,
+        "name": "grafika-a-socialni-site",
+        "type": "text",
+        "position": 1
+      },
+      {
+        "id": 1022069448254963723,
+        "name": "\u010dl\u00e1nky-\u017ep-podcasty",
+        "type": "text",
+        "position": 2
+      },
+      {
+        "id": 1204377095480811630,
+        "name": "sprava-webu",
+        "type": "text",
+        "position": 3
+      },
+      {
+        "id": 1026464547462201445,
+        "name": "pravidla-pro-dobrovoln\u00edky",
+        "type": "text",
+        "position": 4
+      },
+      {
+        "id": 1361610648408166510,
+        "name": "status-ozn\u00e1men\u00ed",
+        "type": "news",
+        "position": 5
+      },
+      {
+        "id": 1022060104486494209,
+        "name": "chat-pro-dobrovoln\u00edky",
+        "type": "text",
+        "position": 6
+      },
+      {
+        "id": 1022060781761740861,
+        "name": "pr\u00e1ce-s-klienty",
+        "type": "text",
+        "position": 7
+      },
+      {
+        "id": 1022072047364481054,
+        "name": "Prostor pro pokec",
+        "type": "voice",
+        "position": 0
+      },
+      {
+        "id": 1022072294216044635,
+        "name": "Pokec pro t\u00fdm",
+        "type": "voice",
+        "position": 1
+      }
+    ]
+  },
+  {
+    "id": 1022454444471885934,
+    "name": "\ud83d\udc25|moder\u00e1to\u0159i",
+    "position": 1,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1459269521440506110,
+        "name": "\ud83d\udea6\u010dek\u00e1rna",
+        "type": "text",
+        "position": 8
+      },
+      {
+        "id": 1022455187635453982,
+        "name": "mods-chat",
+        "type": "text",
+        "position": 9
+      },
+      {
+        "id": 882936285738704897,
+        "name": "moderator-only",
+        "type": "text",
+        "position": 10
+      },
+      {
+        "id": 1252504856489627728,
+        "name": "f\u00f3rum",
+        "type": "text",
+        "position": 11
+      },
+      {
+        "id": 1075692397108940841,
+        "name": "zm\u011bny-a-testov\u00e1n\u00ed",
+        "type": "text",
+        "position": 12
+      },
+      {
+        "id": 1095406617350131882,
+        "name": "n\u00e1vrhy-na-ov\u011b\u0159en\u00e9ho",
+        "type": "text",
+        "position": 13
+      },
+      {
+        "id": 1107370544887775306,
+        "name": "vnit\u0159n\u00ed-pravidla",
+        "type": "text",
+        "position": 14
+      },
+      {
+        "id": 1242124572908847175,
+        "name": "Pokec pro moder\u00e1tory",
+        "type": "voice",
+        "position": 2
+      }
+    ]
+  },
+  {
+    "id": 615171377783242774,
+    "name": "\ud83d\udcda|INFO",
+    "position": 2,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1112702590187212901,
+        "name": "\ud83d\udcebnepornu-ozn\u00e1men\u00ed",
+        "type": "news",
+        "position": 15
+      },
+      {
+        "id": 738439367047118878,
+        "name": "\ud83d\udce2server-ozn\u00e1men\u00ed",
+        "type": "news",
+        "position": 16
+      },
+      {
+        "id": 882936285738704896,
+        "name": "\ud83d\udcd7pravidla",
+        "type": "text",
+        "position": 17
+      },
+      {
+        "id": 1280412941400932393,
+        "name": "\u2139\ufe0f\u00favod",
+        "type": "text",
+        "position": 18
+      },
+      {
+        "id": 751042997562376203,
+        "name": "\u2692\ufe0fn\u00e1vrhy-na-zm\u011bnu",
+        "type": "text",
+        "position": 19
+      },
+      {
+        "id": 1351911916305514506,
+        "name": "\ud83d\ude4buv\u00edtac\u00ed-kan\u00e1l",
+        "type": "text",
+        "position": 20
+      },
+      {
+        "id": 1240615129289064499,
+        "name": "\ud83d\udcd7pravidla",
+        "type": "text",
+        "position": 21
+      },
+      {
+        "id": 1240625717792739328,
+        "name": "\u2139\ufe0f\u00favod",
+        "type": "text",
+        "position": 22
+      }
+    ]
+  },
+  {
+    "id": 736646497302478989,
+    "name": "\ud83d\udcac|DISKUZE",
+    "position": 3,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1191296600631431198,
+        "name": "\ud83d\udc4bp\u0159edstav-se",
+        "type": "text",
+        "position": 23
+      },
+      {
+        "id": 743192917862252584,
+        "name": "\ud83d\udcachlavn\u00ed-chat",
+        "type": "text",
+        "position": 24
+      },
+      {
+        "id": 748278656627114064,
+        "name": "\ud83c\udf5coff-topic",
+        "type": "text",
+        "position": 25
+      },
+      {
+        "id": 743194017243594752,
+        "name": "\ud83c\udd98pot\u0159ebuji-pomoc",
+        "type": "text",
+        "position": 26
+      },
+      {
+        "id": 938038989565349888,
+        "name": "\ud83d\udc54merch",
+        "type": "text",
+        "position": 27
+      }
+    ]
+  },
+  {
+    "id": 1122603281357746357,
+    "name": "V\u00fdzvy",
+    "position": 4,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1122603558026608681,
+        "name": "\ud83d\udd8a\ufe0fp\u0159ihl\u00e1\u0161ky",
+        "type": "text",
+        "position": 28
+      },
+      {
+        "id": 1467884059031241017,
+        "name": "\u2744\ufe0fneled\u0148\u00e1\u010dek-2026",
+        "type": "text",
+        "position": 29
+      },
+      {
+        "id": 1443231915355279452,
+        "name": "adventn\u00ed-kalend\u00e1\u0159",
+        "type": "text",
+        "position": 30
+      }
+    ]
+  },
+  {
+    "id": 1222077111720743015,
+    "name": "Lekto\u0159i",
+    "position": 5,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1222075305766686741,
+        "name": "chat-pro-lektory",
+        "type": "text",
+        "position": 31
+      }
+    ]
+  },
+  {
+    "id": 1032586955592040518,
+    "name": "Podp\u016frn\u00e9 skupiny NePornu",
+    "position": 6,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1191295704434479214,
+        "name": "\u2764\ufe0f\u200d\ud83e\ude79podp\u016frn\u00e9-skupiny-info",
+        "type": "text",
+        "position": 32
+      },
+      {
+        "id": 1032587284635201568,
+        "name": "chat-pro-ps",
+        "type": "text",
+        "position": 33
+      },
+      {
+        "id": 1032588026188156979,
+        "name": "ps-online-mu\u017ei",
+        "type": "text",
+        "position": 34
+      },
+      {
+        "id": 1032588110216843316,
+        "name": "ps-online-\u017eeny",
+        "type": "text",
+        "position": 35
+      },
+      {
+        "id": 1032588189203963944,
+        "name": "ps-online-partnerky-z\u00e1visl\u00fdch",
+        "type": "text",
+        "position": 36
+      },
+      {
+        "id": 1032588366476234784,
+        "name": "ps-praha",
+        "type": "text",
+        "position": 37
+      },
+      {
+        "id": 1032588292694212638,
+        "name": "ps-brno",
+        "type": "text",
+        "position": 38
+      },
+      {
+        "id": 1032587509328269342,
+        "name": "ps-olomouc",
+        "type": "text",
+        "position": 39
+      },
+      {
+        "id": 1183699021219504188,
+        "name": "ps-plze\u0148",
+        "type": "text",
+        "position": 40
+      },
+      {
+        "id": 1205777054532902983,
+        "name": "ps-jihlava",
+        "type": "text",
+        "position": 41
+      },
+      {
+        "id": 1205778226828414987,
+        "name": "ps-zl\u00edn",
+        "type": "text",
+        "position": 42
+      },
+      {
+        "id": 1205778079352487956,
+        "name": "ps-svitavy",
+        "type": "text",
+        "position": 43
+      },
+      {
+        "id": 1336052771178152039,
+        "name": "ps-pardubice",
+        "type": "text",
+        "position": 44
+      },
+      {
+        "id": 1364924621002113045,
+        "name": "ps-ceskebudejovice",
+        "type": "text",
+        "position": 45
+      },
+      {
+        "id": 1372514072628559903,
+        "name": "ps-praha",
+        "type": "text",
+        "position": 46
+      },
+      {
+        "id": 1461706611109265634,
+        "name": "chat-pro-vedouc\u00ed-ps",
+        "type": "text",
+        "position": 47
+      }
+    ]
+  },
+  {
+    "id": 725252668842442802,
+    "name": "\ud83d\ude80|POMOC V ABSTiNENCI",
+    "position": 7,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1101227024753905754,
+        "name": "\u2728zdrav\u00e9-n\u00e1vyky",
+        "type": "text",
+        "position": 48
+      },
+      {
+        "id": 1077155688557592686,
+        "name": "\ud83d\udda5\ufe0fblokovac\u00ed-programy",
+        "type": "text",
+        "position": 49
+      },
+      {
+        "id": 1101224564568100976,
+        "name": "\ud83d\udd6f\ufe0fspiritualita-a-abstinence",
+        "type": "text",
+        "position": 50
+      },
+      {
+        "id": 759074919735885916,
+        "name": "\ud83c\udf96\ufe0fuspechy-vd\u011b\u010dnost-motivace",
+        "type": "text",
+        "position": 51
+      },
+      {
+        "id": 736649672483012632,
+        "name": "\ud83d\udcf0knihy-\u010dl\u00e1nky-videa",
+        "type": "text",
+        "position": 52
+      }
+    ]
+  },
+  {
+    "id": 615171377783242789,
+    "name": "\ud83c\udf99|Hlasov\u00e9 kan\u00e1ly",
+    "position": 8,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1095675769579114496,
+        "name": "\ud83d\ude49chat-hlasov\u00e9-kan\u00e1ly",
+        "type": "text",
+        "position": 54
+      },
+      {
+        "id": 736648079582953504,
+        "name": "\ud83d\udde3\ufe0f pokec",
+        "type": "voice",
+        "position": 3
+      }
+    ]
+  },
+  {
+    "id": 1281150168216895592,
+    "name": "Archiv",
+    "position": 9,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1431290885445783652,
+        "name": "npn-vyzva-2025",
+        "type": "text",
+        "position": 55
+      },
+      {
+        "id": 807427181390856233,
+        "name": "denik-abstinence",
+        "type": "text",
+        "position": 56
+      },
+      {
+        "id": 738438900112031816,
+        "name": "p\u0159irazen\u00ed-rol\u00ed",
+        "type": "text",
+        "position": 57
+      },
+      {
+        "id": 1375422399499079760,
+        "name": "letnivyzva-2025",
+        "type": "text",
+        "position": 58
+      },
+      {
+        "id": 1321920585009467413,
+        "name": "neled\u0148\u00e1\u010dek-2025",
+        "type": "text",
+        "position": 59
+      },
+      {
+        "id": 1300788806756208640,
+        "name": "no-p-november-2024",
+        "type": "text",
+        "position": 60
+      },
+      {
+        "id": 1242129404696592525,
+        "name": "letn\u00ed-v\u00fdzva-appblock",
+        "type": "text",
+        "position": 61
+      },
+      {
+        "id": 1189617001996501153,
+        "name": "neled\u0148\u00e1\u010dek-2024",
+        "type": "text",
+        "position": 62
+      },
+      {
+        "id": 1122603693519413282,
+        "name": "pr\u00e1zdninov\u00e1-v\u00fdzva-2023",
+        "type": "text",
+        "position": 63
+      },
+      {
+        "id": 1157609041539899492,
+        "name": "no-p-november-2023",
+        "type": "text",
+        "position": 64
+      }
+    ]
+  },
+  {
+    "id": 1389197799714983956,
+    "name": "technick\u00e1 \u010d\u00e1st",
+    "position": 10,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1425752839820677130,
+        "name": "month-report",
+        "type": "text",
+        "position": 65
+      },
+      {
+        "id": 1351911780892409958,
+        "name": "\u010dek\u00e1rna-log",
+        "type": "text",
+        "position": 66
+      },
+      {
+        "id": 1404734262485450772,
+        "name": "profile-logs",
+        "type": "text",
+        "position": 67
+      },
+      {
+        "id": 1404416148077809705,
+        "name": "server-logs",
+        "type": "text",
+        "position": 68
+      },
+      {
+        "id": 1245571689178464257,
+        "name": "console",
+        "type": "text",
+        "position": 69
+      },
+      {
+        "id": 1445354871489560606,
+        "name": "changelog",
+        "type": "text",
+        "position": 70
+      },
+      {
+        "id": 1468607459332456518,
+        "name": "status",
+        "type": "text",
+        "position": 71
+      }
+    ]
+  },
+  {
+    "id": null,
+    "name": "Uncategorized",
+    "position": -1,
+    "type": "category",
+    "channels": [
+      {
+        "id": 1032586955592040518,
+        "name": "Podp\u016frn\u00e9 skupiny NePornu",
+        "type": "category",
+        "position": 6
+      },
+      {
+        "id": 1122603281357746357,
+        "name": "V\u00fdzvy",
+        "type": "category",
+        "position": 4
+      },
+      {
+        "id": 1022059558086123600,
+        "name": "\ud83d\udc96|NePornu t\u00fdm",
+        "type": "category",
+        "position": 0
+      },
+      {
+        "id": 1022454444471885934,
+        "name": "\ud83d\udc25|moder\u00e1to\u0159i",
+        "type": "category",
+        "position": 1
+      },
+      {
+        "id": 1222077111720743015,
+        "name": "Lekto\u0159i",
+        "type": "category",
+        "position": 5
+      },
+      {
+        "id": 736646497302478989,
+        "name": "\ud83d\udcac|DISKUZE",
+        "type": "category",
+        "position": 3
+      },
+      {
+        "id": 1389197799714983956,
+        "name": "technick\u00e1 \u010d\u00e1st",
+        "type": "category",
+        "position": 10
+      },
+      {
+        "id": 1281150168216895592,
+        "name": "Archiv",
+        "type": "category",
+        "position": 9
+      },
+      {
+        "id": 615171377783242774,
+        "name": "\ud83d\udcda|INFO",
+        "type": "category",
+        "position": 2
+      },
+      {
+        "id": 615171377783242789,
+        "name": "\ud83c\udf99|Hlasov\u00e9 kan\u00e1ly",
+        "type": "category",
+        "position": 8
+      },
+      {
+        "id": 725252668842442802,
+        "name": "\ud83d\ude80|POMOC V ABSTiNENCI",
+        "type": "category",
+        "position": 7
+      }
+    ]
+  }
+]
