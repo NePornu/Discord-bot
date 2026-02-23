@@ -160,14 +160,16 @@ class AvatarFixer(discord.Client):
                 
                 # Check Content
                 # Discord content might need normalization? Sync script stores d_msg.content or ""
-                normalized_content = d_msg.content or ""
-                
+                # We strip whitespace and normalize newlines for more resilient matching.
+                normalized_d_content = (d_msg.content or "").strip().replace('\r\n', '\n')
+                normalized_f_content = (f_msg.content or "").strip().replace('\r\n', '\n')
+
                 # Check Author
                 # Sync script uses d_msg.author.display_name (or name?)
                 # Code: "username": str(msg.author.display_name)[:80]
                 target_username = d_msg.author.display_name[:80]
-                
-                if f_msg.content == normalized_content and f_msg.webhook_name == target_username:
+
+                if normalized_f_content == normalized_d_content and f_msg.webhook_name == target_username:
                     matched_f_msg = f_msg
                     f_idx = i + 1 # Advance pointer past this message
                     break
