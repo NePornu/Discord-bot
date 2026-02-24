@@ -15,12 +15,13 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+from config import config
 
 
 
 
-CHANNEL_MChytréN_LOG_ID = 1404416148077809705     
-CHANNEL_PROFILE_LOG_ID = 1404734262485450772  
+CHANNEL_MChytréN_LOG_ID = getattr(config, "LOG_CHANNEL_ID", 1404416148077809705)
+CHANNEL_PROFILE_LOG_ID = getattr(config, "PROFILE_LOG_CHANNEL_ID", 1404734262485450772)
 
 
 
@@ -263,6 +264,7 @@ class LogCog(commands.Cog):
         self.message_cd: Dict[int, datetime] = {}
         self.bulk_cd: Dict[int, datetime] = {}
         self.reaction_cd: Dict[int, datetime] = {}
+        self.user_update_cd: Dict[int, datetime] = {}      # Deduplication for global profile updates
 
         
         self._queue_worker.start()
@@ -1172,6 +1174,12 @@ class LogCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_user_update(self, before: discord.User, after: discord.User):
+        # Deduplication: only process same user once every 5 seconds
+        now = datetime.now(timezone.utc)
+        if after.id in self.user_update_cd:
+            if (now - self.user_update_cd[after.id]) < timedelta(seconds=5):
+                return
+        self.user_update_cd[after.id] = now
         
         profile_changes = []
         
@@ -1181,8 +1189,9 @@ class LogCog(commands.Cog):
             profile_changes.append(f"**Discriminator:** `#{before.discriminator}` → `#{after.discriminator}`")
         if before.global_name != after.global_name:
             profile_changes.append(f"**Globální jméno:** `{before.global_name or 'Žádné'}` → `{after.global_name or 'Žádné'}`")
-        if before.avatar != after.avatar:
-            profile_changes.append("**Avatar:** změněn")
+        # Avatar change is handled by AvatarNSFW cog to avoid duplicates
+        # if before.avatar != after.avatar:
+        #     profile_changes.append("**Avatar:** změněn")
         if hasattr(before, 'banner') and hasattr(after, 'banner') and before.banner != after.banner:
             profile_changes.append("**Banner:** změněn")
         if hasattr(before, 'accent_color') and hasattr(after, 'accent_color') and before.accent_color != after.accent_color:
@@ -1192,23 +1201,24 @@ class LogCog(commands.Cog):
             return
 
         
+        # Consolidate: Send ONE log to the profile channel if user is in any guild where log_members is enabled
+        guilds_with_logging = []
         for guild in self.bot.guilds:
             member = guild.get_member(after.id)
             if not member:
                 continue
             cfg = self.cfg(guild.id)
-            if not (cfg.enabled and cfg.log_members):
-                continue
-            if member.id in cfg.ignored_users:
-                continue
-                
+            if cfg.enabled and cfg.log_members and member.id not in cfg.ignored_users:
+                guilds_with_logging.append(guild.name)
+        
+        if guilds_with_logging:
             e = self._embed("👤 Globální profil upraven", f"{after.mention}\n\n" + "\n".join(profile_changes))
             e.set_thumbnail(url=after.display_avatar.url)
             e.add_field(name="ID", value=str(after.id), inline=True)
-            e.add_field(name="Server", value=guild.name, inline=True)
+            e.add_field(name="Servery", value=", ".join(guilds_with_logging[:5]) + (f" (+{len(guilds_with_logging)-5})" if len(guilds_with_logging) > 5 else ""), inline=True)
             if after.global_name:
                 e.add_field(name="Zobrazuje se jako", value=after.global_name, inline=True)
-            self.to_profile(e)  
+            self.to_main(e)
 
     
     @commands.Cog.listener()

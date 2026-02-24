@@ -26,13 +26,30 @@ class AutoModCustom(commands.Cog):
         await r.set(key, value)
         await r.close()
 
-    async def get_filters(self, guild_id: int) -> List[str]:
+    async def get_filters(self, guild_id: int) -> List[dict]:
         r = await get_redis_client()
         val = await r.get(f"automod:filters:{guild_id}")
         await r.close()
-        return json.loads(val) if val else []
+        if not val:
+            return []
+        
+        data = json.loads(val)
+        # Migration: convert list of strings to list of dicts
+        if isinstance(data, list) and len(data) > 0 and isinstance(data[0], str):
+            new_data = []
+            for pattern in data:
+                new_data.append({
+                    "pattern": pattern,
+                    "allowed_roles": [],
+                    "allowed_channels": []
+                })
+            # Save the migrated data
+            await self.save_filters(guild_id, new_data)
+            return new_data
+        
+        return data
 
-    async def save_filters(self, guild_id: int, filters: List[str]):
+    async def save_filters(self, guild_id: int, filters: List[dict]):
         r = await get_redis_client()
         await r.set(f"automod:filters:{guild_id}", json.dumps(filters))
         await r.close()
@@ -46,16 +63,34 @@ class AutoModCustom(commands.Cog):
         if not filters:
             return
 
-        matched = False
-        for pattern in filters:
+        matched_filter = None
+        for f_data in filters:
+            pattern = f_data["pattern"]
+            allowed_roles = f_data.get("allowed_roles", [])
+            allowed_channels = f_data.get("allowed_channels", [])
+
             try:
                 if re.search(pattern, message.content, re.IGNORECASE):
-                    matched = True
-                    break
+                    # Check exemptions
+                    is_exempt = False
+                    
+                    # Check channel
+                    if message.channel.id in allowed_channels:
+                        is_exempt = True
+                    
+                    # Check roles
+                    if not is_exempt and isinstance(message.author, discord.Member):
+                        user_role_ids = [role.id for role in message.author.roles]
+                        if any(role_id in allowed_roles for role_id in user_role_ids):
+                            is_exempt = True
+                    
+                    if not is_exempt:
+                        matched_filter = f_data
+                        break
             except re.error:
                 continue
 
-        if matched:
+        if matched_filter:
             await self.handle_filtered_message(message)
 
     async def handle_filtered_message(self, message: discord.Message):
@@ -100,24 +135,59 @@ class AutoModCustom(commands.Cog):
     # --- Slash Commands ---
     automod = app_commands.Group(name="automod", description="Custom AutoMod Management")
 
-    @automod.command(name="filter_add", description="Add a regex filter")
-    @app_commands.describe(pattern="Regex pattern to filter")
+    @automod.command(name="filter_add", description="Add a regex filter with optional exemptions")
+    @app_commands.describe(
+        pattern="Regex pattern to filter",
+        allowed_roles="Roles that can use this pattern (mentions or IDs, comma separated)",
+        allowed_channels="Channels where this pattern is allowed (mentions or IDs, comma separated)"
+    )
     @commands.has_permissions(manage_guild=True)
-    async def filter_add(self, interaction: discord.Interaction, pattern: str):
+    async def filter_add(self, interaction: discord.Interaction, pattern: str, allowed_roles: Optional[str] = None, allowed_channels: Optional[str] = None):
         try:
             re.compile(pattern) # Test if valid regex
         except re.error:
             await interaction.response.send_message(f"❌ Invalid regex pattern: `{pattern}`", ephemeral=True)
             return
 
+        # Parse roles
+        role_ids = []
+        if allowed_roles:
+            items = [i.strip() for i in allowed_roles.split(",")]
+            for item in items:
+                # Extract digits from <@&123...> or just use digits
+                match = re.search(r"(\d+)", item)
+                if match:
+                    role_ids.append(int(match.group(1)))
+
+        # Parse channels
+        channel_ids = []
+        if allowed_channels:
+            items = [i.strip() for i in allowed_channels.split(",")]
+            for item in items:
+                # Extract digits from <#123...> or just use digits
+                match = re.search(r"(\d+)", item)
+                if match:
+                    channel_ids.append(int(match.group(1)))
+
         filters = await self.get_filters(interaction.guild_id)
-        if pattern in filters:
+        if any(f["pattern"] == pattern for f in filters):
             await interaction.response.send_message(f"⚠️ Pattern already exists.", ephemeral=True)
             return
 
-        filters.append(pattern)
+        filters.append({
+            "pattern": pattern,
+            "allowed_roles": role_ids,
+            "allowed_channels": channel_ids
+        })
         await self.save_filters(interaction.guild_id, filters)
-        await interaction.response.send_message(f"✅ Pattern added: `{pattern}`", ephemeral=True)
+        
+        exemption_text = ""
+        if role_ids:
+            exemption_text += f"\n- Roles: " + ", ".join([f"<@&{rid}>" for rid in role_ids])
+        if channel_ids:
+            exemption_text += f"\n- Channels: " + ", ".join([f"<#{cid}>" for cid in channel_ids])
+            
+        await interaction.response.send_message(f"✅ Pattern added: `{pattern}`{exemption_text}", ephemeral=True)
 
     @automod.command(name="filter_list", description="List all regex filters")
     @commands.has_permissions(manage_guild=True)
@@ -127,7 +197,30 @@ class AutoModCustom(commands.Cog):
             await interaction.response.send_message("📭 No filters set.", ephemeral=True)
             return
 
-        list_txt = "\n".join([f"{i+1}. `{f}`" for i, f in enumerate(filters)])
+        list_lines = []
+        for i, f in enumerate(filters):
+            pattern = f["pattern"]
+            roles = f.get("allowed_roles", [])
+            channels = f.get("allowed_channels", [])
+            
+            line = f"{i+1}. `{pattern}`"
+            exempts = []
+            if roles:
+                exempt_roles = " ".join([f"<@&{r}>" for r in roles])
+                exempts.append(f"Roles: {exempt_roles}")
+            if channels:
+                exempt_channels = " ".join([f"<#{c}>" for c in channels])
+                exempts.append(f"Chans: {exempt_channels}")
+            
+            if exempts:
+                line += " | Exempted: [" + ", ".join(exempts) + "]"
+            list_lines.append(line)
+
+        list_txt = "\n".join(list_lines)
+        # Handle message length
+        if len(list_txt) > 1900:
+            list_txt = list_txt[:1900] + "\n... (truncated)"
+            
         await interaction.response.send_message(f"🛡️ **Current Filters:**\n{list_txt}", ephemeral=True)
 
     @automod.command(name="filter_remove", description="Remove a regex filter")

@@ -10,11 +10,14 @@ GUILD_ID = 615171377783242769
 MOD_CHANNEL_ID = 1351911780892409958
 VERIFICATION_CHANNEL_ID = 1459269521440506110  
 VERIFICATION_LOG_CHANNEL_ID = 1351911780892409958  
-PROFILE_LOG_CHANNEL_ID = 1351911780892410003
-LOG_CHANNEL_ID = 1351911780892409958  
+PROFILE_LOG_CHANNEL_ID = 1404734262485450772
+LOG_CHANNEL_ID = 1404416148077809705
 WELCOME_CHANNEL_ID = 1351911916305514506  
 CONSOLE_CHANNEL_ID = 1245571689178464257
 REPORT_CHANNEL_ID = 1425752839820677130
+NSFW_ALERT_CHANNEL_ID = int(os.getenv("ALERT_CHANNEL_ID", 1468607459332456518))
+NSFW_LOG_CHANNEL_ID = 1404416148077809705
+NSFW_THRESHOLD = 0.5
 
 
 VERIFICATION_CODE = 'Restart'  
@@ -31,5 +34,7 @@ COMMANDS_CONFIG = {
     "report": {"enabled": True, "admin_only": True},
     "notify": {"enabled": True, "admin_only": True},
     "emojirole": {"enabled": True, "admin_only": True},
-    "help": {"enabled": True, "admin_only": True}
+    "help": {"enabled": True, "admin_only": True},
+    "nsfwsync": {"enabled": True, "admin_only": True},
+    "trainpanel": {"enabled": True, "admin_only": True}
 }

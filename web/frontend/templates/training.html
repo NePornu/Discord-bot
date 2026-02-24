@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="cs">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fórum NePornu — Moderátorský trénink</title>
+  <style>
+    /* ===== DISCOURSE-LIKE THEME (NePornu style) ===== */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --primary: #0088cc;
+      --primary-dark: #006fa3;
+      --bg: #ffffff;
+      --bg-secondary: #f8f9fa;
+      --bg-dark: #1d1f20;
+      --border: #d9d9d9;
+      --border-light: #ebebeb;
+      --text: #222222;
+      --text-dim: #666666;
+      --text-light: #919191;
+      --header-bg: #1d1f20;
+      --header-text: #ffffff;
+      --category-color: #0088cc;
+      --like-color: #f1592a;
+      --green: #3fa34d;
+      --red: #c0392b;
+      --yellow: #e67e22;
+      --purple: #8e44ad;
+      --bubble-mod: #e8f4fd;
+      --bubble-user: #f0faf0;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg-secondary);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    /* ===== TOP NAVIGATION (Discourse style) ===== */
+    .d-header {
+      background: var(--header-bg);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .d-logo {
+      color: white;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: 0.02em;
+    }
+
+    .d-logo-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--primary);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .d-nav-links {
+      display: flex;
+      gap: 4px;
+      margin-left: 8px;
+    }
+
+    .d-nav-link {
+      color: rgba(255, 255, 255, 0.7);
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .d-nav-link:hover,
+    .d-nav-link.active {
+      background: rgba(255, 255, 255, 0.12);
+      color: white;
+    }
+
+    .d-header-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .d-avatar-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .training-badge {
+      background: #e74c3c;
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 99px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* ===== MODE SWITCHER ===== */
+    .mode-bar {
+      background: #2c2f33;
+      border-bottom: 1px solid #444;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .mode-btn {
+      padding: 6px 16px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: transparent;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .mode-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    .mode-label {
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 12px;
+      margin-right: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* ===== MAIN LAYOUT ===== */
+    .main-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    /* ===== TOPIC HEADER ===== */
+    .topic-header {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px 8px 0 0;
+      padding: 20px 24px 16px;
+      margin-bottom: 0;
+      border-bottom: none;
+    }
+
+    .topic-category-tag {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+      background: var(--category-color);
+      padding: 2px 10px;
+      border-radius: 99px;
+      text-decoration: none;
+      margin-bottom: 10px;
+    }
+
+    .topic-title {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.3;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .topic-meta {
+      font-size: 13px;
+      color: var(--text-light);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .topic-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* ===== SCENARIO CONTEXT BOX (coach-side label) ===== */
+    .scenario-ctx {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-left: 4px solid #f9a825;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #5d4037;
+    }
+
+    .scenario-ctx strong {
+      color: #e65100;
+    }
+
+    /* ===== POSTS ===== */
+    .posts-container {
+      background: white;
+      border: 1px solid var(--border);
+      border-top: none;
+    }
+
+    .post {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 0;
+      border-bottom: 1px solid var(--border-light);
+      padding: 16px 24px;
+      position: relative;
+    }
+
+    .post:last-child {
+      border-bottom: none;
+    }
+
+    .post-avatar-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-right: 12px;
+    }
+
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      color: white;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .avatar-mod-badge {
+      position: absolute;
+      bottom: -4px;
+      right: -4px;
+      background: var(--primary);
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      border: 2px solid white;
+    }
+
+    .post-connector {
+      flex: 1;
+      width: 2px;
+      background: var(--border-light);
+      margin: 6px 0;
+      min-height: 20px;
+    }
+
+    .post-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .post-header {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .post-username {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text);
+    }
+
+    .post-username a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .post-username a:hover {
+      color: var(--primary);
+    }
+
+    .post-usertitle {
+      font-size: 12px;
+      color: var(--text-light);
+      background: var(--bg-secondary);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+
+    .post-usertitle.mod {
+      background: #e8f4fd;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .post-usertitle.new-user {
+      background: #fef9e7;
+      color: #e67e22;
+    }
+
+    .post-timestamp {
+      font-size: 13px;
+      color: var(--text-light);
+      margin-left: auto;
+    }
+
+    .post-body {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .post-body p {
+      margin-bottom: 10px;
+    }
+
+    .post-body p:last-child {
+      margin-bottom: 0;
+    }
+
+    .post-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 14px;
+    }
+
+    .post-action-btn {
+      background: none;
+      border: none;
+      color: var(--text-light);
+      font-size: 13px;
+      cursor: pointer;
+      padding: 5px 8px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .post-action-btn:hover {
+      background: var(--bg-secondary);
+      color: var(--text-dim);
+    }
+
+    .post-action-btn.liked {
+      color: var(--like-color);
+    }
+
+    .post-number {
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      font-size: 12px;
+      color: var(--text-light);
+      font-weight: 600;
+    }
+
+    /* Highlight for crisis posts */
+    .post.crisis-post {
+      background: #fff5f5;
+      border-left: 3px solid #e74c3c;
+    }
+
+    /* ===== REPLY BOX ===== */
+    .reply-zone {
+      background: white;
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--primary);
+      border-radius: 0 0 8px 8px;
+      margin-bottom: 24px;
+    }
+
+    .reply-header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border-light);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .reply-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .replying-to {
+      font-size: 13px;
+      color: var(--text-light);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .reply-body {
+      padding: 16px 20px;
+    }
+
+    .reply-toolbar {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .toolbar-btn {
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text-dim);
+      font-weight: 700;
+      transition: background 0.12s;
+    }
+
+    .toolbar-btn:hover {
+      background: var(--bg-secondary);
+    }
+
+    .reply-textarea {
+      width: 100%;
+      min-height: 120px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.6;
+      resize: vertical;
+      color: var(--text);
+      transition: border-color 0.15s;
+      outline: none;
+    }
+
+    .reply-textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.15);
+    }
+
+    .reply-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px 16px;
+      gap: 12px;
+    }
+
+    .reply-info {
+      font-size: 13px;
+      color: var(--text-light);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .char-count {
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+
+    .char-count.warn {
+      color: var(--yellow);
+    }
+
+    .char-count.ok {
+      color: var(--green);
+    }
+
+    .btn-submit {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 22px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s;
+    }
+
+    .btn-submit:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn-submit:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: white;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-secondary);
+    }
+
+    /* ===== SCENARIO NAV ===== */
+    .scenario-nav {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .scenario-nav-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .scenario-dots {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: white;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-light);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .dot.active {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: #e8f4fd;
+    }
+
+    .dot.done {
+      border-color: var(--green);
+      background: var(--green);
+      color: white;
+    }
+
+    .dot.pending {
+      border-color: var(--border);
+    }
+
+    .scenario-skip {
+      margin-left: auto;
+      font-size: 13px;
+      color: var(--primary);
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-weight: 600;
+    }
+
+    .scenario-skip:hover {
+      text-decoration: underline;
+    }
+
+    /* ===== CATEGORY COLORS ===== */
+    .cat-krize {
+      background: #e74c3c;
+    }
+
+    .cat-pravidla {
+      background: #e67e22;
+    }
+
+    .cat-podpora {
+      background: #27ae60;
+    }
+
+    .cat-konflikt {
+      background: #2980b9;
+    }
+
+    .cat-spam {
+      background: #8e44ad;
+    }
+
+    /* ===== AI EVALUATION PENDING ===== */
+    .eval-pending {
+      background: #e8f4fd;
+      border: 1px solid #b3d9f0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--primary);
+      font-weight: 600;
+      display: none;
+    }
+
+    .eval-pending.show {
+      display: block;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(0, 136, 204, 0.3);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* ===== COACH DASHBOARD ===== */
+    #coach-view {
+      display: none;
+    }
+
+    .coach-header {
+      background: #1a1a2e;
+      color: white;
+      padding: 20px 24px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .coach-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .coach-header p {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 2px;
+    }
+
+    .coach-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .coach-stat {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .coach-stat-val {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .coach-stat-val.blue {
+      color: var(--primary);
+    }
+
+    .coach-stat-val.green {
+      color: var(--green);
+    }
+
+    .coach-stat-val.red {
+      color: var(--red);
+    }
+
+    .coach-stat-val.yellow {
+      color: var(--yellow);
+    }
+
+    .coach-stat-label {
+      font-size: 12px;
+      color: var(--text-light);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    /* ===== RESPONSE CARD (coach view) ===== */
+    .response-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+
+    .response-card-header {
+      padding: 14px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .response-scenario-badge {
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+      padding: 3px 10px;
+      border-radius: 99px;
+      letter-spacing: 0.04em;
+    }
+
+    .response-card-meta {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .score-pill {
+      margin-left: auto;
+      padding: 4px 14px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 800;
+      border: 2px solid;
+    }
+
+    .score-pill.great {
+      color: var(--green);
+      border-color: var(--green);
+      background: #f0faf0;
+    }
+
+    .score-pill.ok {
+      color: var(--yellow);
+      border-color: var(--yellow);
+      background: #fef9e7;
+    }
+
+    .score-pill.poor {
+      color: var(--red);
+      border-color: var(--red);
+      background: #fdf3f3;
+    }
+
+    .response-body {
+      padding: 20px;
+    }
+
+    .response-section {
+      margin-bottom: 16px;
+    }
+
+    .response-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .rs-label {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-light);
+      margin-bottom: 6px;
+    }
+
+    .rs-content {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      padding: 12px 14px;
+      border-left: 3px solid var(--border);
+      white-space: pre-wrap;
+    }
+
+    .rs-content.evaluation {
+      border-left-color: var(--primary);
+      background: #f0f7ff;
+    }
+
+    .rs-content.positive {
+      border-left-color: var(--green);
+      background: #f5fbf5;
+    }
+
+    .rs-content.negative {
+      border-left-color: var(--red);
+      background: #fdf5f5;
+    }
+
+    .rs-content.pending {
+      color: var(--text-light);
+      font-style: italic;
+    }
+
+    /* ===== SCENARIO post trigger tags ===== */
+    .post.highlight-new {
+      animation: newPost 0.5s ease;
+    }
+
+    @keyframes newPost {
+      from {
+        background: #e8f4fd;
+      }
+
+      to {
+        background: white;
+      }
+    }
+
+    .no-responses {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-light);
+    }
+
+    .no-responses .icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+
+    .no-responses h3 {
+      font-size: 18px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    /* ===== NOTIFICATION TOAST ===== */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #2c2f33;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 999;
+      display: none;
+      animation: toastIn 0.3s ease;
+      max-width: 320px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .toast.show {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    @keyframes toastIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ===== MODERATOR REPLY PREVIEW ===== */
+    .mod-reply-preview {
+      background: var(--bubble-mod);
+      border: 1px dashed var(--primary);
+      border-radius: 4px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: var(--text-dim);
+      font-style: italic;
+      margin-top: 8px;
+    }
+
+    /* ===== EVAL INLINE ===== */
+    .inline-eval {
+      margin-top: 14px;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.6;
+      border: 1px solid;
+    }
+
+    .inline-eval.loading {
+      background: #f0f7ff;
+      border-color: #b3d9f0;
+      color: var(--primary);
+    }
+
+    .inline-eval.done-great {
+      background: #f5fbf5;
+      border-color: #a8ddb5;
+    }
+
+    .inline-eval.done-ok {
+      background: #fef9e7;
+      border-color: #ffe082;
+    }
+
+    .inline-eval.done-poor {
+      background: #fdf5f5;
+      border-color: #f5b7b1;
+    }
+
+    .eval-score-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .eval-score-label {
+      font-size: 15px;
+    }
+
+    .eval-text {
+      color: var(--text-dim);
+      font-weight: 400;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 600px) {
+      .coach-stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .post {
+        grid-template-columns: 44px 1fr;
+        padding: 12px 14px;
+      }
+
+      .topic-title {
+        font-size: 19px;
+      }
+
+      .main-wrap {
+        padding: 12px 8px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- TOP NAVIGATION -->
+  <header class="d-header">
+    <a class="d-logo">
+      <div class="d-logo-icon">N</div>
+      <span>NePornu</span>
+    </a>
+    <nav class="d-nav-links">
+      <span class="d-nav-link active">Nejnovější</span>
+      <span class="d-nav-link">Kategorie</span>
+      <span class="d-nav-link">Deníky</span>
+    </nav>
+    <div class="d-header-right">
+      <span class="training-badge">🎓 Trénink</span>
+      <div class="d-avatar-btn" id="user-avatar">M</div>
+    </div>
+  </header>
+
+  <!-- MODE BAR -->
+  <div class="mode-bar">
+    <span class="mode-label">Pohled:</span>
+    <button class="mode-btn active" onclick="switchMode('moderator')">🛡️ Moderátor</button>
+    <button class="mode-btn" onclick="switchMode('coach')">👨🏫 Kouč / Výsledky</button>
+  </div>
+
+  <!-- ======================================================
+     MODERATOR VIEW
+     ====================================================== -->
+  <div id="moderator-view">
+    <div class="main-wrap">
+
+      <!-- Scenario navigator -->
+      <div class="scenario-nav">
+        <span class="scenario-nav-label">Scénář:</span>
+        <div class="scenario-dots" id="scenario-dots"></div>
+        <button class="scenario-skip" onclick="skipScenario()">Přeskočit →</button>
+      </div>
+
+      <!-- Topic Header -->
+      <div class="topic-header">
+        <div>
+          <span class="topic-category-tag" id="topic-cat-tag">Deníky</span>
+        </div>
+        <h1 class="topic-title" id="topic-title">Načítání scénáře…</h1>
+        <div class="topic-meta">
+          <span>📅 <span id="topic-date">dnes</span></span>
+          <span>👁 <span id="topic-views">47</span> zobrazení</span>
+          <span>💬 <span id="topic-replies">3</span> odpovědi</span>
+        </div>
+      </div>
+
+      <!-- Posts -->
+      <div class="posts-container" id="posts-container">
+        <!-- injected -->
+      </div>
+
+      <!-- Reply box -->
+      <div class="reply-zone" id="reply-zone">
+        <div class="reply-header">
+          <div class="avatar" id="reply-avatar" style="background:#0088cc; width:28px; height:28px; font-size:12px;">M
+          </div>
+          <div class="reply-title">Moderátorská odpověď</div>
+          <div class="replying-to">↩ odpověď ve vláknu</div>
+        </div>
+        <div class="reply-body">
+          <div class="reply-toolbar">
+            <button class="toolbar-btn" title="Tučně" onclick="insertFormat('**','**')"><b>B</b></button>
+            <button class="toolbar-btn" title="Kurzíva" onclick="insertFormat('_','_')"><i>I</i></button>
+            <button class="toolbar-btn" title="Citace" onclick="insertFormat('> ','')">❝</button>
+            <button class="toolbar-btn" title="Odkaz" onclick="insertFormat('[','](url)')">🔗</button>
+          </div>
+          <textarea class="reply-textarea" id="reply-textarea"
+            placeholder="Napiš svou moderátorskou odpověď… Přemýšlej: Co tento uživatel potřebuje? Jak zareaguješ empaticky a profesionálně?"
+            oninput="onTextareaInput(this)"></textarea>
+        </div>
+        <div class="reply-footer">
+          <div class="reply-info">
+            Délka odpovědi: <span class="char-count" id="char-count">0</span> znaků
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-secondary" onclick="clearReply()">Smazat</button>
+            <button class="btn-submit" id="submit-btn" onclick="submitReply()">
+              <span>Odeslat odpověď</span> ➤
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inline evaluation result shown after submit -->
+      <div id="inline-eval-container"></div>
+
+      <!-- Next scenario button (shown after submit) -->
+      <div id="next-btn-container" style="display:none; text-align:center; margin-top:20px;">
+        <button class="btn-submit" onclick="nextScenario()" style="display:inline-flex;">
+          Další scénář →
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================
+     COACH VIEW
+     ====================================================== -->
+  <div id="coach-view">
+    <div class="main-wrap">
+      <div class="coach-header">
+        <div style="font-size:36px;">👨🏫</div>
+        <div>
+          <h2>Přehled kouče</h2>
+          <p>Vidíš odpovědi moderátora a AI hodnocení pro každý scénář</p>
+        </div>
+        <div style="margin-left:auto; text-align:right;">
+          <div style="font-size:13px; color:rgba(255,255,255,0.5);">Tréninkový modul</div>
+          <div style="font-size:18px; font-weight:700;" id="coach-mod-name">Moderátor</div>
+        </div>
+      </div>
+
+      <div class="coach-stats" id="coach-stats-row">
+        <div class="coach-stat">
+          <div class="coach-stat-val blue" id="cs-total">0</div>
+          <div class="coach-stat-label">Dokončeno</div>
+        </div>
+        <div class="coach-stat">
+          <div class="coach-stat-val green" id="cs-score">—</div>
+          <div class="coach-stat-label">Průměr. skóre</div>
+        </div>
+        <div class="coach-stat">
+          <div class="coach-stat-val green" id="cs-great">0</div>
+          <div class="coach-stat-label">Výborné</div>
+        </div>
+        <div class="coach-stat">
+          <div class="coach-stat-val red" id="cs-poor">0</div>
+          <div class="coach-stat-label">Slabé</div>
+        </div>
+      </div>
+
+      <div id="responses-list">
+        <div class="no-responses">
+          <div class="icon">📭</div>
+          <h3>Zatím žádné odpovědi</h3>
+          <p>Moderátor ještě neodpověděl na žádný scénář. Přepni na pohled "Moderátor" a začni trénovat.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ===================== DATA =====================
+    const SCENARIOS = [
+      {
+        id: 1,
+        category: 'krize',
+        catLabel: 'Krizová situace',
+        catClass: 'cat-krize',
+        topicCat: 'Deníky',
+        title: 'Deník — Den 12. Nevím co dál.',
+        views: 89, replies: 4,
+        date: 'dnes v 23:14',
+        context: '⚠️ KONTEXT PRO TRÉNINK: Uživatel je na fóru 3 měsíce, 45 příspěvků. Toto je zápis v jeho deníku po relapsu.',
+        posts: [
+          {
+            username: 'Tomáš_87',
+            usertitle: 'Člen',
+            utClass: '',
+            avatarBg: '#c0392b',
+            avatarLetter: 'T',
+            time: 'dnes v 23:14',
+            num: 1,
+            body: `Den 12. Nebo spíš byl. Dnes jsem znovu selhal.
+
+Nevím co dělat. Jsem tak unavený z toho neustálého boje se sebou. Zklamal jsem svoji ženu, zklamal jsem sám sebe. Přemýšlím jestli to má vůbec smysl dál zkoušet. Možná by bylo lepší, kdybych tu prostě nebyl.
+
+Omluvte ten výlev.`,
+            crisis: true,
+          },
+          {
+            username: 'Jan_Nový',
+            usertitle: 'Člen',
+            utClass: '',
+            avatarBg: '#2980b9',
+            avatarLetter: 'J',
+            time: 'dnes v 23:31',
+            num: 2,
+            body: `Tomáši, drž se. Relaps není konec. Jsem tu s tebou.`,
+            crisis: false,
+          },
+        ],
+        question: 'Příspěvek Tomáše obsahuje varovný signál ("bylo by lepší, kdybych tu nebyl"). Jak jako moderátor reaguješ?',
+      },
+      {
+        id: 2,
+        category: 'pravidla',
+        catLabel: 'Pravidla fóra',
+        catClass: 'cat-pravidla',
+        topicCat: 'Projekt NePornu',
+        title: 'Doporučuji tuto appku na blokování!',
+        views: 34, replies: 1,
+        date: 'dnes v 14:22',
+        context: '📋 KONTEXT PRO TRÉNINK: Nový uživatel, registrován před 2 dny, 3 příspěvky. Odkaz vede na legitimní aplikaci, ale nebyl ověřen moderátory.',
+        posts: [
+          {
+            username: 'Lukáš_nový',
+            usertitle: 'Nový uživatel',
+            utClass: 'new-user',
+            avatarBg: '#e67e22',
+            avatarLetter: 'L',
+            time: 'dnes v 14:22',
+            num: 1,
+            body: `Zdravím všechny! Chci se podělit o tip.
+
+Zkoušel jsem tuhle appku [odkaz na blokovací software] a fakt mi to pomáhá. Je zdarma a funguje skvěle na blokování nevhodného obsahu. Doporučuji všem kdo s tím bojuje!`,
+            crisis: false,
+          },
+        ],
+        question: 'Nový uživatel sdílí neověřený odkaz. Jak postupuješ?',
+      },
+      {
+        id: 3,
+        category: 'konflikt',
+        catLabel: 'Konflikt uživatelů',
+        catClass: 'cat-konflikt',
+        topicCat: 'Deníky',
+        title: 'Start do života — Marekův deník',
+        views: 312, replies: 28,
+        date: 'před 2 hodinami',
+        context: '📋 KONTEXT PRO TRÉNINK: Oba uživatelé jsou v komunitě přes rok. Pavel útočí na Marka v jeho vlastním deníkovém vláknu.',
+        posts: [
+          {
+            username: 'Marek_svoboda',
+            usertitle: 'Člen',
+            utClass: '',
+            avatarBg: '#27ae60',
+            avatarLetter: 'M',
+            time: 'před 3 hodinami',
+            num: 1,
+            body: `Dnes jsem zkusil novou techniku — studená sprcha ráno pomáhá. Doporučuji ostatním, mně to funguje výborně!`,
+            crisis: false,
+          },
+          {
+            username: 'Pavel_99',
+            usertitle: 'Člen',
+            utClass: '',
+            avatarBg: '#e74c3c',
+            avatarLetter: 'P',
+            time: 'před 2 hodinami',
+            num: 2,
+            body: `@Marek_svoboda prosím tě, přestaň radit ostatním. Sám jsi selhal minulý měsíc 3krát, takže proč vůbec mluvíš? Tahle komunita nepotřebuje tvoje "rady" od někoho, kdo to nezvládá.`,
+            crisis: false,
+          },
+        ],
+        question: 'Pavel veřejně napadl Marka v jeho vlastním deníku. Jak situaci moderuješ?',
+      },
+      {
+        id: 4,
+        category: 'podpora',
+        catLabel: 'Nový uživatel',
+        catClass: 'cat-podpora',
+        topicCat: 'Deníky',
+        title: 'Nevím kde začít',
+        views: 22, replies: 0,
+        date: 'dnes v 18:05',
+        context: '📋 KONTEXT PRO TRÉNINK: Zcela nový uživatel, žádné předchozí příspěvky. Přišel dnes poprvé.',
+        posts: [
+          {
+            username: 'anon_8847',
+            usertitle: 'Nový uživatel',
+            utClass: 'new-user',
+            avatarBg: '#7f8c8d',
+            avatarLetter: '?',
+            time: 'dnes v 18:05',
+            num: 1,
+            body: `Ahoj. Nevím jak tohle napsat.
+
+Registroval jsem se teprve dnes. Bojuji s pornografií asi 8 let. Nikdy jsem to nikomu neřekl. Teprve dnes jsem si přiznal, že mám problém a že to sám nevyřeším.
+
+Nevím kde začít nebo co tady dělat. Je mi trochu trapně.`,
+            crisis: false,
+          },
+        ],
+        question: 'Nový, zranitelný uživatel poprvé přiznal problém. Jak reaguje moderátor?',
+      },
+      {
+        id: 5,
+        category: 'spam',
+        catLabel: 'Spam / Komerce',
+        catClass: 'cat-spam',
+        topicCat: 'Vítejte na fóru',
+        title: 'Nabízím koučink — pomůžu vám!',
+        views: 18, replies: 0,
+        date: 'před 10 minutami',
+        context: '📋 KONTEXT PRO TRÉNINK: Účet vytvořen před 45 minutami. Stejný příspěvek byl vložen do 3 různých vláken.',
+        posts: [
+          {
+            username: 'RecoveryPro_Karel',
+            usertitle: 'Nový uživatel',
+            utClass: 'new-user',
+            avatarBg: '#8e44ad',
+            avatarLetter: 'K',
+            time: 'před 10 minutami',
+            num: 1,
+            body: `Dobrý den! Jsem certifikovaný recovery coach a pomohl jsem již stovkám mužů překonat závislost na pornografii.
+
+Nabízím individuální online sezení. První konzultace zdarma, poté 800 Kč/hod.
+
+Pro více info navštivte můj web nebo mi napište soukromou zprávu. 🙏`,
+            crisis: false,
+          },
+        ],
+        question: 'Tento příspěvek je komerční reklama od nového účtu, ve více vláknech. Jak postupuješ?',
+      },
+      {
+        id: 6,
+        category: 'podpora',
+        catLabel: 'Partner závislého',
+        catClass: 'cat-podpora',
+        topicCat: 'Závislý partner',
+        title: 'Nevím co dělat — manžel a porno',
+        views: 55, replies: 2,
+        date: 'dnes v 11:30',
+        context: '📋 KONTEXT PRO TRÉNINK: Žena hledající pomoc ohledně manžela. Fórum má sekci "Závislý partner" přímo pro tyto případy.',
+        posts: [
+          {
+            username: 'Simona_K',
+            usertitle: 'Nový uživatel',
+            utClass: 'new-user',
+            avatarBg: '#e91e63',
+            avatarLetter: 'S',
+            time: 'dnes v 11:30',
+            num: 1,
+            body: `Dobrý den, nevím jestli jsem na správném místě.
+
+Před týdnem jsem zjistila, že můj manžel kouká na porno skoro každý den, i přesto že spolu máme vztah a jsem doma. Cítím se nedostatečná, podváděná, zničená. On tvrdí, že to není problém.
+
+Nevím co dělat, nevím na koho se obrátit. Přišla jsem sem, protože nevím kam jinam jít.`,
+            crisis: false,
+          },
+        ],
+        question: 'Žena přišla na fórum s problémem partnera. Jak ji jako moderátor přivítáš a nasměruješ?',
+      },
+    ];
+
+    // ===================== STATE =====================
+    let currentScenario = 0;
+    let mode = 'moderator';
+    let responses = {}; // scenarioId -> { text, eval, score }
+    let moderatorName = 'Moderátor';
+
+    // ===================== STORAGE =====================
+    function saveResponses() {
+      localStorage.setItem('nepornu_responses', JSON.stringify(responses));
+      localStorage.setItem('nepornu_current', String(currentScenario));
+    }
+
+    function loadResponses() {
+      const r = localStorage.getItem('nepornu_responses');
+      if (r) responses = JSON.parse(r);
+      const c = localStorage.getItem('nepornu_current');
+      if (c) currentScenario = parseInt(c) || 0;
+    }
+
+    // ===================== RENDER =====================
+    function renderScenarioDots() {
+      const container = document.getElementById('scenario-dots');
+      container.innerHTML = SCENARIOS.map((s, i) => {
+        let cls = 'dot pending';
+        if (i === currentScenario) cls = 'dot active';
+        else if (responses[s.id]) cls = 'dot done';
+        return `<div class="${cls}" onclick="goToScenario(${i})" title="${s.catLabel}">${i + 1}</div>`;
+      }).join('');
+    }
+
+    function renderPosts(scenario) {
+      const container = document.getElementById('posts-container');
+
+      let html = '';
+      scenario.posts.forEach((p, idx) => {
+        const isLast = idx === scenario.posts.length - 1;
+        html += `
+      <div class="post ${p.crisis ? 'crisis-post' : ''}">
+        <div class="post-avatar-col">
+          <div class="avatar" style="background:${p.avatarBg}">${p.avatarLetter}</div>
+          ${!isLast ? '<div class="post-connector"></div>' : ''}
+        </div>
+        <div class="post-main">
+          <div class="post-header">
+            <span class="post-username"><a href="#">${p.username}</a></span>
+            <span class="post-usertitle ${p.utClass}">${p.usertitle}</span>
+            <span class="post-timestamp">${p.time}</span>
+          </div>
+          <div class="post-body">${p.body}</div>
+          <div class="post-actions">
+            <button class="post-action-btn">❤️ Líbí se <span style="opacity:0.6">0</span></button>
+            <button class="post-action-btn">↩ Citovat</button>
+            <button class="post-action-btn">🔗 Odkaz</button>
+          </div>
+        </div>
+        <div class="post-number">#${p.num}</div>
+      </div>
+    `;
+      });
+
+      // If already answered, show the moderator's reply in the thread
+      const s = SCENARIOS[currentScenario];
+      if (responses[s.id]) {
+        const resp = responses[s.id];
+        const scoreLabel = resp.score >= 8 ? '✅ Výborná odpověď' : resp.score >= 5 ? '⚠️ Přijatelná odpověď' : '❌ Slabá odpověď';
+        const evalClass = resp.score >= 8 ? 'done-great' : resp.score >= 5 ? 'done-ok' : 'done-poor';
+        html += `
+      <div class="post highlight-new">
+        <div class="post-avatar-col">
+          <div class="avatar" style="background:#0088cc; position:relative;">
+            M
+            <span class="avatar-mod-badge">🛡</span>
+          </div>
+        </div>
+        <div class="post-main">
+          <div class="post-header">
+            <span class="post-username"><a href="#">${moderatorName}</a></span>
+            <span class="post-usertitle mod">Moderátor</span>
+            <span class="post-timestamp">právě teď</span>
+          </div>
+          <div class="post-body">${escHtml(resp.text)}</div>
+          <div class="inline-eval ${evalClass}">
+            <div class="eval-score-row">
+              <span>${scoreLabel}</span>
+              <span style="margin-left:auto; font-size:18px; font-weight:900">${resp.score}/10</span>
+            </div>
+            <div class="eval-text">${resp.eval || 'Hodnocení…'}</div>
+          </div>
+        </div>
+        <div class="post-number">#${s.posts.length + 1}</div>
+      </div>
+    `;
+      }
+
+      container.innerHTML = html;
+    }
+
+    function renderScenario() {
+      const s = SCENARIOS[currentScenario];
+
+      // Header
+      document.getElementById('topic-cat-tag').textContent = s.topicCat;
+      document.getElementById('topic-cat-tag').className = `topic-category-tag ${s.catClass}`;
+      document.getElementById('topic-title').textContent = s.title;
+      document.getElementById('topic-date').textContent = s.date;
+      document.getElementById('topic-views').textContent = s.views;
+      document.getElementById('topic-replies').textContent = s.replies;
+
+      // Context box (only if not already answered)
+      const existingCtx = document.querySelector('.scenario-ctx');
+      if (existingCtx) existingCtx.remove();
+      if (!responses[s.id]) {
+        const ctxEl = document.createElement('div');
+        ctxEl.className = 'scenario-ctx';
+        ctxEl.innerHTML = `<strong>🎓 Situace pro trénink:</strong> ${s.context}<br><br><strong>❓ Tvůj úkol:</strong> ${s.question}`;
+        document.querySelector('.topic-header').insertAdjacentElement('afterend', ctxEl);
+      }
+
+      renderPosts(s);
+      renderScenarioDots();
+
+      // Reply zone
+      const replyZone = document.getElementById('reply-zone');
+      const evalContainer = document.getElementById('inline-eval-container');
+      const nextBtnContainer = document.getElementById('next-btn-container');
+      const textarea = document.getElementById('reply-textarea');
+
+      if (responses[s.id]) {
+        replyZone.style.display = 'none';
+        evalContainer.innerHTML = '';
+        nextBtnContainer.style.display = currentScenario < SCENARIOS.length - 1 ? 'block' : 'none';
+        if (currentScenario >= SCENARIOS.length - 1) {
+          nextBtnContainer.innerHTML = `<div style="text-align:center; padding: 20px 0;">
+        <h3 style="color:var(--text-dim); margin-bottom:8px;">🎉 Všechny scénáře dokončeny!</h3>
+        <p style="color:var(--text-light); margin-bottom:16px;">Přepni na pohled Kouče pro detailní výsledky.</p>
+        <button class="btn-submit" onclick="switchMode('coach')" style="display:inline-flex;">Zobrazit výsledky →</button>
+      </div>`;
+          nextBtnContainer.style.display = 'block';
+        }
+      } else {
+        replyZone.style.display = 'block';
+        evalContainer.innerHTML = '';
+        nextBtnContainer.style.display = 'none';
+        textarea.value = '';
+        document.getElementById('char-count').textContent = '0';
+        document.getElementById('char-count').className = 'char-count';
+      }
+    }
+
+    // ===================== ACTIONS =====================
+    function goToScenario(idx) {
+      currentScenario = idx;
+      renderScenario();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function skipScenario() {
+      if (currentScenario < SCENARIOS.length - 1) {
+        goToScenario(currentScenario + 1);
+      }
+    }
+
+    function nextScenario() {
+      if (currentScenario < SCENARIOS.length - 1) {
+        goToScenario(currentScenario + 1);
+      }
+    }
+
+    function onTextareaInput(el) {
+      const len = el.value.length;
+      const cc = document.getElementById('char-count');
+      cc.textContent = len;
+      cc.className = 'char-count' + (len > 50 ? ' ok' : len > 20 ? ' warn' : '');
+    }
+
+    function insertFormat(before, after) {
+      const ta = document.getElementById('reply-textarea');
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const selected = ta.value.substring(start, end);
+      ta.value = ta.value.substring(0, start) + before + selected + after + ta.value.substring(end);
+      ta.selectionStart = ta.selectionEnd = start + before.length + selected.length + after.length;
+      ta.focus();
+    }
+
+    function clearReply() {
+      document.getElementById('reply-textarea').value = '';
+      document.getElementById('char-count').textContent = '0';
+    }
+
+    function escHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    }
+
+    async function submitReply() {
+      const ta = document.getElementById('reply-textarea');
+      const text = ta.value.trim();
+      if (text.length < 10) {
+        showToast('⚠️ Odpověď je příliš krátká');
+        return;
+      }
+
+      const s = SCENARIOS[currentScenario];
+      document.getElementById('submit-btn').disabled = true;
+      document.getElementById('reply-zone').style.display = 'none';
+
+      // Show loading eval
+      const evalContainer = document.getElementById('inline-eval-container');
+      evalContainer.innerHTML = `
+        <div class="inline-eval loading">
+          <div class="eval-score-row"><span class="spinner"></span> AI analyzuje tvou odpověď…</div>
+          <div style="font-size:11px; opacity:0.7; margin-top:4px;">(Lokální běh na CPU, může to trvat až 90 sekund)</div>
+        </div>
+      `;
+
+      let evalText = '';
+      let score = 5;
+
+      try {
+        const userPrompt = `SCÉNÁŘ: ${s.catLabel}\nOTÁZKA: ${s.question}\nPŘÍSPĚVEKY:\n${s.posts.map(p => `${p.username}: ${p.body}`).join('\n')}\n\nODPOVĚĎ MODERÁTORA:\n"${text}"`;
+
+        const resp = await fetch("/api/evaluate-training", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: userPrompt }]
+          })
+        });
+
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        // Extract text and parse JSON (more robustly)
+        let raw = data.content?.[0]?.text || '{}';
+        let parsed = {};
+
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const clean = jsonMatch[0].replace(/```json|```/g, '').trim();
+            parsed = JSON.parse(clean);
+            console.log("Parsed JSON:", parsed);
+          } catch (e) {
+            console.warn("JSON parse failed, falling back to regex extraction");
+          }
+        }
+
+        // Extraction fallback if JSON fails or is missing fields
+        if (!parsed.score) {
+          const scoreMatch = raw.match(/score["\s:]+(\d+)/i) || raw.match(/hodnocení["\s:]+(\d+)/i);
+          parsed.score = scoreMatch ? parseInt(scoreMatch[1]) : 5;
+        }
+        if (!parsed.summary) {
+          const sumMatch = raw.match(/summary["\s:]+([^"\n}]+)/i) || raw.match(/shrnutí["\s:]+([^"\n}]+)/i);
+          parsed.summary = sumMatch ? sumMatch[1].trim() : raw.split('\n')[0].substring(0, 100);
+        }
+        if (!parsed.positive && !parsed.positive_feedback) {
+          const posMatch = raw.match(/(positive|positive_feedback)["\s:]+([^"\n}]+)/i) || raw.match(/(co bylo dobré|pochvala)["\s:]+([^"\n}]+)/i);
+          parsed.positive = posMatch ? (posMatch[2] || posMatch[1]).trim() : '';
+        }
+        if (!parsed.improve && !parsed.improvement) {
+          const impMatch = raw.match(/(improve|improvement)["\s:]+([^"\n}]+)/i) || raw.match(/(co lze zlepšit|zlepšení)["\s:]+([^"\n}]+)/i);
+          parsed.improve = impMatch ? (impMatch[2] || impMatch[1]).trim() : '';
+        }
+        if (!parsed.tip) {
+          const tipMatch = raw.match(/tip["\s:]+([^"\n}]+)/i);
+          parsed.tip = tipMatch ? tipMatch[1].trim() : '';
+        }
+
+        score = parsed.score || 5;
+        evalText = `${parsed.summary || 'Bez shrnutí.'}\n\n✅ ${parsed.positive || parsed.positive_feedback || 'Dobrá práce.'}\n\n📈 ${parsed.improve || parsed.improvement || 'Pokračuj v tréninku.'}\n\n💡 Tip: ${parsed.tip || 'Vždy buď slušný.'}`;
+
+      } catch (e) {
+        console.error(e);
+        score = 5;
+        evalText = 'Chyba při hodnocení: ' + e.message + '\n\nKouč přezkoumá odpověď ručně.';
+      }
+
+      // Save
+      responses[s.id] = { text, eval: evalText, score, timestamp: new Date().toISOString() };
+      saveResponses();
+
+      // Re-render
+      renderScenario();
+      updateCoachStats();
+      document.getElementById('submit-btn').disabled = false;
+      showToast(score >= 8 ? '✅ Skvělá odpověď!' : score >= 5 ? '📝 Odpověď odeslána' : '⚠️ Zkus to příště lépe');
+    }
+
+    // ===================== COACH VIEW =====================
+    function renderCoachView() {
+      updateCoachStats();
+
+      const list = document.getElementById('responses-list');
+
+      if (Object.keys(responses).length === 0) {
+        list.innerHTML = `
+      <div class="no-responses">
+        <div class="icon">📭</div>
+        <h3>Zatím žádné odpovědi</h3>
+        <p>Moderátor ještě neodpověděl na žádný scénář.</p>
+      </div>`;
+        return;
+      }
+
+      list.innerHTML = SCENARIOS.map(s => {
+        const r = responses[s.id];
+        if (!r) return '';
+
+        const scoreClass = r.score >= 8 ? 'great' : r.score >= 5 ? 'ok' : 'poor';
+        const scoreLabel = r.score >= 8 ? `⭐ ${r.score}/10` : r.score >= 5 ? `📝 ${r.score}/10` : `⚠️ ${r.score}/10`;
+
+        return `
+      <div class="response-card">
+        <div class="response-card-header">
+          <span class="response-scenario-badge ${s.catClass}">${s.catLabel}</span>
+          <span class="response-card-meta">${s.title}</span>
+          <span class="score-pill ${scoreClass}">${scoreLabel}</span>
+        </div>
+        <div class="response-body">
+          <div class="response-section">
+            <div class="rs-label">📋 Situace</div>
+            <div class="rs-content">${escHtml(s.question)}</div>
+          </div>
+          <div class="response-section">
+            <div class="rs-label">💬 Odpověď moderátora</div>
+            <div class="rs-content">${escHtml(r.text)}</div>
+          </div>
+          <div class="response-section">
+            <div class="rs-label">🤖 AI hodnocení</div>
+            <div class="rs-content evaluation">${escHtml(r.eval || 'Hodnocení probíhá…')}</div>
+          </div>
+        </div>
+      </div>
+    `;
+      }).join('');
+    }
+
+    function updateCoachStats() {
+      const done = Object.keys(responses).length;
+      const scores = Object.values(responses).map(r => r.score);
+      const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10 : '—';
+      const great = scores.filter(s => s >= 8).length;
+      const poor = scores.filter(s => s < 5).length;
+
+      document.getElementById('cs-total').textContent = done;
+      document.getElementById('cs-score').textContent = avg;
+      document.getElementById('cs-great').textContent = great;
+      document.getElementById('cs-poor').textContent = poor;
+    }
+
+    // ===================== MODE SWITCH =====================
+    function switchMode(m) {
+      mode = m;
+      document.getElementById('moderator-view').style.display = m === 'moderator' ? 'block' : 'none';
+      document.getElementById('coach-view').style.display = m === 'coach' ? 'block' : 'none';
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector(`.mode-btn:${m === 'moderator' ? 'first-child' : 'nth-child(2)'}`).classList.add('active');
+
+      if (m === 'coach') renderCoachView();
+    }
+
+    // ===================== TOAST =====================
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // ===================== INIT =====================
+    function init() {
+      loadResponses();
+      renderScenario();
+      updateCoachStats();
+
+      const savedName = localStorage.getItem('mod_name');
+      if (savedName) {
+        moderatorName = savedName;
+        document.getElementById('user-avatar').textContent = savedName[0];
+        document.getElementById('coach-mod-name').textContent = savedName;
+      }
+    }
+
+    init();
+  </script>
+</body>
+
+</html>

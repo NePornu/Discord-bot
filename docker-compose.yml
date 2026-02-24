@@ -10,9 +10,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 64M
+          memory: 128M
         reservations:
-          memory: 64M
+          memory: 32M
 
   discord-bot-primary:
     build: .
@@ -34,7 +34,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
         reservations:
           memory: 64M
 
@@ -57,7 +57,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
         reservations:
           memory: 64M
 
@@ -87,7 +87,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
         reservations:
           memory: 64M
 
@@ -110,7 +110,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 192M
         reservations:
           memory: 64M
 

@@ -43,6 +43,8 @@ except ImportError:
     BOT_TOKEN = "MTIyNzI2OTU5OTk1MTU4OTUwOA.GsCoHP.OEpQd6iF6thu7cbvnBl3c5-48rIREWgoLEY6MY"
     print(f"WARNING: Using generated secrets.")
 
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
 
 
 
@@ -451,6 +453,19 @@ async def _dashboard_logic(request: Request, start_date: str = None, end_date: s
                      "progress": min(100, max(0, progress))
                  })
                  
+             resp = await client.post(
+                "http://172.22.0.1:11434/api/chat",
+                json={
+                    "model": "qwen2.5:1.5b",
+                    "messages": ollama_messages,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1,
+                        "num_predict": 400
+                    }
+                },
+                timeout=120.0
+            )
              return templates.TemplateResponse("leaderboard.html", {
                  "request": request, 
                  "leaderboard": leaderboard_data, 
@@ -2808,6 +2823,75 @@ async def api_traffic_stats(
     """API endpoint for traffic stats (joins/leaves)."""
     gid = get_guild_id(request)
     return await get_traffic_stats(gid, days=days, start_date=start_date, end_date=end_date, role_id=role_id)
+
+@app.get("/training", response_class=HTMLResponse)
+async def training_page(request: Request):
+    """Serve the Moderator Training Ground page."""
+    return templates.TemplateResponse("training.html", {"request": request})
+
+@app.post("/api/evaluate-training")
+async def evaluate_training(request: Request):
+    """Proxy evaluation request to local Ollama API."""
+    try:
+        body = await request.json()
+        messages = body.get("messages", [])
+        # Move system prompt to backend for better control
+        system_prompt = """Jsi zkušený kouč moderátorů pro online svépomocné fórum NePornu.cz. 
+Hodnotíš odpovědi nových moderátorů na tréninkové scénáře. 
+
+PRAVIDLA PRO HODNOCENÍ:
+1. Pokud je odpověď moderátora ZCELA NESOUVISEJÍCÍ s tématem, nesmyslná nebo náhodný text:
+   - Uděl 'score': 1
+   - Do 'summary' napiš: 'Odpověď je zcela irelevantní k zadanému scénáři.'
+   - Ostatní pole ('positive', 'improve', 'tip') vyplň neutrálně nebo nechej prázdná.
+2. Pokud je odpověď relevantní, hodnot ji podle profesionality, empatie a užitečnosti (1-10).
+3. Buď konkrétní a konstruktivní. Piš česky.
+
+Odpověz POUZE v tomto JSON formátu:
+{"score": 7, "summary": "...", "positive": "...", "improve": "...", "tip": "..."}"""
+        
+        ollama_messages = [{"role": "system", "content": system_prompt}] + messages
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "http://172.22.0.1:11434/api/chat",
+                    json={
+                        "model": "qwen2.5:1.5b",
+                        "messages": ollama_messages,
+                        "stream": False,
+                        "options": {
+                            "temperature": 0.1,
+                            "num_predict": 400
+                        }
+                    },
+                    timeout=120.0
+                )
+                if resp.status_code != 200:
+                    print(f"Ollama API Error Status: {resp.status_code}")
+                    print(f"Ollama API Response Body: {resp.text}")
+                    return JSONResponse(content={"error": f"AI API Error: {resp.status_code} - {resp.text[:100]}"}, status_code=500)
+                
+                ollama_data = resp.json()
+                content_text = ollama_data.get("message", {}).get("content", "{}")
+                
+                return JSONResponse(content={
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": content_text
+                        }
+                    ]
+                })
+        except Exception as e:
+            import traceback
+            trace_str = traceback.format_exc()
+            print(f"Critical Ollama Error:\n{trace_str}")
+            return JSONResponse(content={"error": f"AI Error Internal: {str(e) or type(e).__name__}"}, status_code=500)
+                
+    except Exception as e:
+        print(f"Evaluation Request Error: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/api/channel-distribution")
 async def api_channel_distribution(request: Request, start_date=None, end_date=None, role_id="all"):
