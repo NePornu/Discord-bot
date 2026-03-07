@@ -11,14 +11,21 @@ from datetime import datetime
 import os
 
 # Manual .env loading
-env_path = "/root/discord-bot/.env"
-if os.path.exists(env_path):
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                os.environ[key] = val.strip('"').strip("'")
+# Manual .env loading (trying multiple paths for local vs container)
+env_paths = [
+    os.path.join(os.getcwd(), ".env"),
+    "/app/.env",
+    "/root/discord-bot/.env"
+]
+for env_path in env_paths:
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ[key] = val.strip('"').strip("'")
+        break
 
 import discord
 
@@ -66,8 +73,9 @@ async def log_start_info():
     await send_console_log(f"Token v souboru: {'ANO' if hasattr(bot_token, 'TOKEN') else 'NE'}")
     await send_console_log(f"Prefix: {config.BOT_PREFIX!r}")
     await send_console_log(f"CONSOLE_CHANNEL_ID: {config.CONSOLE_CHANNEL_ID}")
-    await send_console_log(f"'commands' existuje: {os.path.exists('commands')}")
-    await send_console_log(f"Obsah 'commands': {os.listdir('commands') if os.path.exists('commands') else '—'}")
+    commands_path = os.path.join(os.path.dirname(__file__), "commands")
+    await send_console_log(f"'commands' existuje: {os.path.exists(commands_path)}")
+    await send_console_log(f"Obsah 'commands': {os.listdir(commands_path) if os.path.exists(commands_path) else '—'}")
 
 @bot.command(name="sync")
 @commands.has_permissions(administrator=True)
@@ -90,33 +98,25 @@ async def load_commands():
         await send_console_log(f"[FATAL] složka '{commands_dir}' neexistuje")
         return
 
-    
-    if "help" in bot.all_commands:
-        bot.remove_command("help")
-
-    files = [
-        f for f in os.listdir(commands_dir)
-        if f.endswith(".py") and not f.startswith("_") and f != "__init__.py"
-    ]
-    await send_console_log(f"Celkem {len(files)} modulů: {files}")
-
-    for filename in files:
-        module_name = f"bot.commands.{filename[:-3]}"
-        await send_console_log(f"Načítám: {module_name}")
-        try:
+    for filename in os.listdir(commands_dir):
+        if filename.endswith(".py") and not filename.startswith("_") and filename != "__init__.py":
+            module_name = f"bot.commands.{filename[:-3]}"
             
-            interactive_cogs = ["echo", "emojirole", "help", "log", "notify", "ping", "purge", "report", "verification", "vyzva", "analytics_tracking", "avatar_nsfw", "patterns"]
-            if is_lite and any(mod in module_name for mod in interactive_cogs):
-                await send_console_log(f"⏩ {module_name} vynechán (Lite Mode)")
+            # Hybrid Skip Logic
+            lite_skip_keywords = ["ping", "status", "verification", "log", "presence"]
+            if is_lite and any(k in filename.lower() for k in lite_skip_keywords):
+                await send_console_log(f"⏩ {module_name} vynechán (Hybrid Lite Mode)")
                 continue
 
-            await bot.load_extension(module_name)
-            await send_console_log(f"✅ {module_name} načten")
-        except Exception as e:
-            import traceback
-            tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))[-1800:]
-            await send_console_log(f"❌ Chyba při načtení {module_name}: {e}\n```{tb}```")
-            continue
+            await send_console_log(f"Načítám: {module_name}")
+            try:
+                await bot.load_extension(module_name)
+                await send_console_log(f"✅ {module_name} načten")
+            except Exception as e:
+                import traceback
+                tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))[-1800:]
+                await send_console_log(f"❌ Chyba při načtení {module_name}: {e}\n```{tb}```")
+                continue
 
         
         try:
@@ -438,6 +438,7 @@ async def globally_block_commands(ctx: commands.Context):
 async def main():
     await log_start_info()
     await send_console_log("Inicializace…")
+    is_lite = os.getenv("BOT_LITE_MODE") == "1"
     
     token = os.getenv("BOT_TOKEN") or getattr(bot_token, "TOKEN", None)
     
