@@ -19,3 +19,7 @@ status_page_output.html
 
 # VSCode settings
 .vscode/
+\n# Logs & Dumps
+*.log
+*_std.log/
+*.json
