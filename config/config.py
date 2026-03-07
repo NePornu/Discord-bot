@@ -24,6 +24,12 @@ VERIFICATION_CODE = 'Restart'
 VERIFIED_ROLE_ID = 1179506149951811734  
 
 
+# --- Pattern Detection ---
+PATTERN_ALERT_CHANNEL_ID = 1404416148077809705  # Corrected alert channel
+PATTERN_SCAN_INTERVAL_MINUTES = 15
+PATTERN_ALERT_COOLDOWN_HOURS = 24
+DIARY_CHANNEL_NAMES = ["denik-abstinence", "deník", "diary", "můj-deník"]
+
 COMMANDS_CONFIG = {
     "ping": {"enabled": True, "admin_only": False},
     "echo": {"enabled": True, "admin_only": True},
@@ -35,6 +41,5 @@ COMMANDS_CONFIG = {
     "notify": {"enabled": True, "admin_only": True},
     "emojirole": {"enabled": True, "admin_only": True},
     "help": {"enabled": True, "admin_only": True},
-    "nsfwsync": {"enabled": True, "admin_only": True},
-    "trainpanel": {"enabled": True, "admin_only": True}
+    "nsfwsync": {"enabled": True, "admin_only": True}
 }

@@ -105,7 +105,7 @@ async def load_commands():
         await send_console_log(f"Načítám: {module_name}")
         try:
             
-            interactive_cogs = ["echo", "emojirole", "help", "log", "notify", "ping", "purge", "report", "verification", "vyzva", "analytics_tracking", "avatar_nsfw"]
+            interactive_cogs = ["echo", "emojirole", "help", "log", "notify", "ping", "purge", "report", "verification", "vyzva", "analytics_tracking", "avatar_nsfw", "patterns"]
             if is_lite and any(mod in module_name for mod in interactive_cogs):
                 await send_console_log(f"⏩ {module_name} vynechán (Lite Mode)")
                 continue
@@ -177,6 +177,31 @@ async def member_stats_task():
              pass
         else:
              print(f"Error in member_stats_task: {e}")
+
+async def acquire_instance_lock(r: redis.Redis, is_lite: bool) -> bool:
+    """Attempts to acquire a unique lock for this bot instance type in Redis."""
+    lock_key = f"bot:lock:{'lite' if is_lite else 'primary'}"
+    # Try to set the lock with a 60 second TTL
+    success = await r.set(lock_key, str(os.getpid()), ex=60, nx=True)
+    return bool(success)
+
+@tasks.loop(seconds=20)
+async def refresh_instance_lock_task(is_lite: bool):
+    """Periodically refreshes the instance lock TTL."""
+    lock_key = f"bot:lock:{'lite' if is_lite else 'primary'}"
+    try:
+        r = await get_redis_client()
+        current_pid = await r.get(lock_key)
+        if current_pid == str(os.getpid()):
+            await r.expire(lock_key, 60)
+        else:
+            # If the lock is gone or belongs to someone else, we have a problem
+            # But we'll just try to re-acquire or log it
+            await send_console_log(f"⚠️ [WARN] Instance lock for {lock_key} was lost or stolen!")
+        await r.close()
+    except Exception as e:
+        print(f"Error refreshing instance lock: {e}")
+
 
 @member_stats_task.before_loop
 async def before_member_stats_task():
@@ -393,44 +418,6 @@ async def on_guild_remove(guild: discord.Guild):
 
 
 
-# --- Training Control Panel ---
-class TrainingPanelView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="Simulovat NSFW", style=discord.ButtonStyle.danger, custom_id="train_nsfw")
-    async def nsfw_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⌛ Spouštím NSFW simulaci...", ephemeral=True)
-        import subprocess
-        subprocess.Popen(["python3", "training_runner.py", "nsfw"])
-
-    @discord.ui.button(label="Simulovat Spam", style=discord.ButtonStyle.primary, custom_id="train_spam")
-    async def spam_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⌛ Spouštím Spam útok...", ephemeral=True)
-        import subprocess
-        subprocess.Popen(["python3", "training_runner.py", "spam"])
-
-    @discord.ui.button(label="Překročení hranic (DM)", style=discord.ButtonStyle.secondary, custom_id="train_boundary")
-    async def boundary_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⌛ Spouštím textovou simulaci překročení hranic...", ephemeral=True)
-        import subprocess
-        subprocess.Popen(["python3", "training_runner.py", "boundary"])
-
-    @discord.ui.button(label="Krizová situace", style=discord.ButtonStyle.danger, custom_id="train_crisis", row=1)
-    async def crisis_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🚨 Spouštím krizovou situaci (Suicidita)...", ephemeral=True)
-        import subprocess
-        subprocess.Popen(["python3", "training_runner.py", "crisis"])
-
-@bot.command(name="trainpanel")
-@commands.has_permissions(administrator=True)
-async def spawn_training_panel(ctx: commands.Context):
-    embed = discord.Embed(
-        title="🎮 Tréninkový Ovládací Panel",
-        description="Kliknutím na tlačítka níže spustíte simulované scénáře v Tréninkovém Poli. (Simulace používá Webhooky bez závislosti na slash příkazech).",
-        color=0xf1c40f
-    )
-    await ctx.send(embed=embed, view=TrainingPanelView())
 
 @bot.check
 async def globally_block_commands(ctx: commands.Context):
@@ -460,18 +447,6 @@ async def main():
         return
     await send_console_log("Token OK, startuji…")
     
-    # Start Fluxer Training REST Poller background process
-    is_lite = os.getenv("BOT_LITE_MODE") == "1"
-    if not is_lite:
-        import subprocess
-        try:
-            with open("/app/training_poller_auto.log", "a") as logfile:
-                subprocess.Popen(["python3", "training_runner.py", "poll"], 
-                                 stdout=logfile, stderr=logfile, 
-                                 cwd="/app", start_new_session=True)
-            print(ts(), "✅ Fluxer Training Poller spuštěn na pozadí (logging to /app/training_poller_auto.log).")
-        except Exception as e:
-            print(ts(), f"❌ Nelze spustit Fluxer Poller: {e}")
 
     if not member_stats_task.is_running():
         member_stats_task.start()
@@ -481,9 +456,22 @@ async def main():
         heartbeat_task.start()
         print(ts(), "✅ Background task: Heartbeat started (from main)")
     
+    # Instance Locking
+    r_lock = await get_redis_client()
+    if not await acquire_instance_lock(r_lock, is_lite):
+        current_holder = await r_lock.get(f"bot:lock:{'lite' if is_lite else 'primary'}")
+        await r_lock.close()
+        msg = f"[FATAL] Another instance is already running ({'Lite' if is_lite else 'Primary'}, PID: {current_holder})"
+        print(ts(), msg)
+        # We can't use send_console_log yet because bot isn't started, but we print to stdout
+        return
+    await r_lock.close()
     
-    
+    refresh_instance_lock_task.start(is_lite)
+    print(ts(), f"✅ Instance lock acquired ({'Lite' if is_lite else 'Primary'})")
+
     await bot.start(token)
+
 
 if __name__ == "__main__":
     try:

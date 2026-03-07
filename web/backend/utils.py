@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
@@ -8,8 +9,43 @@ import httpx
 import sys
 sys.path.append('/root/discord-bot')
 
-
 from shared.redis_client import get_redis, REDIS_URL
+from functools import wraps
+import hashlib
+
+def redis_cache(ttl=300):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            from shared.redis_client import get_redis
+            r = await get_redis()
+            key_parts = [func.__name__]
+            for arg in args:
+                if isinstance(arg, (str, int, float, bool, bytes)):
+                    key_parts.append(str(arg))
+            for k, v in sorted(kwargs.items()):
+                if isinstance(v, (str, int, float, bool, bytes)):
+                    key_parts.append(f"{k}:{v}")
+            raw_key = "_".join(key_parts)
+            key_hash = hashlib.md5(raw_key.encode()).hexdigest()
+            cache_key = f"cache:decorator:{func.__name__}:{key_hash}"
+            
+            cached = await r.get(cache_key)
+            if cached:
+                try:
+                    return json.loads(cached)
+                except Exception:
+                    pass
+            
+            result = await func(*args, **kwargs)
+            if result is not None:
+                try:
+                    await r.setex(cache_key, ttl, json.dumps(result))
+                except Exception as e:
+                    print(f"Failed to cache {func.__name__}: {e}")
+            return result
+        return wrapper
+    return decorator
 
 try:
     from config.dashboard_secrets import BOT_TOKEN
@@ -26,6 +62,125 @@ async def get_redis_client() -> redis.Redis:
 
 def K_DAU(gid: int, d: str) -> str: 
     return f"hll:dau:{gid}:{d}"
+
+def K_KW(gid, uid, date, group):  return f"pat:kw:{gid}:{uid}:{date}:{group}"
+def K_MSG(gid, uid, date):        return f"pat:msg:{gid}:{uid}:{date}"
+def K_ALERT(gid, uid, pat):       return f"pat:alert_sent:{gid}:{uid}:{pat}"
+def K_JOIN(gid, uid):             return f"pat:user_join:{gid}:{uid}"
+def K_HOUR(gid, uid, date):       return f"pat:hour:{gid}:{uid}:{date}"
+
+async def _get_user_msg_stats_simple(r, gid: int, uid: int, days: int) -> Dict:
+    now = datetime.now()
+    total = {"word_count": 0, "msg_count": 0, "char_count": 0, "avg_words_per_msg": 0}
+    for i in range(days):
+        date_str = (now - timedelta(days=i)).strftime("%Y%m%d")
+        data = await r.hgetall(K_MSG(gid, uid, date_str))
+        if data:
+            total["word_count"] += int(data.get("word_count", 0))
+            total["msg_count"] += int(data.get("msg_count", 0))
+            total["char_count"] += int(data.get("char_count", 0))
+    if total["msg_count"] > 0:
+        total["avg_words_per_msg"] = round(total["word_count"] / total["msg_count"], 1)
+    return total
+
+async def _get_keyword_count_simple(r, gid: int, uid: int, group: str, days: int) -> int:
+    now = datetime.now()
+    total = 0
+    for i in range(days):
+        date_str = (now - timedelta(days=i)).strftime("%Y%m%d")
+        val = await r.get(K_KW(gid, uid, date_str, group))
+        if val:
+            total += int(val)
+    return total
+
+async def _days_since_last_activity_simple(r, gid: int, uid: int, max_lookback: int = 365) -> int:
+    now = datetime.now()
+    for i in range(max_lookback):
+        date_str = (now - timedelta(days=i)).strftime("%Y%m%d")
+        data = await r.hgetall(K_MSG(gid, uid, date_str))
+        if data and int(data.get("msg_count", 0)) > 0:
+            return i
+    return max_lookback
+
+async def _analyze_user_affinity_simple(r, gid: int, uid: int, stats_7d: Dict, stats_30d: Dict, days_inactive: int) -> List[Dict]:
+    now = datetime.now()
+    affinities = []
+    
+    # 1. Weekend drop
+    if stats_30d["msg_count"] >= 10:
+        weekend_msgs, weekday_msgs = 0, 0
+        for i in range(28):
+            d = now - timedelta(days=i)
+            data = await r.hgetall(K_MSG(gid, uid, d.strftime("%Y%m%d")))
+            c = int(data.get("msg_count", 0)) if data else 0
+            if d.weekday() >= 5: weekend_msgs += c
+            else: weekday_msgs += c
+        if weekday_msgs > 0:
+            ratio = (weekend_msgs / 8) / (weekday_msgs / 20)
+            score = max(0, min(100, int((1.0 - ratio) * 100)))
+            if score > 0:
+                affinities.append({"name": "Víkendový propad", "score": score, "emoji": "📅", "hint": "Zkuste zavést 'Friday Check-in'."})
+    
+    # 2. Night owl
+    total_hourly, night_msgs = 0, 0
+    for i in range(7):
+        d = (now - timedelta(days=i)).strftime("%Y%m%d")
+        hour_data = await r.hgetall(K_HOUR(gid, uid, d))
+        for h, c in hour_data.items():
+            total_hourly += int(c)
+            if 1 <= int(h) <= 4: night_msgs += int(c)
+    if total_hourly > 0:
+        ratio = night_msgs / total_hourly
+        score = max(0, min(100, int((ratio / 0.6) * 100)))
+        if score > 10:
+            affinities.append({"name": "Noční sova", "score": score, "emoji": "🦉", "hint": "Doporučte offline večerní rutinu."})
+
+    # 3. Semantic drop
+    avg_7d, avg_30d = stats_7d["avg_words_per_msg"], stats_30d["avg_words_per_msg"]
+    if avg_30d > 5 and stats_7d["msg_count"] > 0:
+        drop_ratio = 1.0 - (avg_7d / avg_30d)
+        if drop_ratio > 0:
+            score = max(0, min(100, int((drop_ratio / 0.7) * 100)))
+            affinities.append({"name": "Sémantický útlum", "score": score, "emoji": "📉", "hint": "Ptejte se otevřenými otázkami."})
+
+    # 4. One-timer
+    if 0 < stats_30d["msg_count"] <= 3:
+        base_score = 100 if stats_30d["msg_count"] == 1 else (50 if stats_30d["msg_count"] == 2 else 25)
+        score = int(base_score * min(1.0, days_inactive / 3.0))
+        if score > 0:
+            affinities.append({"name": "Jednorázovka", "score": score, "emoji": "👋", "hint": "Pošlete krátkou uvítací zprávu."})
+
+    # 5. Regular
+    if stats_30d["msg_count"] >= 5:
+        consecutive = 0
+        for w in range(8):
+            found = False
+            for d in range(w*7, (w+1)*7):
+                dt = (now - timedelta(days=d)).strftime("%Y%m%d")
+                msg_data = await r.hgetall(K_MSG(gid, uid, dt))
+                if msg_data and int(msg_data.get("msg_count", 0)) > 0:
+                    found = True
+                    break
+            if found: consecutive += 1
+            else: break
+        score = int((consecutive / 8.0) * 100)
+        if score > 20:
+            affinities.append({"name": "Pravidelný přispěvatel", "score": score, "emoji": "⭐", "hint": "Oceňte vytrvalost komunitním odznakem."})
+
+    # 6. Relapse Fatigue
+    kw_rel = await _get_keyword_count_simple(r, gid, uid, "relapse_fatigue", 14)
+    if kw_rel > 0:
+        score = max(0, min(100, int((kw_rel / 4.0) * 100)))
+        affinities.append({"name": "Relapsová únava", "score": score, "emoji": "🔁", "hint": "Přesuňte fokus z počítání dnů na small wins."})
+    
+    # 7. Silent Struggle
+    kw_desp = await _get_keyword_count_simple(r, gid, uid, "despair", 14)
+    if kw_desp > 0:
+        score = max(0, min(100, int(((kw_desp * 20) + (days_inactive * 10)))))
+        affinities.append({"name": "Tiché vyhoření", "score": score, "emoji": "🕯️", "hint": "Okamžitý osobní DM, nevyčítejte ticho."})
+
+    affinities.sort(key=lambda x: x["score"], reverse=True)
+    return affinities[:5]
 
 async def load_member_stats(guild_id: int, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
     """
@@ -152,8 +307,12 @@ async def get_activity_stats(guild_id: int, start_date: str = None, end_date: st
     Základní aktivita: DAU, MAU, Avg DAU - podpora pro časové období.
     """
     r = await get_redis()
+    cache_key = f"stats:activity:{guild_id}:{start_date}:{end_date}:{days}"
     try:
-        
+        cached = await r.get(cache_key)
+        if cached:
+            return json.loads(cached)
+            
         if start_date and end_date:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
             end_dt = datetime.strptime(end_date, "%Y-%m-%d")
@@ -187,7 +346,7 @@ async def get_activity_stats(guild_id: int, start_date: str = None, end_date: st
             
         avg_dau = sum(dau_data) / len(dau_data) if dau_data else 0
         
-        return {
+        stats = {
             "dau_labels": dau_labels,
             "dau_data": dau_data,
             "mau_labels": [],
@@ -195,6 +354,8 @@ async def get_activity_stats(guild_id: int, start_date: str = None, end_date: st
             "avg_dau": round(avg_dau, 1),
             "raw_data": {}
         }
+        await r.setex(cache_key, 300, json.dumps(stats))
+        return stats
     except Exception as e:
         print(f"Error parsing activity stats: {e}")
         return {"dau_labels": [], "dau_data": [], "mau_labels": [], "mau_data": [], "avg_dau": 0, "raw_data": {}}
@@ -653,14 +814,14 @@ async def get_redis_dashboard_stats(guild_id: int, start_date: str = None, end_d
             "is_estimated": False 
         }
         
-        
-        await r.setex(cache_key, 60, json.dumps(stats))
+        await r.setex(cache_key, 300, json.dumps(stats))
         return stats
         
     finally:
         pass
     
 
+@redis_cache(ttl=300)
 async def get_summary_card_data(discord_dau=0, discord_mau=0, discord_wau=0, discord_users=0, guild_id: int = 615171377783242769):
     """
     Get summary card data using ONLY real data from Redis (Primary) and database (Fallback).
@@ -809,6 +970,7 @@ async def get_cached_roles(guild_id: int) -> List[Dict[str, str]]:
         pass
     
 
+@redis_cache(ttl=300)
 async def get_trend_analysis(guild_id: int) -> Dict[str, Any]:
     """Calculate growth trends and predictions."""
     r = redis.from_url(REDIS_URL, decode_responses=True)
@@ -857,6 +1019,7 @@ async def get_trend_analysis(guild_id: int) -> Dict[str, Any]:
     finally:
         pass
 
+@redis_cache(ttl=300)
 async def get_engagement_score(guild_id: int, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
     """Calculate engagement score based on messages, voice, and retention."""
     r = await get_redis_client()
@@ -1177,6 +1340,7 @@ def generate_security_insights(metrics: Dict[str, Any]):
     return [i["text"] for i in insights]
 
 
+@redis_cache(ttl=300)
 async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
     """
     Calculate security score based on multiple factors:
@@ -1452,6 +1616,7 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
 
 
 
+@redis_cache(ttl=300)
 async def get_insights(guild_id: int) -> List[Dict[str, str]]:
     """Generate smart insights based on stats."""
     insights = []
@@ -1507,6 +1672,7 @@ async def get_insights(guild_id: int) -> List[Dict[str, str]]:
          
     return insights
 
+@redis_cache(ttl=300)
 async def get_time_comparisons(guild_id: int, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
     """Calculate WoW and MoM DAU changes relative to end_date."""
     
@@ -1554,6 +1720,7 @@ async def get_time_comparisons(guild_id: int, start_date: str = None, end_date: 
         }
     }
 
+@redis_cache(ttl=300)
 async def get_voice_leaderboard(guild_id: int, limit: int = 10, start_date: str = None, end_date: str = None, role_id: str = "all") -> List[Dict[str, Any]]:
     """Fetch top users by voice duration - currently all-time fallback."""
     
@@ -1565,6 +1732,7 @@ async def get_voice_leaderboard(guild_id: int, limit: int = 10, start_date: str 
         print(f"Voice stats error: {e}")
         return []
 
+@redis_cache(ttl=300)
 async def get_command_stats(guild_id: int, limit: int = 10, start_date: str = None, end_date: str = None, role_id: str = "all") -> List[Dict[str, Any]]:
     """Fetch top used commands."""
     r = await get_redis()
@@ -1576,10 +1744,12 @@ async def get_command_stats(guild_id: int, limit: int = 10, start_date: str = No
         print(f"Command stats error: {e}")
         return []
 
+@redis_cache(ttl=300)
 async def get_traffic_stats(guild_id: int, days: int = 30, start_date: str = None, end_date: str = None, role_id: str = "all") -> Dict[str, Any]:
     """Fetch Joins vs Leaves for traffic chart."""
     return await load_member_stats(guild_id, start_date=start_date, end_date=end_date) 
 
+@redis_cache(ttl=300)
 async def get_leaderboard_data(guild_id: int, limit: int = 15, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
     """Fetch user leaderboard with optional date filtering."""
     r = await get_redis()
@@ -1635,6 +1805,7 @@ async def get_leaderboard_data(guild_id: int, limit: int = 15, start_date: str =
         print(f"Leaderboard data error: {e}")
         return {"leaderboard": [], "error": str(e)}
 
+@redis_cache(ttl=300)
 async def get_channel_distribution(guild_id: int, start_date: str = None, end_date: str = None, days: int = 30) -> List[Dict[str, Any]]:
     """Fetch message distribution by channel, optionally filtered by date/days."""
     r = await get_redis()
@@ -1698,6 +1869,7 @@ async def get_channel_distribution(guild_id: int, start_date: str = None, end_da
         print(f"Channel dist error: {e}")
         return []
 
+@redis_cache(ttl=300)
 async def get_dashboard_team(guild_id: int) -> List[Dict[str, Any]]:
     """
     Get all users with explicit dashboard access for a guild.
@@ -1915,3 +2087,179 @@ async def get_daily_stats(r: redis.Redis, gid: int, uid: int, day: datetime.date
     await r.hset(cache_key, mapping={k: str(v) for k, v in cache_data.items()})
     
     return dict(stats)
+
+
+# --- Pattern Detection Helpers ---
+
+async def get_user_pattern_insights(guild_ids: List[int], user_id: int, days: int = 30) -> Dict[str, Any]:
+    """
+    Summarize pattern-related signals (keywords, word counts) for a user across multiple sources.
+    Enhanced to include Discord-style "Diagnostika" data.
+    """
+    if isinstance(guild_ids, int):
+        guild_ids = [guild_ids]
+        
+    r = await get_redis()
+    now = datetime.now()
+    gid = guild_ids[0] # Primary guild for detailed logic
+    
+    # 1. Base Stats (Existing logic)
+    keyword_hits = defaultdict(int)
+    total_msgs = 0
+    total_words = 0
+    
+    from shared.pattern_logic import KEYWORD_GROUPS
+    groups = list(KEYWORD_GROUPS.keys())
+    
+    for g in guild_ids:
+        for i in range(days):
+            date_str = (now - timedelta(days=i)).strftime("%Y%m%d")
+            pipe = r.pipeline()
+            for group in groups:
+                pipe.get(f"pat:kw:{g}:{user_id}:{date_str}:{group}")
+            counts = await pipe.execute()
+            for idx, count in enumerate(counts):
+                if count:
+                    keyword_hits[groups[idx]] += int(count)
+            msg_stats = await r.hgetall(f"pat:msg:{g}:{user_id}:{date_str}")
+            if msg_stats:
+                total_msgs += int(msg_stats.get("msg_count", 0))
+                total_words += int(msg_stats.get("word_count", 0))
+
+    # 2. Enhanced Diagnostic Logic (Ported from patterns.py)
+    stats_7d = await _get_user_msg_stats_simple(r, gid, user_id, 7)
+    stats_30d = await _get_user_msg_stats_simple(r, gid, user_id, 30)
+    
+    intensities = {
+        "🔴 Relapsy": await _get_keyword_count_simple(r, gid, user_id, "relapse_word", 7),
+        "🔁 Únava": await _get_keyword_count_simple(r, gid, user_id, "relapse_fatigue", 7),
+        "🆘 Beznaděj": await _get_keyword_count_simple(r, gid, user_id, "despair", 7),
+        "🧱 Stagnace": await _get_keyword_count_simple(r, gid, user_id, "wall_keywords", 7),
+        "🌸 Euforie": await _get_keyword_count_simple(r, gid, user_id, "euphoria", 7),
+        "🤝 Pomoc": await _get_keyword_count_simple(r, gid, user_id, "help_others", 7),
+    }
+    
+    days_inactive = await _days_since_last_activity_simple(r, gid, user_id, 180)
+    affinities = await _analyze_user_affinity_simple(r, gid, user_id, stats_7d, stats_30d, days_inactive)
+    
+    advice = "Uživatel se zdá být v normě. Doporučujeme standardní podporu a udržování kontaktu."
+    if affinities:
+        advice = affinities[0]['hint']
+
+    # 3. Fetch alerts sent (aggregated)
+    alerts_triggered = []
+    for g in guild_ids:
+        cursor = "0"
+        match_pat = f"pat:alert_sent:{g}:{user_id}:*"
+        source_label = "Discord" if g != 999 else "Discourse"
+        while True:
+            cursor, keys = await r.scan(cursor=cursor, match=match_pat, count=100)
+            for k in keys:
+                parts = k.split(":")
+                if len(parts) >= 5:
+                    pattern_name = parts[4]
+                    ts_val = await r.get(k)
+                    if ts_val:
+                        try:
+                            ts_int = int(float(ts_val))
+                            if ts_int < 1000000: ts_int = int(time.time()) - 3600
+                        except: ts_int = int(time.time())
+                        alerts_triggered.append({
+                            "name": pattern_name,
+                            "timestamp": ts_int,
+                            "date": datetime.fromtimestamp(ts_int).strftime("%d.%m. %H:%M"),
+                            "source": source_label
+                        })
+            if cursor == "0" or cursor == 0: break
+            
+    alerts_triggered.sort(key=lambda x: x["timestamp"], reverse=True)
+    
+    return {
+        "user_id": user_id,
+        "keywords": dict(keyword_hits),
+        "total_messages": total_msgs,
+        "total_words": total_words,
+        "avg_words_per_msg": round(total_words / max(1, total_msgs), 1),
+        "alerts": alerts_triggered[:10],
+        # New Diagnostic fields
+        "stats_7d": stats_7d,
+        "stats_30d": stats_30d,
+        "intensities": intensities,
+        "affinities": affinities,
+        "advice": advice,
+        "days_inactive": days_inactive
+    }
+
+async def get_recent_pattern_alerts(guild_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    Get the most recent pattern alerts across all sources (Discord and Discourse).
+    Uses caching to improve dashboard load times.
+    """
+    r = await get_redis()
+    
+    cache_key = f"cache:pattern_alerts:{guild_id}:{limit}"
+    
+    try:
+        cached = await r.get(cache_key)
+        if cached:
+             return json.loads(cached)
+    except Exception as e:
+        print(f"Error reading pattern alerts cache: {e}")
+    
+    alerts = []
+    # Sources to scan: Main Guild (Discord) and 999 (Discourse)
+    sources = [
+        {"gid": guild_id, "label": "Discord"},
+        {"gid": 999, "label": "Discourse"}
+    ]
+    
+    for src in sources:
+        cursor = "0"
+        match_pat = f"pat:alert_sent:{src['gid']}:*:*"
+        
+        while True:
+            cursor, keys = await r.scan(cursor=cursor, match=match_pat, count=500)
+            for k in keys:
+                parts = k.split(":")
+                if len(parts) >= 5:
+                    uid = parts[3]
+                    pat_name = parts[4]
+                    ts_val = await r.get(k)
+                    
+                    if ts_val:
+                        try:
+                            ts_int = int(float(ts_val))
+                            if ts_int < 1000000:
+                                ts_int = int(time.time()) - 3600
+                        except (ValueError, TypeError):
+                            ts_int = int(time.time())
+
+                        alerts.append({
+                            "user_id": uid,
+                            "pattern": pat_name,
+                            "timestamp": ts_int,
+                            "source": src['label']
+                        })
+            
+            if cursor == "0" or cursor == 0:
+                break
+            
+    # Sort by timestamp
+    alerts.sort(key=lambda x: x["timestamp"], reverse=True)
+    
+    # Enrich with user info
+    enriched = []
+    for a in alerts[:limit]:
+        u_info = await r.hgetall(f"user:info:{a['user_id']}") or {}
+        a["username"] = u_info.get("name") or u_info.get("username") or f"Uživatel {a['user_id']}"
+        a["avatar"] = u_info.get("avatar")
+        a["date_human"] = datetime.fromtimestamp(a["timestamp"]).strftime("%d.%m. %H:%M")
+        enriched.append(a)
+        
+    try:
+        # Cache for 6 hours
+        await r.setex(cache_key, 21600, json.dumps(enriched))
+    except Exception as e:
+         print(f"Error caching pattern alerts: {e}")
+         
+    return enriched

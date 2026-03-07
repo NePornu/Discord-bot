@@ -53,11 +53,11 @@ except ImportError:
     BOT_TOKEN = os.getenv("BOT_TOKEN", "MTIyNzI2OTU5OTk1MTU4OTUwOA.GsCoHP.OEpQd6iF6thu7cbvnBl3c5-48rIREWgoLEY6MY")
     print(f"INFO: Using secrets from environment or defaults.")
 
-APP_MODE = os.getenv("APP_MODE", "dashboard") # dashboard or training
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "metricord_session")
 DASHBOARD_PORT = 8092
 TRAINING_PORT = 8093
-SERVER_IP = "207.180.223.191" # Or pull from env if available
+SERVER_IP = "207.180.223.191"
+APP_MODE = os.getenv("APP_MODE", "dashboard")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
@@ -80,7 +80,8 @@ from .utils import (
     get_voice_leaderboard, get_command_stats, get_traffic_stats, get_channel_distribution,
     get_time_comparisons, get_leaderboard_data,
     get_dashboard_team, add_dashboard_user, remove_dashboard_user, get_dashboard_permissions,
-    get_daily_stats, get_action_weights
+    get_daily_stats, get_action_weights,
+    get_user_pattern_insights, get_recent_pattern_alerts
 )
 
 
@@ -121,21 +122,7 @@ async def background_scenario_generator():
 
 @app.on_event("startup")
 async def startup_event():
-    if APP_MODE == "training":
-        # Seed base scenarios if none exist
-        import json
-        r = await get_redis_client()
-        existing_count = await r.hlen("training:custom_scenarios")
-        if existing_count == 0:
-            for i, template in enumerate(BASE_TEMPLATES):
-                template_copy = template.copy()
-                template_copy["id"] = f"base_scenario_{i}"
-                await r.hset("training:custom_scenarios", template_copy["id"], json.dumps(template_copy))
-            print("[Backend] Seeded 6 base scenarios into Redis.")
-        await r.close()
-            
-        asyncio.create_task(background_scenario_generator())
-        print("Started AI background scenario generator.")
+    print("[Dashboard] Backend started.")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -322,12 +309,9 @@ async def set_active_server(request: Request, guild_id: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """Public landing page with mode-specific selection."""
-    
-    if APP_MODE == "training":
-        if not request.session.get("authenticated"):
-            return templates.TemplateResponse("login.html", {"request": request})
-        return RedirectResponse(url="/training")
+    """Public landing page."""
+    if request.session.get("authenticated"):
+        return RedirectResponse(url="/overview")
 
     # Static public stats for landing
     try:
@@ -466,7 +450,14 @@ async def _dashboard_logic(request: Request, start_date: str = None, end_date: s
             print(f"Error fetching dashboard guilds: {e}")
             public_stats = {"messages": "---", "users": "---", "days": "0"}
              
-        return templates.TemplateResponse("landing.html", {"request": request, "stats": public_stats})
+        return templates.TemplateResponse("landing.html", {
+            "request": request, 
+            "stats": public_stats,
+            "server_ip": SERVER_IP,
+            "dash_port": DASHBOARD_PORT,
+            "train_port": TRAINING_PORT,
+            "app_mode": APP_MODE
+        })
 
     # Restrict guest users
     if request.session.get("role") == "guest":
@@ -682,6 +673,7 @@ async def _dashboard_logic(request: Request, start_date: str = None, end_date: s
         "msglen_data": redis_stats.get("msglen_data", []),
         "weekly_labels": deep_stats.get("weekly_labels", []),
         "weekly_data": deep_stats.get("weekly_data", []),
+        "pattern_alerts": await get_recent_pattern_alerts(guild_id, limit=5),
         "widget_order": request.session.get("overview_order", [])
     }
 
@@ -1736,16 +1728,18 @@ async def user_activity_page(request: Request, uid: int, start_date: str = None,
     ctx = {
         "request": request,
         "user_info": user_info,
-        "days": sorted_days,
-        "values": daily_values,
+        "user_roles": user_info.get("roles", []),
+        "daily_labels": sorted_days,
+        "daily_values": daily_values,
         "is_bot": user_info.get("bot", False),
-        "summary": {
-            "total_h": total_h,
-            "chat_h": chat_h,
-            "voice_h": voice_h,
-            "actions": total_actions,
-            "breakdown": action_breakdown
-        }
+        "total_time_h": total_h,
+        "chat_time_h": chat_h,
+        "voice_time_h": voice_h,
+        "total_actions": total_actions,
+        "action_breakdown": action_breakdown,
+        "pattern_insights": await get_user_pattern_insights([gid, 999], uid),
+        "start_date": start_date or d_start.strftime("%Y-%m-%d"),
+        "end_date": end_date or d_end.strftime("%Y-%m-%d")
     }
     ctx.update(sidebar_ctx)
     return templates.TemplateResponse("user_activity.html", ctx)
@@ -2579,7 +2573,27 @@ async def get_extended_stats(request: Request, start_date: str = None, end_date:
         traceback.print_exc()
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
-@app.get("/api/export/{export_type}")
+@app.get("/api/patterns/recent")
+async def api_recent_patterns(request: Request):
+    """API for fetching recent pattern alerts."""
+    guild_id = request.session.get("guild_id")
+    if not guild_id:
+        return JSONResponse(content={"error": "No guild active"}, status_code=400)
+    
+    alerts = await get_recent_pattern_alerts(int(guild_id))
+    return JSONResponse(content={"alerts": alerts})
+
+@app.get("/api/patterns/user/{user_id}")
+async def api_user_patterns(request: Request, user_id: str):
+    """API for fetching specific user pattern insights."""
+    guild_id = request.session.get("guild_id")
+    if not guild_id:
+        return JSONResponse(content={"error": "No guild active"}, status_code=400)
+    
+    insights = await get_user_pattern_insights(int(guild_id), int(user_id))
+    return JSONResponse(content=insights)
+
+
 @app.get("/api/export/{export_type}")
 async def export_data(
     export_type: str, 

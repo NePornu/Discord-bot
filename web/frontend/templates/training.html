@@ -5,1606 +5,827 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fórum NePornu — Moderátorský trénink</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    /* ===== DISCOURSE-LIKE THEME (NePornu style) ===== */
-    *,
-    *::before,
-    *::after {
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --primary-glow: rgba(99, 102, 241, 0.4);
+      --accent: #f43f5e;
+      --accent-glow: rgba(244, 63, 94, 0.4);
+      --bg: #030712;
+      --bg-dark: #010409;
+      --bg-card: rgba(15, 23, 42, 0.35);
+      --border: rgba(255, 255, 255, 0.1);
+      --border-light: rgba(255, 255, 255, 0.06);
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+      --text-light: #64748b;
+      --header-bg: rgba(3, 7, 18, 0.75);
+      --glass: rgba(255, 255, 255, 0.03);
+      --glass-bright: rgba(255, 255, 255, 0.08);
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
+      --radius: 20px;
+      --radius-sm: 12px;
+      --transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+      --green: #10b981;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+    }
+
+    /* GLOBAL */
+    * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
     }
 
-    :root {
-      --primary: #0088cc;
-      --primary-dark: #006fa3;
-      --bg: #ffffff;
-      --bg-secondary: #f8f9fa;
-      --bg-dark: #1d1f20;
-      --border: #d9d9d9;
-      --border-light: #ebebeb;
-      --text: #222222;
-      --text-dim: #666666;
-      --text-light: #919191;
-      --header-bg: #1d1f20;
-      --header-text: #ffffff;
-      --category-color: #0088cc;
-      --like-color: #f1592a;
-      --green: #3fa34d;
-      --red: #c0392b;
-      --yellow: #e67e22;
-      --purple: #8e44ad;
-      --bubble-mod: #e8f4fd;
-      --bubble-user: #f0faf0;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-
     body {
       font-family: var(--font);
-      background: var(--bg-secondary);
+      background-color: var(--bg);
       color: var(--text);
-      font-size: 15px;
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      min-height: 100vh;
     }
 
-    /* ===== TOP NAVIGATION (Discourse style) ===== */
+    /* MESH BACKGROUND */
+    .mesh-blob {
+      position: fixed;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      filter: blur(120px);
+      z-index: -1;
+      opacity: 0.35;
+      pointer-events: none;
+      animation: float 25s infinite alternate;
+    }
+
+    .blob-1 {
+      background: rgba(99, 102, 241, 0.3);
+      top: -100px;
+      right: -100px;
+    }
+
+    .blob-2 {
+      background: rgba(168, 85, 247, 0.3);
+      bottom: -150px;
+      left: -150px;
+      animation-delay: -7s;
+    }
+
+    .blob-3 {
+      background: rgba(244, 63, 94, 0.15);
+      top: 30%;
+      left: 15%;
+      animation-duration: 30s;
+    }
+
+    @keyframes float {
+      0% {
+        transform: translate(0, 0) scale(1);
+      }
+
+      100% {
+        transform: translate(80px, 40px) scale(1.15);
+      }
+    }
+
+    /* NAVIGATION */
     .d-header {
       background: var(--header-bg);
-      height: 56px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      height: 72px;
       display: flex;
       align-items: center;
-      padding: 0 16px;
-      gap: 16px;
+      padding: 0 40px;
+      gap: 24px;
       position: sticky;
       top: 0;
-      z-index: 100;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      border-bottom: 1px solid var(--border);
     }
 
     .d-logo {
-      color: white;
-      font-weight: 700;
-      font-size: 16px;
-      text-decoration: none;
       display: flex;
       align-items: center;
-      gap: 8px;
-      letter-spacing: 0.02em;
+      gap: 12px;
+      text-decoration: none;
     }
 
     .d-logo-icon {
-      width: 32px;
-      height: 32px;
-      background: var(--primary);
-      border-radius: 6px;
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 16px;
+      font-size: 22px;
       font-weight: 900;
+      color: white;
+      box-shadow: 0 8px 16px var(--primary-glow);
+    }
+
+    .d-logo-text {
+      font-size: 20px;
+      font-weight: 800;
+      color: white;
+      letter-spacing: -0.04em;
     }
 
     .d-nav-links {
       display: flex;
-      gap: 4px;
-      margin-left: 8px;
+      gap: 8px;
     }
 
     .d-nav-link {
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--text-dim);
       text-decoration: none;
-      padding: 6px 12px;
-      border-radius: 4px;
+      padding: 10px 18px;
+      border-radius: 12px;
       font-size: 14px;
+      font-weight: 600;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: var(--transition);
     }
 
     .d-nav-link:hover,
     .d-nav-link.active {
-      background: rgba(255, 255, 255, 0.12);
       color: white;
+      background: var(--glass-bright);
     }
 
-    .d-header-right {
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .d-avatar-btn {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: var(--primary);
-      color: white;
-      font-weight: 700;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      border: 2px solid rgba(255, 255, 255, 0.2);
-    }
-
-    .training-badge {
-      background: #e74c3c;
-      color: white;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 99px;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-
-    /* ===== MODE SWITCHER ===== */
-    .mode-bar {
-      background: #2c2f33;
-      border-bottom: 1px solid #444;
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .mode-btn {
-      padding: 6px 16px;
-      border-radius: 4px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      background: transparent;
-      color: rgba(255, 255, 255, 0.6);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .mode-btn.active {
-      background: var(--primary);
-      border-color: var(--primary);
-      color: white;
-    }
-
-    .mode-label {
-      color: rgba(255, 255, 255, 0.4);
-      font-size: 12px;
-      margin-right: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    /* ===== MAIN LAYOUT ===== */
+    /* LAYOUT */
     .main-wrap {
-      max-width: 900px;
+      max-width: 1000px;
       margin: 0 auto;
-      padding: 24px 16px;
+      padding: 40px 24px;
     }
 
-    /* ===== TOPIC HEADER ===== */
-    .topic-header {
-      background: white;
-      border: 1px solid var(--border);
-      border-radius: 8px 8px 0 0;
-      padding: 20px 24px 16px;
-      margin-bottom: 0;
-      border-bottom: none;
+    .header-section {
+      margin-bottom: 60px;
     }
 
-    .topic-category-tag {
-      display: inline-block;
-      font-size: 12px;
-      font-weight: 700;
-      color: white;
-      background: var(--category-color);
-      padding: 2px 10px;
-      border-radius: 99px;
-      text-decoration: none;
-      margin-bottom: 10px;
-    }
-
-    .topic-title {
-      font-size: 24px;
-      font-weight: 700;
-      line-height: 1.3;
-      color: var(--text);
-      margin-bottom: 8px;
-    }
-
-    .topic-meta {
-      font-size: 13px;
-      color: var(--text-light);
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .topic-meta span {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    /* ===== SCENARIO CONTEXT BOX (coach-side label) ===== */
-    .scenario-ctx {
-      background: #fff8e1;
-      border: 1px solid #ffe082;
-      border-left: 4px solid #f9a825;
-      border-radius: 6px;
-      padding: 12px 16px;
-      margin-bottom: 12px;
-      font-size: 13px;
-      color: #5d4037;
-    }
-
-    .scenario-ctx strong {
-      color: #e65100;
-    }
-
-    /* ===== POSTS ===== */
-    .posts-container {
-      background: white;
-      border: 1px solid var(--border);
-      border-top: none;
-    }
-
-    .post {
+    /* COURSE GRID */
+    .course-grid {
       display: grid;
-      grid-template-columns: 56px 1fr;
-      gap: 0;
-      border-bottom: 1px solid var(--border-light);
-      padding: 16px 24px;
-      position: relative;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 32px;
     }
 
-    .post:last-child {
-      border-bottom: none;
-    }
-
-    .post-avatar-col {
+    .course-card {
+      background: var(--glass);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 40px;
+      transition: var(--transition);
+      cursor: pointer;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding-right: 12px;
-    }
-
-    .avatar {
-      width: 42px;
-      height: 42px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 16px;
-      color: white;
-      flex-shrink: 0;
+      gap: 24px;
       position: relative;
-    }
-
-    .avatar-mod-badge {
-      position: absolute;
-      bottom: -4px;
-      right: -4px;
-      background: var(--primary);
-      border-radius: 50%;
-      width: 16px;
-      height: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 9px;
-      border: 2px solid white;
-    }
-
-    .post-connector {
-      flex: 1;
-      width: 2px;
-      background: var(--border-light);
-      margin: 6px 0;
-      min-height: 20px;
-    }
-
-    .post-main {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .post-header {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-      margin-bottom: 10px;
-      flex-wrap: wrap;
-    }
-
-    .post-username {
-      font-weight: 700;
-      font-size: 15px;
-      color: var(--text);
-    }
-
-    .post-username a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .post-username a:hover {
-      color: var(--primary);
-    }
-
-    .post-usertitle {
-      font-size: 12px;
-      color: var(--text-light);
-      background: var(--bg-secondary);
-      padding: 1px 6px;
-      border-radius: 3px;
-    }
-
-    .post-usertitle.mod {
-      background: #e8f4fd;
-      color: var(--primary);
-      font-weight: 600;
-    }
-
-    .post-usertitle.new-user {
-      background: #fef9e7;
-      color: #e67e22;
-    }
-
-    .post-timestamp {
-      font-size: 13px;
-      color: var(--text-light);
-      margin-left: auto;
-    }
-
-    .post-body {
-      font-size: 15px;
-      line-height: 1.65;
-      color: var(--text);
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .post-body p {
-      margin-bottom: 10px;
-    }
-
-    .post-body p:last-child {
-      margin-bottom: 0;
-    }
-
-    .post-actions {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      margin-top: 14px;
-    }
-
-    .post-action-btn {
-      background: none;
-      border: none;
-      color: var(--text-light);
-      font-size: 13px;
-      cursor: pointer;
-      padding: 5px 8px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      transition: background 0.12s, color 0.12s;
-    }
-
-    .post-action-btn:hover {
-      background: var(--bg-secondary);
-      color: var(--text-dim);
-    }
-
-    .post-action-btn.liked {
-      color: var(--like-color);
-    }
-
-    .post-number {
-      position: absolute;
-      top: 16px;
-      right: 20px;
-      font-size: 12px;
-      color: var(--text-light);
-      font-weight: 600;
-    }
-
-    /* Highlight for crisis posts */
-    .post.crisis-post {
-      background: #fff5f5;
-      border-left: 3px solid #e74c3c;
-    }
-
-    /* ===== REPLY BOX ===== */
-    .reply-zone {
-      background: white;
-      border: 1px solid var(--border);
-      border-top: 2px solid var(--primary);
-      border-radius: 0 0 8px 8px;
-      margin-bottom: 24px;
-    }
-
-    .reply-header {
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border-light);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .reply-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .replying-to {
-      font-size: 13px;
-      color: var(--text-light);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .reply-body {
-      padding: 16px 20px;
-    }
-
-    .reply-toolbar {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 10px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--border-light);
-    }
-
-    .toolbar-btn {
-      padding: 5px 9px;
-      border: 1px solid var(--border);
-      background: white;
-      border-radius: 4px;
-      font-size: 13px;
-      cursor: pointer;
-      color: var(--text-dim);
-      font-weight: 700;
-      transition: background 0.12s;
-    }
-
-    .toolbar-btn:hover {
-      background: var(--bg-secondary);
-    }
-
-    .reply-textarea {
-      width: 100%;
-      min-height: 120px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 12px 14px;
-      font-family: var(--font);
-      font-size: 15px;
-      line-height: 1.6;
-      resize: vertical;
-      color: var(--text);
-      transition: border-color 0.15s;
-      outline: none;
-    }
-
-    .reply-textarea:focus {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.15);
-    }
-
-    .reply-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 20px 16px;
-      gap: 12px;
-    }
-
-    .reply-info {
-      font-size: 13px;
-      color: var(--text-light);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .char-count {
-      font-weight: 700;
-      color: var(--text-dim);
-    }
-
-    .char-count.warn {
-      color: var(--yellow);
-    }
-
-    .char-count.ok {
-      color: var(--green);
-    }
-
-    .btn-submit {
-      background: var(--primary);
-      color: white;
-      border: none;
-      border-radius: 6px;
-      padding: 10px 22px;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: background 0.15s;
-    }
-
-    .btn-submit:hover {
-      background: var(--primary-dark);
-    }
-
-    .btn-submit:disabled {
-      background: #aaa;
-      cursor: not-allowed;
-    }
-
-    .btn-secondary {
-      background: white;
-      color: var(--text-dim);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px 18px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-
-    .btn-secondary:hover {
-      background: var(--bg-secondary);
-    }
-
-    /* ===== SCENARIO NAV ===== */
-    .scenario-nav {
-      background: white;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px 20px;
-      margin-bottom: 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .scenario-nav-label {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-
-    .scenario-dots {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .dot {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      border: 2px solid var(--border);
-      background: white;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--text-light);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.15s;
-    }
-
-    .dot.active {
-      border-color: var(--primary);
-      color: var(--primary);
-      background: #e8f4fd;
-    }
-
-    .dot.done {
-      border-color: var(--green);
-      background: var(--green);
-      color: white;
-    }
-
-    .dot.pending {
-      border-color: var(--border);
-    }
-
-    .scenario-skip {
-      margin-left: auto;
-      font-size: 13px;
-      color: var(--primary);
-      cursor: pointer;
-      background: none;
-      border: none;
-      font-weight: 600;
-    }
-
-    .scenario-skip:hover {
-      text-decoration: underline;
-    }
-
-    /* ===== CATEGORY COLORS ===== */
-    .cat-krize {
-      background: #e74c3c;
-    }
-
-    .cat-pravidla {
-      background: #e67e22;
-    }
-
-    .cat-podpora {
-      background: #27ae60;
-    }
-
-    .cat-konflikt {
-      background: #2980b9;
-    }
-
-    .cat-spam {
-      background: #8e44ad;
-    }
-
-    /* ===== AI EVALUATION PENDING ===== */
-    .eval-pending {
-      background: #e8f4fd;
-      border: 1px solid #b3d9f0;
-      border-radius: 8px;
-      padding: 16px 20px;
-      text-align: center;
-      font-size: 14px;
-      color: var(--primary);
-      font-weight: 600;
-      display: none;
-    }
-
-    .eval-pending.show {
-      display: block;
-    }
-
-    .spinner {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(0, 136, 204, 0.3);
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-right: 8px;
-      vertical-align: middle;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    /* ===== COACH DASHBOARD ===== */
-    #coach-view {
-      display: none;
-    }
-
-    .coach-header {
-      background: #1a1a2e;
-      color: white;
-      padding: 20px 24px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .coach-header h2 {
-      font-size: 20px;
-      font-weight: 700;
-    }
-
-    .coach-header p {
-      font-size: 13px;
-      color: rgba(255, 255, 255, 0.6);
-      margin-top: 2px;
-    }
-
-    .coach-stats {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    .coach-stat {
-      background: white;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px;
-      text-align: center;
-    }
-
-    .coach-stat-val {
-      font-size: 28px;
-      font-weight: 800;
-      line-height: 1;
-      margin-bottom: 4px;
-    }
-
-    .coach-stat-val.blue {
-      color: var(--primary);
-    }
-
-    .coach-stat-val.green {
-      color: var(--green);
-    }
-
-    .coach-stat-val.red {
-      color: var(--red);
-    }
-
-    .coach-stat-val.yellow {
-      color: var(--yellow);
-    }
-
-    .coach-stat-label {
-      font-size: 12px;
-      color: var(--text-light);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      font-weight: 600;
-    }
-
-    /* ===== RESPONSE CARD (coach view) ===== */
-    .response-card {
-      background: white;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      margin-bottom: 16px;
       overflow: hidden;
     }
 
-    .response-card-header {
-      padding: 14px 20px;
-      background: var(--bg-secondary);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
+    .course-card:hover {
+      transform: translateY(-10px);
+      background: var(--glass-bright);
+      border-color: var(--primary);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
     }
 
-    .response-scenario-badge {
-      font-size: 12px;
-      font-weight: 700;
-      color: white;
-      padding: 3px 10px;
-      border-radius: 99px;
-      letter-spacing: 0.04em;
-    }
-
-    .response-card-meta {
-      font-size: 13px;
-      color: var(--text-dim);
-    }
-
-    .score-pill {
-      margin-left: auto;
-      padding: 4px 14px;
-      border-radius: 99px;
-      font-size: 13px;
-      font-weight: 800;
-      border: 2px solid;
-    }
-
-    .score-pill.great {
-      color: var(--green);
-      border-color: var(--green);
-      background: #f0faf0;
-    }
-
-    .score-pill.ok {
-      color: var(--yellow);
-      border-color: var(--yellow);
-      background: #fef9e7;
-    }
-
-    .score-pill.poor {
-      color: var(--red);
-      border-color: var(--red);
-      background: #fdf3f3;
-    }
-
-    .response-body {
-      padding: 20px;
-    }
-
-    .response-section {
-      margin-bottom: 16px;
-    }
-
-    .response-section:last-child {
-      margin-bottom: 0;
-    }
-
-    .rs-label {
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--text-light);
-      margin-bottom: 6px;
-    }
-
-    .rs-content {
-      font-size: 14px;
-      line-height: 1.6;
-      color: var(--text);
-      background: var(--bg-secondary);
-      border-radius: 6px;
-      padding: 12px 14px;
-      border-left: 3px solid var(--border);
-      white-space: pre-wrap;
-    }
-
-    .rs-content.evaluation {
-      border-left-color: var(--primary);
-      background: #f0f7ff;
-    }
-
-    .rs-content.positive {
-      border-left-color: var(--green);
-      background: #f5fbf5;
-    }
-
-    .rs-content.negative {
-      border-left-color: var(--red);
-      background: #fdf5f5;
-    }
-
-    .rs-content.pending {
-      color: var(--text-light);
-      font-style: italic;
-    }
-
-    /* ===== SCENARIO post trigger tags ===== */
-    .post.highlight-new {
-      animation: newPost 0.5s ease;
-    }
-
-    @keyframes newPost {
-      from {
-        background: #e8f4fd;
-      }
-
-      to {
-        background: white;
-      }
-    }
-
-    .no-responses {
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--text-light);
-    }
-
-    .no-responses .icon {
-      font-size: 48px;
-      margin-bottom: 12px;
-    }
-
-    .no-responses h3 {
-      font-size: 18px;
-      color: var(--text-dim);
-      margin-bottom: 8px;
-    }
-
-    /* ===== NOTIFICATION TOAST ===== */
-    .toast {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: #2c2f33;
-      color: white;
-      padding: 12px 20px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      z-index: 999;
-      display: none;
-      animation: toastIn 0.3s ease;
-      max-width: 320px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    }
-
-    .toast.show {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    @keyframes toastIn {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    /* ===== MODERATOR REPLY PREVIEW ===== */
-    .mod-reply-preview {
-      background: var(--bubble-mod);
-      border: 1px dashed var(--primary);
-      border-radius: 4px;
-      padding: 10px 14px;
-      font-size: 14px;
-      color: var(--text-dim);
-      font-style: italic;
-      margin-top: 8px;
-    }
-
-    /* ===== EVAL INLINE ===== */
-    .inline-eval {
-      margin-top: 14px;
-      padding: 12px 16px;
-      border-radius: 6px;
-      font-size: 13px;
-      line-height: 1.6;
-      border: 1px solid;
-    }
-
-    .inline-eval.loading {
-      background: #f0f7ff;
-      border-color: #b3d9f0;
-      color: var(--primary);
-    }
-
-    .inline-eval.done-great {
-      background: #f5fbf5;
-      border-color: #a8ddb5;
-    }
-
-    .inline-eval.done-ok {
-      background: #fef9e7;
-      border-color: #ffe082;
-    }
-
-    .inline-eval.done-poor {
-      background: #fdf5f5;
-      border-color: #f5b7b1;
-    }
-
-    .eval-score-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
-      font-weight: 700;
-    }
-
-    .eval-score-label {
-      font-size: 15px;
-    }
-
-    .eval-text {
-      color: var(--text-dim);
-      font-weight: 400;
-      white-space: pre-wrap;
-    }
-
-    /* ===== PROGRESS BAR ===== */
-    .progress-container {
-      width: 100%;
-      height: 6px;
-      background: #e8f0fe;
-      border-radius: 10px;
-      margin-top: 12px;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .progress-bar {
-      height: 100%;
-      background: linear-gradient(90deg, var(--primary), #64b5f6);
-      width: 0%;
-      transition: width 0.5s ease;
-      position: relative;
-    }
-
-    .progress-bar::after {
+    .course-card::before {
       content: '';
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background: linear-gradient(90deg,
-          rgba(255, 255, 255, 0) 0%,
-          rgba(255, 255, 255, 0.3) 50%,
-          rgba(255, 255, 255, 0) 100%);
-      animation: shimmer 1.5s infinite;
+      background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(255, 255, 255, 0.08), transparent 40%);
+      pointer-events: none;
     }
 
-    @keyframes shimmer {
-      from {
-        transform: translateX(-100%);
-      }
-
-      to {
-        transform: translateX(100%);
-      }
+    /* MGMT TABLE */
+    .mgmt-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: var(--bg-card);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      border: 1px solid var(--border);
     }
 
-    .progress-label {
-      font-size: 11px;
+    .mgmt-table th,
+    .mgmt-table td {
+      padding: 18px 24px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .mgmt-table th {
+      background: rgba(255, 255, 255, 0.02);
       color: var(--text-light);
-      margin-top: 6px;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .mgmt-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .mgmt-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-box {
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 90%;
+      max-width: 850px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 48px;
+      position: relative;
+      box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8);
+    }
+
+    /* SCENARIO UI (Posts) */
+    .topic-header {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px 20px 0 0;
+      padding: 40px;
+    }
+
+    .posts-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 20px 20px;
+      overflow: hidden;
+    }
+
+    .post {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
       display: flex;
-      justify-content: space-between;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      color: white;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
-    @media (max-width: 600px) {
-      .coach-stats {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .post {
-        grid-template-columns: 44px 1fr;
-        padding: 12px 14px;
-      }
-
-      .topic-title {
-        font-size: 19px;
-      }
-
-      .main-wrap {
-        padding: 12px 8px;
-      }
+    .post-username {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 16px;
     }
+
+    .post-timestamp {
+      color: var(--text-light);
+      font-size: 13px;
+    }
+
+    .post-body {
+      font-size: 15px;
+      color: var(--text);
+      margin-top: 12px;
+      line-height: 1.7;
+    }
+
+    /* ADMIN DETAIL (The "White Block" fix) */
+    .response-card {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      margin-bottom: 24px;
+      overflow: hidden;
+      transition: var(--transition);
+    }
+
+    .response-card-header {
+      background: rgba(255, 255, 255, 0.02);
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-light);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .response-body {
+      padding: 24px;
+    }
+
+    .rs-label {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--text-light);
+      letter-spacing: 0.12em;
+      margin-bottom: 8px;
+    }
+
   </style>
 </head>
 
 <body>
+  <div class="mesh-blob blob-1"></div>
+  <div class="mesh-blob blob-2"></div>
+  <div class="mesh-blob blob-3"></div>
 
   <!-- TOP NAVIGATION -->
   <header class="d-header">
-    <a class="d-logo">
-      <div class="d-logo-icon">N</div>
-      <span>NePornu</span>
+    <a href="/training" class="d-logo">
+      <div class="d-logo-icon" style="background: linear-gradient(135deg, var(--primary), var(--accent));">N</div>
+      <div class="d-logo-text"
+        style="font-size: 20px; font-weight: 900; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+        NePornu</div>
     </a>
     <nav class="d-nav-links">
-      <span class="d-nav-link active">Nejnovější</span>
-      <span class="d-nav-link">Kategorie</span>
-      <span class="d-nav-link">Deníky</span>
+      <span class="d-nav-link active" onclick="switchMode('moderator')">Moderátor</span>
+      {% if is_admin %}<span class="d-nav-link mode-btn" onclick="switchMode('coach')">Výsledky</span>
+      {% endif %}<span class="d-nav-link" style="opacity: 0.5;">Kategorie</span>
+      <span class="d-nav-link" style="opacity: 0.5;">Deníky</span>
     </nav>
     <div class="d-header-right">
-      <span class="training-badge">🎓 Trénink</span>
-      <div class="d-avatar-btn" id="user-avatar">M</div>
+      <div class="training-badge"
+        style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3); color: #818cf8; padding: 6px 12px; border-radius: 99px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em;">
+        🎓 TRÉNING</div>
+      <div class="d-avatar-btn" id="user-avatar"
+        style="background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid var(--border);">M</div>
+      <a href="/logout" class="d-nav-link"
+        style="color: var(--accent); font-weight: 800; opacity: 0.8; transition: 0.2s;">Odhlásit</a>
     </div>
   </header>
-
-  <!-- MODE BAR -->
-  <div class="mode-bar">
-    <span class="mode-label">Pohled:</span>
-    <button class="mode-btn active" onclick="switchMode('moderator')">🛡️ Moderátor</button>
-    <button class="mode-btn" onclick="switchMode('coach')">👨🏫 Kouč / Výsledky</button>
-  </div>
-
-  <!-- ======================================================
-     MODERATOR VIEW
-     ====================================================== -->
-  <div id="moderator-view">
+  <!--======================================================LANDING VIEW (Course
+    Selection)======================================================-->
+  <div id="landing-view">
     <div class="main-wrap">
-
-      <!-- Scenario navigator -->
-      <div class="scenario-nav">
-        <span class="scenario-nav-label">Scénář:</span>
-        <div class="scenario-dots" id="scenario-dots"></div>
-        <button class="scenario-skip" onclick="skipScenario()">Přeskočit →</button>
+      <div class="header-section" style="text-align:center; padding: 120px 20px 60px;">
+        <h1 style="font-size: 64px; font-weight: 900; letter-spacing: -0.05em; margin-bottom: 24px;">
+          Posuňte svou <span
+            style="background: linear-gradient(135deg, #818cf8, #f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">moderaci</span>
+          výš
+        </h1>
+        <p
+          style="font-size: 20px; color: var(--text-dim); max-width: 700px; margin: 0 auto; line-height: 1.6; font-weight: 400;">
+          Interaktivní tréninkové centrum pro moderátory. Vyberte si specializované školení a začněte zdokonalovat své
+          dovednosti v bezpečném prostředí.
+        </p>
       </div>
-
-      <!-- Topic Header -->
+      <div id="course-grid" class="course-grid">
+        <!-- Will be populated by JS -->
+        <div style="text-align:center; width:100%; padding: 40px; color: var(--text-light); font-weight: 500;">
+          <div class="loading-spinner"
+            style="width:40px; height:40px; border:4px solid var(--primary-light); border-top-color:var(--primary); border-radius:50%; animation: spin 1s linear infinite; margin: 0 auto 16px;">
+          </div>Načítám dostupné kurzy...
+        </div>
+      </div>
+    </div>
+  </div>
+  <!--======================================================MODERATOR VIEW (Scenario
+      Execution)======================================================-->
+  <div id="moderator-view" style="display:none;">
+    <div class="main-wrap">
+      <div id="course-breadcrumb"
+        style="margin-bottom: 24px; color:var(--text-light); font-size: 14px; display: flex; align-items: center; gap: 8px;">
+        <span
+          style="cursor:pointer; display: flex; align-items: center; gap: 6px; color: var(--primary); font-weight: 600;"
+          onclick="exitCourse()"><svg style="width:16px;height:16px;" fill="none" stroke="currentColor"
+            viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6">
+            </path>
+          </svg>Kurzy </span><span style="opacity: 0.5;">/</span><span id="breadcrumb-course-name"
+          style="color: var(--text); font-weight: 600;">Moje školení</span>
+      </div>
+      <div class="scenario-nav"><span class="scenario-nav-label">Scénář:</span>
+        <div class="scenario-dots" id="scenario-dots"></div><button class="scenario-skip" onclick="skipScenario()"
+          style="margin-left: auto;">Přeskočit →</button>
+      </div>
       <div class="topic-header">
-        <div>
-          <span class="topic-category-tag" id="topic-cat-tag">Deníky</span>
-        </div>
+        <div><span class="topic-category-tag" id="topic-cat-tag">Deníky</span></div>
         <h1 class="topic-title" id="topic-title">Načítání scénáře…</h1>
-        <div class="topic-meta">
-          <span>📅 <span id="topic-date">dnes</span></span>
-          <span>👁 <span id="topic-views">47</span> zobrazení</span>
-          <span>💬 <span id="topic-replies">3</span> odpovědi</span>
+        <div class="topic-meta"><span>📅 <span id="topic-date">dnes</span></span><span>👁 <span
+              id="topic-views">47</span>zobrazení</span><span>💬 <span id="topic-replies">3</span>odpovědi</span>
         </div>
       </div>
-
-      <!-- Posts -->
-      <div class="posts-container" id="posts-container">
-        <!-- injected -->
-      </div>
-
-      <!-- Reply box -->
-      <div class="reply-zone" id="reply-zone">
-        <div class="reply-header">
-          <div class="avatar" id="reply-avatar" style="background:#0088cc; width:28px; height:28px; font-size:12px;">M
+      <div class="posts-container" id="posts-container"></div>
+      <div id="interactive-zone">
+        <div class="reply-zone" id="reply-zone">
+          <div class="reply-header">
+            <div class="avatar" id="reply-avatar" style="background:#0088cc; width:28px; height:28px; font-size:12px;">M
+            </div>
+            <div class="reply-title" id="reply-title">Moderátorská odpověď</div>
           </div>
-          <div class="reply-title">Moderátorská odpověď</div>
-          <div class="replying-to">↩ odpověď ve vláknu</div>
-        </div>
-        <div class="reply-body">
-          <div class="reply-toolbar">
-            <button class="toolbar-btn" title="Tučně" onclick="insertFormat('**','**')"><b>B</b></button>
-            <button class="toolbar-btn" title="Kurzíva" onclick="insertFormat('_','_')"><i>I</i></button>
-            <button class="toolbar-btn" title="Citace" onclick="insertFormat('> ','')">❝</button>
-            <button class="toolbar-btn" title="Odkaz" onclick="insertFormat('[','](url)')">🔗</button>
+          <div class="reply-body" id="reply-text-zone"><textarea class="reply-textarea" id="reply-textarea"
+              placeholder="Napiš svou moderátorskou odpověď…" oninput="onTextareaInput(this)"></textarea></div>
+          <div class="reply-body" id="reply-abc-zone" style="display:none;">
+            <div class="option-grid" id="abc-options"></div>
           </div>
-          <textarea class="reply-textarea" id="reply-textarea"
-            placeholder="Napiš svou moderátorskou odpověď… Přemýšlej: Co tento uživatel potřebuje? Jak zareaguješ empaticky a profesionálně?"
-            oninput="onTextareaInput(this)"></textarea>
-        </div>
-        <div class="reply-footer">
-          <div class="reply-info">
-            Délka odpovědi: <span class="char-count" id="char-count">0</span> znaků
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn-secondary" onclick="clearReply()">Smazat</button>
-            <button class="btn-submit" id="submit-btn" onclick="submitReply()">
-              <span>Odeslat odpověď</span> ➤
-            </button>
+          <div class="reply-body" id="reply-dropdown-zone" style="display:none;"><select class="reply-select"
+              id="reply-select">
+              <option value="">Vyberte jednu z možností...</option>
+            </select></div>
+          <div class="reply-footer">
+            <div class="reply-info" id="char-count-info">Znaků: <span class="char-count" id="char-count">0</span>
+            </div><button class="btn-submit" id="submit-btn" onclick="submitReply()">Odeslat ➤</button>
           </div>
         </div>
       </div>
-
-      <!-- Inline evaluation result shown after submit -->
       <div id="inline-eval-container"></div>
-
-      <!-- Next scenario button (shown after submit) -->
-      <div id="next-btn-container" style="display:none; text-align:center; margin-top:20px;">
-        <button class="btn-submit" onclick="nextScenario()" style="display:inline-flex;">
-          Další scénář →
-        </button>
+      <div class="eval-info-box" id="eval-info-box" style="display:none; margin-top:20px;">
+        <div class="eval-info-title">🤖 Jak analytik hodnotí vaši odpověď?</div>
+        <div class="eval-criteria-grid">
+          <div class="eval-criterion"><strong>🤝 Empatie (0-3b)</strong></div>
+          <div class="eval-criterion"><strong>📜 Procedura (0-3b)</strong></div>
+          <div class="eval-criterion"><strong>⚠️ Rizika (0-4b)</strong></div>
+        </div>
       </div>
-
+      <div id="next-btn-container" style="display:none; text-align:center; margin-top:20px;"><button class="btn-submit"
+          onclick="nextScenario()">Další scénář →</button></div>
     </div>
   </div>
-
-  <!-- ======================================================
-     COACH VIEW
-     ====================================================== -->
-  <div id="coach-view">
+  <!--======================================================COACH VIEW (Admin
+        Dashboard)======================================================-->
+  <div id="coach-view" style="display:none;">
     <div class="main-wrap">
-      <div class="coach-header">
-        <div style="font-size:36px;">👨🏫</div>
-        <div>
-          <h2>Přehled kouče</h2>
-          <p>Vidíš odpovědi moderátora a AI hodnocení pro každý scénář</p>
-        </div>
-        <div style="margin-left:auto; text-align:right;">
-          <div style="font-size:13px; color:rgba(255,255,255,0.5);">Tréninkový modul</div>
-          <div style="font-size:18px; font-weight:700;" id="coach-mod-name">Moderátor</div>
+      <div class="admin-nav">
+        <div class="admin-nav-item active" onclick="switchAdminTab('stats')" id="tab-stats">📊 Statistiky</div>
+        <div class="admin-nav-item" onclick="switchAdminTab('courses')" id="tab-courses">📚 Správa kurzů</div>
+        <div class="admin-nav-item" onclick="switchAdminTab('scenarios')" id="tab-scenarios">📝 Scénáře</div>
+        <div class="admin-nav-item" onclick="switchAdminTab('users')" id="tab-users">👥 Uživatelé</div>
+      </div>
+      <div id="admin-tab-stats" class="admin-tab-pane">
+        <div class="admin-container" id="admin-dashboard-root">
+          <div class="admin-sidebar" id="admin-sidebar-list">
+            <h3>Aktivní moderátoři</h3>
+            <div id="trainee-list-inner"></div>
+          </div>
+          <div class="admin-content-area">
+            <div id="trainee-details-header" style="display:none; margin-bottom:20px;">
+              <h2 id="selected-trainee-name"></h2>
+            </div>
+            <div id="admin-responses-list"></div>
+          </div>
         </div>
       </div>
-
-      <div class="coach-stats" id="coach-stats-row">
-        <div class="coach-stat">
-          <div class="coach-stat-val blue" id="cs-total">0</div>
-          <div class="coach-stat-label">Dokončeno</div>
+      <div id="admin-tab-courses" class="admin-tab-pane" style="display:none;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+          <h2>Správa kurzů</h2>
+          <div style="display:flex; gap:10px;"><button class="btn-secondary" onclick="openScenarioModal()">+Tvůrce
+              scénáře</button><button class="btn-submit" onclick="openCourseModal()">+Nový kurz</button></div>
         </div>
-        <div class="coach-stat">
-          <div class="coach-stat-val green" id="cs-score">—</div>
-          <div class="coach-stat-label">Průměr. skóre</div>
-        </div>
-        <div class="coach-stat">
-          <div class="coach-stat-val green" id="cs-great">0</div>
-          <div class="coach-stat-label">Výborné</div>
-        </div>
-        <div class="coach-stat">
-          <div class="coach-stat-val red" id="cs-poor">0</div>
-          <div class="coach-stat-label">Slabé</div>
-        </div>
+        <div id="admin-courses-list"></div>
       </div>
-
-      <div id="responses-list">
-        <div class="no-responses">
-          <div class="icon">📭</div>
-          <h3>Zatím žádné odpovědi</h3>
-          <p>Moderátor ještě neodpověděl na žádný scénář. Přepni na pohled "Moderátor" a začni trénovat.</p>
+      <div id="admin-tab-scenarios" class="admin-tab-pane" style="display:none;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+          <h2>Správa scénářů</h2><button class="btn-submit" onclick="openScenarioModal()">+Nový scénář</button>
         </div>
+        <div id="admin-scenarios-list"></div>
+      </div>
+      <div id="admin-tab-users" class="admin-tab-pane" style="display:none;">
+        <h2>Správa uživatelů</h2>
+        <div id="admin-users-list"></div>
       </div>
     </div>
   </div>
-
+  <!-- MODALS -->
+  <div id="course-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h2 id="modal-c-title">Editace kurzu</h2>
+      <div style="margin-top:20px;"><label>Název</label><input type="text" id="m-c-name" class="reply-textarea"
+          style="min-height:40px; margin-bottom:15px;"><label>Role (oddělené čárkou)</label><input type="text"
+          id="m-c-roles" class="reply-textarea" style="min-height:40px;" placeholder="default, admin, guest">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;"><button class="btn-secondary"
+          onclick="closeModal('course-modal')">Zavřít</button><button class="btn-submit"
+          onclick="saveCourse()">Uložit</button></div>
+    </div>
+  </div>
+  <div id="scenario-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 800px;">
+      <h2>Tvůrce scénáře</h2>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:20px;">
+        <div><label>Název</label><input type="text" id="ms-title" class="reply-textarea"
+            style="min-height:40px; margin-bottom:10px;"><select id="ms-type" class="reply-textarea"
+            style="min-height:40px; margin-bottom:10px;" onchange="toggleCreatorOptions()">
+            <option value="text">Textová odpověď</option>
+            <option value="abc">ABC (výběr)</option>
+            <option value="dropdown">Dropdown</option>
+          </select><label>Přiřadit ke kurzu</label><select id="ms-course-id" class="reply-textarea"
+            style="min-height:40px; margin-bottom:10px;">
+            <option value="">-- Nepřiřazeno --</option>
+          </select><label>Situace (Kontext)</label><textarea id="ms-context" class="reply-textarea"
+            style="min-height:100px;"></textarea></div>
+        <div><label>Otázka</label><input type="text" id="ms-question" class="reply-textarea"
+            style="min-height:40px; margin-bottom:10px;">
+          <div id="ms-options-area" style="display:none;"><label>Možnosti</label>
+            <div id="ms-options-list"></div><button class="btn-secondary" style="width:100%; margin-top:10px;"
+              onclick="addCreatorOption()">+Přidat možnost</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:30px;"><button class="btn-secondary"
+          onclick="closeModal('scenario-modal')">Zrušit</button><button class="btn-submit"
+          onclick="saveAdminScenario()">Uložit scénář</button></div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+  </div>
   <!-- Toast -->
   <div class="toast" id="toast"></div>
+  <script> // ===================== DATA & STATE =====================
 
-  <script>
-    // ===================== DATA =====================
-    const SCENARIOS = [
-      {
-        id: 1,
-        category: 'krize',
-        catLabel: 'Krizová situace',
-        catClass: 'cat-krize',
-        topicCat: 'Deníky',
-        title: 'Deník — Den 12. Nevím co dál.',
-        views: 89, replies: 4,
-        date: 'dnes v 23:14',
-        context: '⚠️ KONTEXT PRO TRÉNINK: Uživatel je na fóru 3 měsíce, 45 příspěvků. Toto je zápis v jeho deníku po relapsu.',
-        posts: [
-          {
-            username: 'Tomáš_87',
-            usertitle: 'Člen',
-            utClass: '',
-            avatarBg: '#c0392b',
-            avatarLetter: 'T',
-            time: 'dnes v 23:14',
-            num: 1,
-            body: `Den 12. Nebo spíš byl. Dnes jsem znovu selhal.
+    const USER_INFO = {
+      id: "{{ user.id if user else 'guest'}}",
+      username: "{{ user.username if user else 'Host'}}",
+      avatar: "{{ user.avatar if user else ''}}",
+      role: "{{ 'admin' if is_admin else 'user'}}"
+    };
 
-Nevím co dělat. Jsem tak unavený z toho neustálého boje se sebou. Zklamal jsem svoji ženu, zklamal jsem sám sebe. Přemýšlím jestli to má vůbec smysl dál zkoušet. Možná by bylo lepší, kdybych tu prostě nebyl.
-
-Omluvte ten výlev.`,
-            crisis: true,
-          },
-          {
-            username: 'Jan_Nový',
-            usertitle: 'Člen',
-            utClass: '',
-            avatarBg: '#2980b9',
-            avatarLetter: 'J',
-            time: 'dnes v 23:31',
-            num: 2,
-            body: `Tomáši, drž se. Relaps není konec. Jsem tu s tebou.`,
-            crisis: false,
-          },
-        ],
-        question: 'Příspěvek Tomáše obsahuje varovný signál ("bylo by lepší, kdybych tu nebyl"). Jak jako moderátor reaguješ?',
-      },
-      {
-        id: 2,
-        category: 'pravidla',
-        catLabel: 'Pravidla fóra',
-        catClass: 'cat-pravidla',
-        topicCat: 'Projekt NePornu',
-        title: 'Doporučuji tuto appku na blokování!',
-        views: 34, replies: 1,
-        date: 'dnes v 14:22',
-        context: '📋 KONTEXT PRO TRÉNINK: Nový uživatel, registrován před 2 dny, 3 příspěvky. Odkaz vede na legitimní aplikaci, ale nebyl ověřen moderátory.',
-        posts: [
-          {
-            username: 'Lukáš_nový',
-            usertitle: 'Nový uživatel',
-            utClass: 'new-user',
-            avatarBg: '#e67e22',
-            avatarLetter: 'L',
-            time: 'dnes v 14:22',
-            num: 1,
-            body: `Zdravím všechny! Chci se podělit o tip.
-
-Zkoušel jsem tuhle appku [odkaz na blokovací software] a fakt mi to pomáhá. Je zdarma a funguje skvěle na blokování nevhodného obsahu. Doporučuji všem kdo s tím bojuje!`,
-            crisis: false,
-          },
-        ],
-        question: 'Nový uživatel sdílí neověřený odkaz. Jak postupuješ?',
-      },
-      {
-        id: 3,
-        category: 'konflikt',
-        catLabel: 'Konflikt uživatelů',
-        catClass: 'cat-konflikt',
-        topicCat: 'Deníky',
-        title: 'Start do života — Marekův deník',
-        views: 312, replies: 28,
-        date: 'před 2 hodinami',
-        context: '📋 KONTEXT PRO TRÉNINK: Oba uživatelé jsou v komunitě přes rok. Pavel útočí na Marka v jeho vlastním deníkovém vláknu.',
-        posts: [
-          {
-            username: 'Marek_svoboda',
-            usertitle: 'Člen',
-            utClass: '',
-            avatarBg: '#27ae60',
-            avatarLetter: 'M',
-            time: 'před 3 hodinami',
-            num: 1,
-            body: `Dnes jsem zkusil novou techniku — studená sprcha ráno pomáhá. Doporučuji ostatním, mně to funguje výborně!`,
-            crisis: false,
-          },
-          {
-            username: 'Pavel_99',
-            usertitle: 'Člen',
-            utClass: '',
-            avatarBg: '#e74c3c',
-            avatarLetter: 'P',
-            time: 'před 2 hodinami',
-            num: 2,
-            body: `@Marek_svoboda prosím tě, přestaň radit ostatním. Sám jsi selhal minulý měsíc 3krát, takže proč vůbec mluvíš? Tahle komunita nepotřebuje tvoje "rady" od někoho, kdo to nezvládá.`,
-            crisis: false,
-          },
-        ],
-        question: 'Pavel veřejně napadl Marka v jeho vlastním deníku. Jak situaci moderuješ?',
-      },
-      {
-        id: 4,
-        category: 'podpora',
-        catLabel: 'Nový uživatel',
-        catClass: 'cat-podpora',
-        topicCat: 'Deníky',
-        title: 'Nevím kde začít',
-        views: 22, replies: 0,
-        date: 'dnes v 18:05',
-        context: '📋 KONTEXT PRO TRÉNINK: Zcela nový uživatel, žádné předchozí příspěvky. Přišel dnes poprvé.',
-        posts: [
-          {
-            username: 'anon_8847',
-            usertitle: 'Nový uživatel',
-            utClass: 'new-user',
-            avatarBg: '#7f8c8d',
-            avatarLetter: '?',
-            time: 'dnes v 18:05',
-            num: 1,
-            body: `Ahoj. Nevím jak tohle napsat.
-
-Registroval jsem se teprve dnes. Bojuji s pornografií asi 8 let. Nikdy jsem to nikomu neřekl. Teprve dnes jsem si přiznal, že mám problém a že to sám nevyřeším.
-
-Nevím kde začít nebo co tady dělat. Je mi trochu trapně.`,
-            crisis: false,
-          },
-        ],
-        question: 'Nový, zranitelný uživatel poprvé přiznal problém. Jak reaguje moderátor?',
-      },
-      {
-        id: 5,
-        category: 'spam',
-        catLabel: 'Spam / Komerce',
-        catClass: 'cat-spam',
-        topicCat: 'Vítejte na fóru',
-        title: 'Nabízím koučink — pomůžu vám!',
-        views: 18, replies: 0,
-        date: 'před 10 minutami',
-        context: '📋 KONTEXT PRO TRÉNINK: Účet vytvořen před 45 minutami. Stejný příspěvek byl vložen do 3 různých vláken.',
-        posts: [
-          {
-            username: 'RecoveryPro_Karel',
-            usertitle: 'Nový uživatel',
-            utClass: 'new-user',
-            avatarBg: '#8e44ad',
-            avatarLetter: 'K',
-            time: 'před 10 minutami',
-            num: 1,
-            body: `Dobrý den! Jsem certifikovaný recovery coach a pomohl jsem již stovkám mužů překonat závislost na pornografii.
-
-Nabízím individuální online sezení. První konzultace zdarma, poté 800 Kč/hod.
-
-Pro více info navštivte můj web nebo mi napište soukromou zprávu. 🙏`,
-            crisis: false,
-          },
-        ],
-        question: 'Tento příspěvek je komerční reklama od nového účtu, ve více vláknech. Jak postupuješ?',
-      },
-      {
-        id: 6,
-        category: 'podpora',
-        catLabel: 'Partner závislého',
-        catClass: 'cat-podpora',
-        topicCat: 'Závislý partner',
-        title: 'Nevím co dělat — manžel a porno',
-        views: 55, replies: 2,
-        date: 'dnes v 11:30',
-        context: '📋 KONTEXT PRO TRÉNINK: Žena hledající pomoc ohledně manžela. Fórum má sekci "Závislý partner" přímo pro tyto případy.',
-        posts: [
-          {
-            username: 'Simona_K',
-            usertitle: 'Nový uživatel',
-            utClass: 'new-user',
-            avatarBg: '#e91e63',
-            avatarLetter: 'S',
-            time: 'dnes v 11:30',
-            num: 1,
-            body: `Dobrý den, nevím jestli jsem na správném místě.
-
-Před týdnem jsem zjistila, že můj manžel kouká na porno skoro každý den, i přesto že spolu máme vztah a jsem doma. Cítím se nedostatečná, podváděná, zničená. On tvrdí, že to není problém.
-
-Nevím co dělat, nevím na koho se obrátit. Přišla jsem sem, protože nevím kam jinam jít.`,
-            crisis: false,
-          },
-        ],
-        question: 'Žena přišla na fórum s problémem partnera. Jak ji jako moderátor přivítáš a nasměruješ?',
-      },
-    ];
-
-    // ===================== STATE =====================
     let currentScenario = 0;
     let mode = 'moderator';
-    let responses = {}; // scenarioId -> { text, eval, score }
-    let moderatorName = 'Moderátor';
+
+    let responses = {}; // scenarioId -> { text, eval, score, timestamp}let SCENARIOS = [];
+
+    let courses = [];
+    let currentCourseId = null;
+    let adminTab = 'stats';
 
     // ===================== STORAGE =====================
-    function saveResponses() {
-      localStorage.setItem('nepornu_responses', JSON.stringify(responses));
-      localStorage.setItem('nepornu_current', String(currentScenario));
-    }
+    async function loadResponses() {
+      try {
+        const resp = await fetch("/api/training/history");
+        const data = await resp.json();
 
-    function loadResponses() {
-      const r = localStorage.getItem('nepornu_responses');
-      if (r) responses = JSON.parse(r);
-      const c = localStorage.getItem('nepornu_current');
-      if (c) currentScenario = parseInt(c) || 0;
-    }
+        if (data.history) {
+          data.history.forEach(h => {
+            responses[h.scenario_id] = {
 
-    // ===================== RENDER =====================
+              text: h.user_reply,
+              eval: `${h.evaluation.summary}\n\n✅ ${h.evaluation.positive}\n\n📈 ${h.evaluation.improve}\n\n💡 Tip: ${h.evaluation.tip}`,
+              score: h.evaluation.score,
+              timestamp: h.timestamp
+            };
+          });
+        }
+      } catch (e) {
+        console.error("Failed to load history:", e);
+      }
+    } async function fetchCourses() {
+      try {
+        const resp = await fetch('/api/training/courses');
+        const data = await resp.json();
+        courses = data.courses || [];
+        renderCourses();
+      } catch (e) {
+        showToast("Chyba při načítání kurzů");
+      }
+    } function renderCourses() {
+      const grid = document.getElementById('course-grid');
+
+      if (courses.length === 0) {
+        grid.innerHTML = '<div style="text-align:center; width:100%; padding: 80px; color:var(--text-light); font-size: 18px;">✨ Zatím tu nejsou žádné kurzy, ale brzy přibudou!</div>';
+        return;
+      } grid.innerHTML = courses.map(c => `
+        <div class="course-card" onclick="selectCourse('${c.id}')">
+          <div style="width: 48px; height: 48px; background: rgba(99, 102, 241, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
+            <svg style="width: 24px; height: 24px; color: var(--primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18 18.247 18.477 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+          </div>
+          <h2 style="font-size: 24px; font-weight: 800; letter-spacing: -0.02em;">${c.name}</h2>
+          <p style="opacity: 0.7; font-size: 15px;">${c.description || 'Prozkoumejte tento specializovaný modul a staňte se mistrem moderace.'}</p>
+          <div class="course-meta" style="margin-top: auto; border: none; padding: 0;">
+            <span class="course-tag" style="background: rgba(255,255,255,0.05); color: var(--text-dim); padding: 4px 10px; border-radius: 6px;">
+              ${(c.allowed_roles || ['Všichni']).join(', ')}</span>
+            <span style="color: var(--primary); font-weight: 700; display: flex; align-items: center; gap: 4px;">
+              Začít <svg style="width:16px; height:16px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </span>
+          </div>
+        </div>
+      `).join('');
+
+      // Add mouse move listener for the spotlight effect
+      document.querySelectorAll('.course-card').forEach(card => {
+        card.onmousemove = e => {
+          const rect = card.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          card.style.setProperty("--mouse-x", `${x}px`);
+          card.style.setProperty("--mouse-y", `${y}px`);
+        };
+      });
+    } async function selectCourse(id) {
+      currentCourseId = id;
+      const course = courses.find(c => c.id === id);
+      document.getElementById('breadcrumb-course-name').textContent = course ? course.name : 'Kurz';
+
+      // Load scenarios for this course
+      await fetchScenarios(id);
+
+      document.getElementById('landing-view').style.display = 'none';
+      document.getElementById('moderator-view').style.display = 'block';
+
+      if (SCENARIOS.length > 0) {
+        currentScenario = 0;
+        renderScenario();
+      }
+    } function exitCourse() {
+      currentCourseId = null;
+      document.getElementById('moderator-view').style.display = 'none';
+      document.getElementById('landing-view').style.display = 'block';
+    } async function fetchScenarios(courseId) {
+      try {
+
+        // Updated API call with course filter
+        const url = courseId ? `/api/training/scenarios?course_id=${courseId}` : '/api/training/scenarios';
+        const resp = await fetch(url);
+        const data = await resp.json();
+        SCENARIOS = data.scenarios || [];
+
+        if (SCENARIOS.length === 0) {
+          SCENARIOS = [{
+            id: 'empty', title: 'Tento kurz zatím nemá žádná cvičení',
+            context: 'Správce kurzu sem brzy přidá nové scénáře.',
+            question: 'Zkuste jiný kurz.',
+            posts: []
+          }];
+        }
+      } catch (e) {
+        console.error("Fetch scenarios failed:", e);
+      }
+    }// ===================== RENDER =====================
     function renderScenarioDots() {
       const container = document.getElementById('scenario-dots');
+      if (!SCENARIOS || SCENARIOS.length === 0) return;
+
       container.innerHTML = SCENARIOS.map((s, i) => {
         let cls = 'dot pending';
         if (i === currentScenario) cls = 'dot active';
         else if (responses[s.id]) cls = 'dot done';
-        return `<div class="${cls}" onclick="goToScenario(${i})" title="${s.catLabel}">${i + 1}</div>`;
-      }).join('');
-    }
 
-    function renderPosts(scenario) {
+        return `<div class="${cls}" onclick="goToScenario(${i})" title="${s.catLabel || ''}" >${i + 1}</div>`;
+      }).join('');
+    } function renderPosts(scenario) {
       const container = document.getElementById('posts-container');
 
-      let html = '';
+      if (!scenario || !scenario.posts) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;">Počkejte prosím, načítám cvičení...</div>';
+        return;
+      } let html = '';
+
       scenario.posts.forEach((p, idx) => {
         const isLast = idx === scenario.posts.length - 1;
-        html += `
-      <div class="post ${p.crisis ? 'crisis-post' : ''}">
-        <div class="post-avatar-col">
-          <div class="avatar" style="background:${p.avatarBg}">${p.avatarLetter}</div>
-          ${!isLast ? '<div class="post-connector"></div>' : ''}
-        </div>
-        <div class="post-main">
-          <div class="post-header">
-            <span class="post-username"><a href="#">${p.username}</a></span>
-            <span class="post-usertitle ${p.utClass}">${p.usertitle}</span>
-            <span class="post-timestamp">${p.time}</span>
-          </div>
-          <div class="post-body">${p.body}</div>
-          <div class="post-actions">
-            <button class="post-action-btn">❤️ Líbí se <span style="opacity:0.6">0</span></button>
-            <button class="post-action-btn">↩ Citovat</button>
-            <button class="post-action-btn">🔗 Odkaz</button>
-          </div>
-        </div>
-        <div class="post-number">#${p.num}</div>
-      </div>
-    `;
+
+        html += ` <div class="post ${p.crisis ? 'crisis-post' : ''}" > <div class="post-avatar-col" > <div class="avatar" style="background:${p.avatarBg || '#0088cc'}" >${p.avatarLetter || p.username[0]}</div> ${!isLast ? '<div class="post-connector"></div>' : ''}</div> <div class="post-main" > <div class="post-header" > <span class="post-username" ><a href="#" >${p.username}</a></span> <span class="post-usertitle ${p.utClass || ''}" >${p.usertitle || 'Člen'}</span> <span class="post-timestamp" >${p.time || 'včera'}</span> </div> <div class="post-body" >${p.body}</div> <div class="post-actions" > <button class="post-action-btn" >❤️ Líbí se <span style="opacity:0.6" >0</span></button> <button class="post-action-btn" >↩ Citovat</button> <button class="post-action-btn" >🔗 Odkaz</button> </div> </div> <div class="post-number" >#${p.num}</div> </div> `;
       });
 
-      // If already answered, show the moderator's reply in the thread
       const s = SCENARIOS[currentScenario];
+
       if (responses[s.id]) {
         const resp = responses[s.id];
         const scoreLabel = resp.score >= 8 ? '✅ Výborná odpověď' : resp.score >= 5 ? '⚠️ Přijatelná odpověď' : '❌ Slabá odpověď';
         const evalClass = resp.score >= 8 ? 'done-great' : resp.score >= 5 ? 'done-ok' : 'done-poor';
-        html += `
-      <div class="post highlight-new">
-        <div class="post-avatar-col">
-          <div class="avatar" style="background:#0088cc; position:relative;">
-            M
-            <span class="avatar-mod-badge">🛡</span>
-          </div>
-        </div>
-        <div class="post-main">
-          <div class="post-header">
-            <span class="post-username"><a href="#">${moderatorName}</a></span>
-            <span class="post-usertitle mod">Moderátor</span>
-            <span class="post-timestamp">právě teď</span>
-          </div>
-          <div class="post-body">${escHtml(resp.text)}</div>
-          <div class="inline-eval ${evalClass}">
-            <div class="eval-score-row">
-              <span>${scoreLabel}</span>
-              <span style="margin-left:auto; font-size:18px; font-weight:900">${resp.score}/10</span>
-            </div>
-            <div class="eval-text">${resp.eval || 'Hodnocení…'}</div>
-          </div>
-        </div>
-        <div class="post-number">#${s.posts.length + 1}</div>
-      </div>
-    `;
-      }
 
-      container.innerHTML = html;
-    }
-
-    function renderScenario() {
+        html += ` <div class="post highlight-new"><div class="post-avatar-col"><div class="avatar" style="background:#0088cc; position:relative;">${USER_INFO.username[0]}<span class="avatar-mod-badge">🛡</span></div></div><div class="post-main"><div class="post-header"><span class="post-username"><a href="#">${USER_INFO.username}</a></span><span class="post-usertitle mod">Moderátor</span><span class="post-timestamp">právě teď</span></div><div class="post-body">${escHtml(resp.text)}</div><div class="inline-eval ${evalClass}"><div class="eval-score-row"><span>${scoreLabel}</span><span style="margin-left:auto; font-size:18px; font-weight:900">${resp.score}/10</span></div><div class="eval-text">${resp.eval || 'Hodnocení…'}</div></div></div><div class="post-number">#${scenario.posts.length + 1}</div></div>`;
+      } container.innerHTML = html;
+    } function renderScenario() {
+      if (!SCENARIOS[currentScenario]) return;
       const s = SCENARIOS[currentScenario];
 
-      // Header
-      document.getElementById('topic-cat-tag').textContent = s.topicCat;
-      document.getElementById('topic-cat-tag').className = `topic-category-tag ${s.catClass}`;
-      document.getElementById('topic-title').textContent = s.title;
-      document.getElementById('topic-date').textContent = s.date;
-      document.getElementById('topic-views').textContent = s.views;
-      document.getElementById('topic-replies').textContent = s.replies;
+      document.getElementById('topic-cat-tag').textContent = s.topicCat || 'Obecné';
 
-      // Context box (only if not already answered)
+      document.getElementById('topic-cat-tag').className = `topic-category-tag ${s.catClass || 'cat-krize'}`;
+      document.getElementById('topic-title').textContent = s.title;
+      document.getElementById('topic-date').textContent = s.date || 'dnes';
+      document.getElementById('topic-views').textContent = s.views || 0;
+      document.getElementById('topic-replies').textContent = s.replies || 0;
+
       const existingCtx = document.querySelector('.scenario-ctx');
       if (existingCtx) existingCtx.remove();
+
       if (!responses[s.id]) {
         const ctxEl = document.createElement('div');
         ctxEl.className = 'scenario-ctx';
-        ctxEl.innerHTML = `<strong>🎓 Situace pro trénink:</strong> ${s.context}<br><br><strong>❓ Tvůj úkol:</strong> ${s.question}`;
-        document.querySelector('.topic-header').insertAdjacentElement('afterend', ctxEl);
-      }
 
-      renderPosts(s);
+        ctxEl.innerHTML = `<strong>🎓 Situace pro trénink:</strong>${s.context}<br><br><strong>❓ Tvůj úkol:</strong>${s.question || 'Odpověz uživateli.'}`;
+        document.querySelector('.topic-header').insertAdjacentElement('afterend', ctxEl);
+      } renderPosts(s);
       renderScenarioDots();
 
-      // Reply zone
       const replyZone = document.getElementById('reply-zone');
       const evalContainer = document.getElementById('inline-eval-container');
       const nextBtnContainer = document.getElementById('next-btn-container');
-      const textarea = document.getElementById('reply-textarea');
+
+      const textZone = document.getElementById('reply-text-zone');
+      const abcZone = document.getElementById('reply-abc-zone');
+      const dropdownZone = document.getElementById('reply-dropdown-zone');
+      const charCountInfo = document.getElementById('char-count-info');
+      const replyTitle = document.getElementById('reply-title');
 
       if (responses[s.id]) {
         replyZone.style.display = 'none';
         evalContainer.innerHTML = '';
+        if (document.getElementById('eval-info-box')) document.getElementById('eval-info-box').style.display = 'block';
         nextBtnContainer.style.display = currentScenario < SCENARIOS.length - 1 ? 'block' : 'none';
-        if (currentScenario >= SCENARIOS.length - 1) {
-          nextBtnContainer.innerHTML = `<div style="text-align:center; padding: 20px 0;">
-        <h3 style="color:var(--text-dim); margin-bottom:8px;">🎉 Všechny scénáře dokončeny!</h3>
-        <p style="color:var(--text-light); margin-bottom:16px;">Přepni na pohled Kouče pro detailní výsledky.</p>
-        <button class="btn-submit" onclick="switchMode('coach')" style="display:inline-flex;">Zobrazit výsledky →</button>
-      </div>`;
-          nextBtnContainer.style.display = 'block';
-        }
       } else {
         replyZone.style.display = 'block';
         evalContainer.innerHTML = '';
+        if (document.getElementById('eval-info-box')) document.getElementById('eval-info-box').style.display = 'none';
         nextBtnContainer.style.display = 'none';
-        textarea.value = '';
-        document.getElementById('char-count').textContent = '0';
-        document.getElementById('char-count').className = 'char-count';
-      }
-    }
 
-    // ===================== ACTIONS =====================
+        // Reset inputs
+        document.getElementById('reply-textarea').value = '';
+        document.getElementById('char-count').textContent = '0';
+        document.getElementById('reply-select').value = '';
+        window.selectedOptionIdx = null;
+
+        // Dynamic Title based on type
+        const type = s.type || 'text';
+        if (type === 'abc') replyTitle.textContent = 'Vyberte správnou odpověď';
+        else if (type === 'dropdown') replyTitle.textContent = 'Vyberte možnost ze seznamu';
+        else replyTitle.textContent = 'Moderátorská odpověď';
+
+        // Toggle Zones
+        textZone.style.display = (type === 'text') ? 'block' : 'none';
+        abcZone.style.display = (type === 'abc') ? 'block' : 'none';
+        dropdownZone.style.display = (type === 'dropdown') ? 'block' : 'none';
+        if (charCountInfo) charCountInfo.style.display = (type === 'text') ? 'block' : 'none';
+
+        if (type === 'abc') {
+          const opts = s.options || [];
+
+          document.getElementById('abc-options').innerHTML = opts.map((opt, i) => ` <div class="option-item" onclick="selectAbcOption(${i})" > <div class="option-letter" >${String.fromCharCode(65 + i)}</div> <div class="option-text" >${escHtml(opt.text)}</div> </div> `).join('');
+        } else if (type === 'dropdown') {
+          const opts = s.options || [];
+          const select = document.getElementById('reply-select');
+
+          select.innerHTML = '<option value="">Vyberte jednu z možností...</option>' + opts.map(opt => `<option value="${escHtml(opt.text)}" >${escHtml(opt.text)}</option>`).join('');
+        }
+      }
+    } function selectAbcOption(idx) {
+      window.selectedOptionIdx = idx;
+      const items = document.querySelectorAll('.option-item');
+
+      items.forEach((item, i) => {
+        if (i === idx) item.classList.add('selected');
+        else item.classList.remove('selected');
+      });
+    }// ===================== ACTIONS =====================
     function goToScenario(idx) {
       currentScenario = idx;
       renderScenario();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
 
-    function skipScenario() {
-      if (currentScenario < SCENARIOS.length - 1) {
-        goToScenario(currentScenario + 1);
-      }
-    }
-
-    function nextScenario() {
-      if (currentScenario < SCENARIOS.length - 1) {
-        goToScenario(currentScenario + 1);
-      }
-    }
-
-    function onTextareaInput(el) {
+      window.scrollTo({
+        top: 0, behavior: 'smooth'
+      });
+    } function skipScenario() {
+      if (currentScenario < SCENARIOS.length - 1) goToScenario(currentScenario + 1);
+    } function nextScenario() {
+      if (currentScenario < SCENARIOS.length - 1) goToScenario(currentScenario + 1);
+    } function onTextareaInput(el) {
       const len = el.value.length;
       const cc = document.getElementById('char-count');
       cc.textContent = len;
       cc.className = 'char-count' + (len > 50 ? ' ok' : len > 20 ? ' warn' : '');
-    }
-
-    function insertFormat(before, after) {
+    } function insertFormat(before, after) {
       const ta = document.getElementById('reply-textarea');
       const start = ta.selectionStart;
       const end = ta.selectionEnd;
@@ -1612,246 +833,439 @@ Nevím co dělat, nevím na koho se obrátit. Přišla jsem sem, protože nevím
       ta.value = ta.value.substring(0, start) + before + selected + after + ta.value.substring(end);
       ta.selectionStart = ta.selectionEnd = start + before.length + selected.length + after.length;
       ta.focus();
-    }
-
-    function clearReply() {
+    } function clearReply() {
       document.getElementById('reply-textarea').value = '';
       document.getElementById('char-count').textContent = '0';
-    }
-
-    function escHtml(str) {
+    } function escHtml(str) {
+      if (!str) return '';
       return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-    }
-
-    async function submitReply() {
-      const ta = document.getElementById('reply-textarea');
-      const text = ta.value.trim();
-      if (text.length < 10) {
-        showToast('⚠️ Odpověď je příliš krátká');
-        return;
-      }
-
+    } async function submitReply() {
       const s = SCENARIOS[currentScenario];
-      document.getElementById('submit-btn').disabled = true;
+      const type = s.type || 'text';
+      let text = '';
+
+      if (type === 'text') {
+        const ta = document.getElementById('reply-textarea');
+        text = ta.value.trim();
+
+        if (text.length < 10) {
+          showToast('⚠️ Odpověď je příliš krátká');
+          return;
+        }
+      } else if (type === 'abc') {
+        if (window.selectedOptionIdx === null) {
+          showToast('⚠️ Vyberte prosím jednu z možností');
+          return;
+        } text = s.options[window.selectedOptionIdx].text;
+      } else if (type === 'dropdown') {
+        const select = document.getElementById('reply-select');
+        text = select.value;
+
+        if (!text) {
+          showToast('⚠️ Vyberte prosím možnost ze seznamu');
+          return;
+        }
+      } const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
       document.getElementById('reply-zone').style.display = 'none';
 
-      // Show loading eval
-      evalContainer.innerHTML = `
-        <div class="inline-eval loading">
-          <div class="eval-score-row">
-            <span class="spinner"></span> 
-            <span>AI analyzuje tvou odpověď…</span>
-          </div>
-          <div class="progress-container">
-            <div class="progress-bar" id="eval-progress"></div>
-          </div>
-          <div class="progress-label">
-            <span id="progress-status">Přemýšlím...</span>
-            <span id="progress-percent">0%</span>
-          </div>
-        </div>
-      `;
+      const evalContainer = document.getElementById('inline-eval-container');
+      evalContainer.innerHTML = ` <div class="inline-eval loading"><div class="eval-score-row"><span class="spinner"></span>Vyhodnocuji odpověď…</div><div class="progress-container"><div class="progress-bar" id="eval-progress"></div></div></div>`;
 
-      // Simulating progress
       const progressBar = document.getElementById('eval-progress');
-      const progressStatus = document.getElementById('progress-status');
-      const progressPercent = document.getElementById('progress-percent');
-
       let progress = 0;
-      const statusSteps = [
-        { p: 10, s: "Načítám kontext..." },
-        { p: 30, s: "Analyzuji tón odpovědi..." },
-        { p: 50, s: "Srovnávám s pravidly fóra..." },
-        { p: 70, s: "Generuji konstruktivní zpětnou vazbu..." },
-        { p: 90, s: "Finalizuji hodnocení..." }
-      ];
 
-      const progressInterval = setInterval(() => {
-        if (progress < 95) {
-          progress += Math.random() * 2;
-          if (progress > 95) progress = 95;
-          progressBar.style.width = progress + '%';
-          progressPercent.textContent = Math.round(progress) + '%';
-
-          const step = statusSteps.find(s => progress < s.p);
-          if (step) progressStatus.textContent = step.s;
-        }
-      }, 800);
-
-      let evalText = '';
-      let score = 5;
+      const progressInt = setInterval(() => {
+        progress += Math.random() * 15;
+        if (progress > 95) progress = 95;
+        if (progressBar) progressBar.style.width = progress + '%';
+      }, 200);
 
       try {
-        const userPrompt = `SCÉNÁŘ: ${s.catLabel}\nOTÁZKA: ${s.question}\nPŘÍSPĚVEKY:\n${s.posts.map(p => `${p.username}: ${p.body}`).join('\n')}\n\nODPOVĚĎ MODERÁTORA:\n"${text}"`;
+        const userPrompt = (type === 'text') ? `SCÉNÁŘ: ${s.catLabel}\nOTÁZKA: ${s.question}\nPŘÍSPĚVEKY:\n${s.posts.map(p => `${p.username}: ${p.body}`).join('\n')}\n\nODPOVĚĎ MODERÁTORA:\n"${text}" ` : `TYP: ${type}\nOTÁZKA: ${s.question}\nVYBRANÁ ODPOVĚĎ: ${text}`;
 
         const resp = await fetch("/api/evaluate-training", {
+
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json"
+          },
           body: JSON.stringify({
-            messages: [{ role: "user", content: userPrompt }]
+            messages: [{
+              role: "user", content: userPrompt
+            }],
+            scenario_id: s.id,
+            user_reply: text,
+            scenario: s
           })
         });
 
         const data = await resp.json();
+        clearInterval(progressInt);
         if (data.error) throw new Error(data.error);
 
-        // Extract text and parse JSON (more robustly)
-        let raw = data.content?.[0]?.text || '{}';
-        let parsed = {};
+        const e = data.evaluation;
+        const score = e.score || 0;
 
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            const clean = jsonMatch[0].replace(/```json|```/g, '').trim();
-            parsed = JSON.parse(clean);
-            console.log("Parsed JSON:", parsed);
-          } catch (e) {
-            console.warn("JSON parse failed, falling back to regex extraction");
-          }
-        }
+        const bd = e.breakdown || {};
+        const aiComment = e.ai_comment || '';
 
-        // Extraction fallback if JSON fails or is missing fields
-        if (!parsed.score) {
-          const scoreMatch = raw.match(/score["\s:]+(\d+)/i) || raw.match(/hodnocení["\s:]+(\d+)/i);
-          parsed.score = scoreMatch ? parseInt(scoreMatch[1]) : 5;
-        }
-        if (!parsed.summary) {
-          const sumMatch = raw.match(/summary["\s:]+([^"\n}]+)/i) || raw.match(/shrnutí["\s:]+([^"\n}]+)/i);
-          parsed.summary = sumMatch ? sumMatch[1].trim() : raw.split('\n')[0].substring(0, 100);
-        }
-        if (!parsed.positive && !parsed.positive_feedback) {
-          const posMatch = raw.match(/(positive|positive_feedback)["\s:]+([^"\n}]+)/i) || raw.match(/(co bylo dobré|pochvala)["\s:]+([^"\n}]+)/i);
-          parsed.positive = posMatch ? (posMatch[2] || posMatch[1]).trim() : '';
-        }
-        if (!parsed.improve && !parsed.improvement) {
-          const impMatch = raw.match(/(improve|improvement)["\s:]+([^"\n}]+)/i) || raw.match(/(co lze zlepšit|zlepšení)["\s:]+([^"\n}]+)/i);
-          parsed.improve = impMatch ? (impMatch[2] || impMatch[1]).trim() : '';
-        }
-        if (!parsed.tip) {
-          const tipMatch = raw.match(/tip["\s:]+([^"\n}]+)/i);
-          parsed.tip = tipMatch ? tipMatch[1].trim() : '';
-        }
+        let evalText = `${e.summary || ''}\n\n`;
 
-        score = parsed.score || 5;
-        evalText = `${parsed.summary || 'Bez shrnutí.'}\n\n✅ ${parsed.positive || parsed.positive_feedback || 'Dobrá práce.'}\n\n📈 ${parsed.improve || parsed.improvement || 'Pokračuj v tréninku.'}\n\n💡 Tip: ${parsed.tip || 'Vždy buď slušný.'}`;
+        if (type === 'text') {
+          if (bd.empatie) evalText += `❤️ Empatie: ${bd.empatie}| `;
 
+          if (bd.procedura) evalText += `📋 Procedura: ${bd.procedura}| `;
+
+          if (bd.rizika) evalText += `⚠️ Rizika: ${bd.rizika}`;
+
+          evalText += `\n\n✅ ${e.positive || ''}\n\n📈 ${e.improve || ''}\n\n💡 Tip: ${e.tip || ''}`;
+        } else {
+          evalText += `\n\n${e.positive || ''}\n\n${e.improve || ''}`;
+        } if (aiComment) evalText += `\n\n🤖 AI komentář: ${aiComment}`;
+
+        responses[s.id] = {
+          text,
+          eval: evalText, score, timestamp: new Date().toISOString()
+        };
+        renderScenario();
+        updateCoachStats();
+
+        showToast(score >= 8 ? '✅ Skvělá odpověď!' : score >= 5 ? '📝 Odpověď ohodnocena' : '⚠️ Zkus to lépe');
       } catch (e) {
         console.error(e);
-        score = 5;
-        evalText = 'Chyba při hodnocení: ' + e.message + '\n\nKouč přezkoumá odpověď ručně.';
+        showToast('Chyba při hodnocení.');
+        document.getElementById('reply-zone').style.display = 'block';
       } finally {
-        clearInterval(progressInterval);
+        clearInterval(progressInt);
+        btn.disabled = false;
       }
+    } async function userGenerateScenario() {
+      const btn = document.getElementById('user-gen-btn');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = '🎲 Generuji...';
 
-      // Save
-      responses[s.id] = { text, eval: evalText, score, timestamp: new Date().toISOString() };
-      saveResponses();
-
-      // Re-render
-      renderScenario();
+      try {
+        const resp = await fetch('/api/training/generate', {
+          method: 'POST'
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        SCENARIOS.push(data.scenario);
+        goToScenario(SCENARIOS.length - 1);
+        showToast('🎉 Nové cvičení vytvořeno!');
+      } catch (e) {
+        showToast('Chyba: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🎲 Nové cvičení (AI)';
+      }
+    }// ===================== COACH VIEW =====================
+    async function renderCoachView() {
       updateCoachStats();
-      document.getElementById('submit-btn').disabled = false;
-      showToast(score >= 8 ? '✅ Skvělá odpověď!' : score >= 5 ? '📝 Odpověď odeslána' : '⚠️ Zkus to příště lépe');
-    }
-
-    // ===================== COACH VIEW =====================
-    function renderCoachView() {
-      updateCoachStats();
-
-      const list = document.getElementById('responses-list');
+      const list = document.getElementById('admin-responses-list');
+      if (!list) return;
 
       if (Object.keys(responses).length === 0) {
-        list.innerHTML = `
-      <div class="no-responses">
-        <div class="icon">📭</div>
-        <h3>Zatím žádné odpovědi</h3>
-        <p>Moderátor ještě neodpověděl na žádný scénář.</p>
-      </div>`;
+        list.innerHTML = `<div class="no-responses"><h3>Zatím žádné odpovědi</h3></div>`;
         return;
-      }
-
-      list.innerHTML = SCENARIOS.map(s => {
+      } list.innerHTML = SCENARIOS.map(s => {
         const r = responses[s.id];
         if (!r) return '';
-
         const scoreClass = r.score >= 8 ? 'great' : r.score >= 5 ? 'ok' : 'poor';
-        const scoreLabel = r.score >= 8 ? `⭐ ${r.score}/10` : r.score >= 5 ? `📝 ${r.score}/10` : `⚠️ ${r.score}/10`;
 
-        return `
-      <div class="response-card">
-        <div class="response-card-header">
-          <span class="response-scenario-badge ${s.catClass}">${s.catLabel}</span>
-          <span class="response-card-meta">${s.title}</span>
-          <span class="score-pill ${scoreClass}">${scoreLabel}</span>
-        </div>
-        <div class="response-body">
-          <div class="response-section">
-            <div class="rs-label">📋 Situace</div>
-            <div class="rs-content">${escHtml(s.question)}</div>
-          </div>
-          <div class="response-section">
-            <div class="rs-label">💬 Odpověď moderátora</div>
-            <div class="rs-content">${escHtml(r.text)}</div>
-          </div>
-          <div class="response-section">
-            <div class="rs-label">🤖 AI hodnocení</div>
-            <div class="rs-content evaluation">${escHtml(r.eval || 'Hodnocení probíhá…')}</div>
-          </div>
-        </div>
-      </div>
-    `;
+        return ` <div class="response-card" > <div class="response-card-header" > <span class="response-scenario-badge" >${s.catLabel || s.title}</span> <span class="score-pill ${scoreClass}" >${r.score}/10</span> </div> <div class="response-body" > <div class="response-section" > <div class="rs-label" >💬 Odpověď</div> <div class="rs-content" >${escHtml(r.text)}</div> </div> <div class="response-section" > <div class="rs-label" >🤖 Hodnocení</div> <div class="rs-content" >${escHtml(r.eval)}</div> </div> </div> </div> `;
       }).join('');
-    }
+    }// ===================== ADMIN MANAGEMENT =====================
+    function switchAdminTab(tab) {
+      adminTab = tab;
+      document.querySelectorAll('.admin-nav-item').forEach(i => i.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
 
-    function updateCoachStats() {
-      const done = Object.keys(responses).length;
-      const scores = Object.values(responses).map(r => r.score);
-      const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10 : '—';
-      const great = scores.filter(s => s >= 8).length;
-      const poor = scores.filter(s => s < 5).length;
+      document.querySelectorAll('.admin-tab-pane').forEach(p => p.style.display = 'none');
+      document.getElementById('admin-tab-' + tab).style.display = 'block';
 
-      document.getElementById('cs-total').textContent = done;
-      document.getElementById('cs-score').textContent = avg;
-      document.getElementById('cs-great').textContent = great;
-      document.getElementById('cs-poor').textContent = poor;
-    }
+      if (tab === 'courses') adminFetchCourses();
+      if (tab === 'scenarios') adminFetchScenarios();
+      if (tab === 'users') adminFetchUsers();
+    } async function adminFetchScenarios() {
+      const resp = await fetch('/api/training/scenarios');
+      const data = await resp.json();
+      window.allScenarios = data.scenarios || [];
+      const list = document.getElementById('admin-scenarios-list');
 
-    // ===================== MODE SWITCH =====================
-    function switchMode(m) {
-      mode = m;
-      document.getElementById('moderator-view').style.display = m === 'moderator' ? 'block' : 'none';
-      document.getElementById('coach-view').style.display = m === 'coach' ? 'block' : 'none';
-      document.querySelectorAll('.mode-btn').forEach((b, i) => {
-        const isTarget = (m === 'moderator' && i === 0) || (m === 'coach' && i === 1);
-        b.classList.toggle('active', isTarget);
+      list.innerHTML = ` <table class="mgmt-table"><thead><tr><th>Název scénáře</th><th>Kurz</th><th>Typ</th><th>Akce</th></tr></thead><tbody>${(data.scenarios || []).map(s => {
+        const course = courses.find(c => c.id === s.course_id);
+
+        return ` <tr> <td> <div style="font-weight:bold;" >${s.title}</div> <div style="font-size:10px; color:#999;" >${s.id}</div> </td> <td>${course ? course.name : '<i style="color:#999">Nepřiřazeno</i>'}</td> <td><span class="course-tag" >${s.type || 'text'}</span></td> <td> <button class="btn-secondary" style="padding:4px 8px;" onclick="editAdminScenario('${s.id}')" >✏️</button> <button class="btn-clear" style="padding:4px 8px; color:red" onclick="adminDeleteScenario('${s.id}')" >🗑️</button> </td> </tr> `;
+      }).join('')}</tbody></table>`;
+    } async function adminDeleteScenario(id) {
+      if (!confirm("Opravdu smazat tento scénář?")) return;
+
+      // Optimization: Use same endpoint as delete course or similar if exists, but we only have save-scenario now
+      // Let's check if we have a delete endpoint for scenarios.
+      // Actually, looking at backend, we DON'T have a delete scenario endpoint. I should add it.
+      const resp = await fetch('/api/training/admin/scenarios/' + id, {
+        method: 'DELETE'
       });
 
-      if (m === 'coach') renderCoachView();
-    }
+      if (resp.ok) {
+        showToast("Scénář smazán");
+        adminFetchScenarios();
+      }
+    } async function adminFetchCourses() {
+      const resp = await fetch('/api/training/courses');
+      const data = await resp.json();
+      const list = document.getElementById('admin-courses-list');
 
-    // ===================== TOAST =====================
-    function showToast(msg) {
+      list.innerHTML = (data.courses || []).map(c => ` <div class="course-card" style="cursor:default" > <div style="display:flex; justify-content:space-between;" > <h2>${c.name}</h2> <div> <button class="btn-secondary" onclick="openCourseModal('${c.id}')" >✏️</button> <button class="btn-clear" onclick="adminDeleteCourse('${c.id}')" style="color:red" >🗑️</button> </div> </div> <p>${c.description || ''}</p> <div class="course-meta" > <span>Role: ${c.allowed_roles ? c.allowed_roles.join(', ') : 'default'}</span> </div> </div> `).join('');
+    } async function adminFetchUsers() {
+      const resp = await fetch('/api/training/admin/users');
+      const data = await resp.json();
+      const list = document.getElementById('admin-users-list');
+
+      const tableHtml = ` <div style="margin-bottom:15px;"><input type="text" id="user-search" placeholder="Hledat uživatele (jméno/ID)..." class="reply-textarea" style="min-height:35px; width:100%;" oninput="filterAdminUsers()"></div><table class="mgmt-table"><thead><tr><th>Uživatel</th><th>Statistiky</th><th>Práva (Kurzy)</th><th>Typ / Akce</th></tr></thead><tbody id="admin-users-tbody">${(data.users || []).map(u => {
+        const adminColor = u.is_admin ? '#ff4757' : '#2ed573';
+        const adminLabel = u.is_admin ? 'ADMIN' : 'USER';
+
+        return ` <tr class="user-row" data-search="${u.username.toLowerCase()}${u.id}" > <td> <div style="font-weight:bold;" >${u.username}</div> <div style="font-size:10px; color:#999;" >${u.id}</div> </td> <td style="font-size:12px;" > <div>📝 ${u.exercise_count}cvičení</div> <div>📊 Ø ${u.avg_score}/10</div> <div style="color:#777; font-size:10px;" >🕒 ${new Date(u.last_activity).toLocaleDateString()}</div> </td> <td> <input type="text" id="user-roles-${u.id}" value="${u.roles.join(', ')}" class="reply-textarea" style="min-height:30px; font-size:11px; padding:4px;" > <button class="btn-submit" style="padding:2px 6px; font-size:10px; margin-top:4px;" onclick="adminUpdateUserRights('${u.id}')" >Uložit práva</button> </td> <td style="text-align:center;" > <span style="display:inline-block; padding:2px 6px; border-radius:4px; background:${adminColor}; color:white; font-size:10px; font-weight:bold; margin-bottom:5px;" >${adminLabel}</span> <div style="display:flex; gap:5px; justify-content:center;" > ${u.is_admin ? `<button class="btn-secondary" style="padding:4px;" title="Odebrat Admina" onclick="adminDemoteUser('${u.id}')" >🔽</button>` : `<button class="btn-submit" style="padding:4px; background:#ff4757;" title="Povýšit na Admina" onclick="adminPromoteUser('${u.id}')" >🔼</button>`}<button class="btn-secondary" style="padding:4px;" title="Historie" onclick="adminViewUserHistory('${u.id}', '${u.username}')" >📂</button> </div> </td> </tr> `;
+      }).join('')}</tbody></table>`;
+      list.innerHTML = tableHtml;
+    } function filterAdminUsers() {
+      const q = document.getElementById('user-search').value.toLowerCase();
+
+      document.querySelectorAll('.user-row').forEach(row => {
+        row.style.display = row.getAttribute('data-search').includes(q) ? '' : 'none';
+      });
+    } async function adminPromoteUser(uid) {
+      if (!confirm("Povýšit uživatele na administrátora?")) return;
+
+      const resp = await fetch('/api/training/admin/users/promote', {
+
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: uid
+        })
+      });
+
+      if (resp.ok) {
+        showToast("Uživatel povýšen na Admina");
+        adminFetchUsers();
+      }
+    } async function adminDemoteUser(uid) {
+      if (!confirm("Odebrat administrátorská práva?")) return;
+
+      const resp = await fetch('/api/training/admin/users/demote', {
+
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: uid
+        })
+      });
+
+      if (resp.ok) {
+        showToast("Admin práva odebrána");
+        adminFetchUsers();
+      } else {
+        const d = await resp.json();
+        showToast("Chyba: " + d.error);
+      }
+    } function adminViewUserHistory(uid, name) {
+      // For now, let's just show a message. 
+      // In a real implementation, this could open a modal with user history.
+      showToast("Zobrazuji historii pro " + name);
+      // We could also redirect or filter results}async function adminUpdateUserRights(uid) {
+      const rolesVal = document.getElementById('user-roles-' + uid).value;
+      const roles = rolesVal.split(',').map(r => r.trim()).filter(r => r);
+
+      const resp = await fetch('/api/training/admin/users/rights', {
+
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: uid, roles
+        })
+      });
+      if (resp.ok) showToast("Práva uložena");
+    }// Modal logic
+    function openCourseModal(id = null) {
+      const c = id ? courses.find(x => x.id === id) : null;
+      document.getElementById('modal-c-title').textContent = id ? 'Upravit kurz' : 'Nový kurz';
+      document.getElementById('m-c-name').value = c ? c.name : '';
+      document.getElementById('m-c-roles').value = c ? c.allowed_roles.join(', ') : 'default';
+      window.editingCourseId = id;
+      document.getElementById('course-modal').style.display = 'flex';
+    } async function saveCourse() {
+      const name = document.getElementById('m-c-name').value;
+      const roles = document.getElementById('m-c-roles').value.split(',').map(r => r.trim()).filter(r => r);
+
+      const resp = await fetch('/api/training/admin/courses', {
+
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          id: window.editingCourseId, name, allowed_roles: roles
+        })
+      });
+
+      if (resp.ok) {
+        closeModal('course-modal');
+        fetchCourses();
+        if (adminTab === 'courses') adminFetchCourses();
+        showToast("Kurz uložen");
+      }
+    } async function adminDeleteCourse(id) {
+      if (!confirm("Opravdu smazat tento kurz?")) return;
+
+      const resp = await fetch('/api/training/admin/courses/' + id, {
+        method: 'DELETE'
+      });
+
+      if (resp.ok) {
+        fetchCourses();
+        adminFetchCourses();
+        showToast("Kurz smazán");
+      }
+    } function closeModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }// ===================== CREATOR TOOL =====================
+    let creatorOptions = [];
+
+    function openScenarioModal(id = null) {
+      const s = id ? null : null; // Handle edit later
+      document.getElementById('scenario-modal').style.display = 'flex';
+
+      const courseSelect = document.getElementById('ms-course-id');
+
+      courseSelect.innerHTML = '<option value="">-- Nepřiřazeno --</option>' + courses.map(c => `<option value="${c.id}" >${c.name}</option>`).join('');
+
+      if (id) {
+        // Editing logic - we need to fetch all scenarios or find in list if already fetched
+        // For simplicity, let's assume we fetch all in adminFetchScenarios
+        // We can find it in a global scenarios list if we store it
+        const scenario = window.allScenarios ? window.allScenarios.find(x => x.id === id) : null;
+
+        if (scenario) {
+          document.getElementById('ms-title').value = scenario.title || '';
+          document.getElementById('ms-type').value = scenario.type || 'text';
+          document.getElementById('ms-course-id').value = scenario.course_id || '';
+          document.getElementById('ms-context').value = scenario.context || '';
+          document.getElementById('ms-question').value = scenario.question || '';
+          creatorOptions = scenario.options ? [...scenario.options] : [];
+          window.editingScenarioId = id;
+        }
+      } else {
+        document.getElementById('ms-title').value = '';
+        document.getElementById('ms-context').value = '';
+        document.getElementById('ms-question').value = '';
+        document.getElementById('ms-type').value = 'text';
+        document.getElementById('ms-course-id').value = '';
+        creatorOptions = [];
+        window.editingScenarioId = null;
+      } toggleCreatorOptions();
+    } async function editAdminScenario(id) {
+      // Find scenario in current list and open modal
+      openScenarioModal(id);
+    } function toggleCreatorOptions() {
+      const type = document.getElementById('ms-type').value;
+      document.getElementById('ms-options-area').style.display = (type !== 'text') ? 'block' : 'none';
+    } function addCreatorOption() {
+      creatorOptions.push({
+        text: '', correct: false
+      });
+      renderCreatorOptions();
+    } function renderCreatorOptions() {
+      const list = document.getElementById('ms-options-list');
+
+      list.innerHTML = creatorOptions.map((opt, i) => ` <div class="creator-option-row" > <input type="text" class="reply-textarea" style="min-height:35px;" placeholder="Možnost ${i + 1}" value="${opt.text}" oninput="creatorOptions[${i}].text = this.value" > <input type="checkbox"${opt.correct ? 'checked' : ''}onchange="creatorOptions[${i}].correct = this.checked" > OK <button onclick="creatorOptions.splice(${i},1); renderCreatorOptions();" style="color:red; background:none; border:none; cursor:pointer;" >✖</button> </div> `).join('');
+    } async function saveAdminScenario() {
+      const scenario = {
+
+        id: window.editingScenarioId,
+        title: document.getElementById('ms-title').value,
+        course_id: document.getElementById('ms-course-id').value,
+        type: document.getElementById('ms-type').value,
+        context: document.getElementById('ms-context').value,
+        question: document.getElementById('ms-question').value,
+        options: creatorOptions,
+        posts: [{
+          username: "Uživatel", body: document.getElementById('ms-context').value, avatarBg: "#f1c40f", num: 1
+        }]
+      };
+
+      const resp = await fetch('/api/training/admin/save-scenario', {
+
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(scenario)
+      });
+
+      if (resp.ok) {
+        closeModal('scenario-modal');
+        showToast("Scénář uložen");
+        if (currentCourseId) fetchScenarios(currentCourseId);
+        adminFetchScenarios();
+      }
+    } function updateCoachStats() {
+      const el = (id) => document.getElementById(id);
+      if (!el('cs-total')) return;
+      const scores = Object.values(responses).map(r => r.score);
+      const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10 : '—';
+      el('cs-total').textContent = scores.length;
+      el('cs-score').textContent = avg;
+      el('cs-great').textContent = scores.filter(s => s >= 8).length;
+      el('cs-poor').textContent = scores.filter(s => s < 5).length;
+    } async function switchMode(m) {
+      mode = m;
+
+      if (m === 'moderator') {
+        document.getElementById('coach-view').style.display = 'none';
+
+        if (currentCourseId) {
+          document.getElementById('moderator-view').style.display = 'block';
+          document.getElementById('landing-view').style.display = 'none';
+        } else {
+          document.getElementById('moderator-view').style.display = 'none';
+          document.getElementById('landing-view').style.display = 'block';
+        }
+      } else {
+        document.getElementById('moderator-view').style.display = 'none';
+        document.getElementById('landing-view').style.display = 'none';
+        document.getElementById('coach-view').style.display = 'block';
+        await renderCoachView();
+      } document.querySelectorAll('.mode-btn').forEach(b => {
+        b.classList.remove('active');
+        if (m === 'moderator' && b.textContent.includes('Moderátor')) b.classList.add('active');
+        if (m === 'coach' && b.textContent.includes('výsledky')) b.classList.add('active');
+      });
+    } function showToast(msg) {
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.add('show');
       setTimeout(() => t.classList.remove('show'), 3000);
-    }
-
-    // ===================== INIT =====================
-    function init() {
-      loadResponses();
-      renderScenario();
+    }// ===================== INIT =====================
+    async function init() {
+      await fetchCourses();
+      await loadResponses();
       updateCoachStats();
 
-      const savedName = localStorage.getItem('mod_name');
-      if (savedName) {
-        moderatorName = savedName;
-        document.getElementById('user-avatar').textContent = savedName[0];
-        document.getElementById('coach-mod-name').textContent = savedName;
+      if (USER_INFO.id !== 'guest') {
+        document.getElementById('user-avatar').textContent = USER_INFO.username[0];
       }
-    }
-
-    init();
+    } init();
   </script>
 </body>
 

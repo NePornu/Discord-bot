@@ -442,7 +442,7 @@
                     },
                     options: {
                         interaction: { intersect: false, mode: 'index' },
-                        plugins: { legend: { display: true } }
+                        plugins: { legend: { display: true }}
                     }
                 });
             }
@@ -451,7 +451,7 @@
                 new Chart(document.getElementById('activityForecastChart'), {
                     type: 'bar',
                     data: { labels: data.forecast.days, datasets: [{ label: 'Očekávané zprávy', data: data.forecast.activity, backgroundColor: data.forecast.activity.map((v, i) => i === 0 ? '#10b981' : 'rgba(139, 92, 246, 0.5)'), borderRadius: 4 }] },
-                    options: { plugins: { legend: { display: false } } }
+                    options: { plugins: { legend: { display: false }} }
                 });
             }
 
@@ -462,8 +462,8 @@
                     data: { labels: [...data.dau.history_labels, ...data.dau.forecast_labels], datasets: [{ label: 'Historie', data: [...data.dau.history, ...Array(data.dau.forecast.length).fill(null)], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4 }, { label: 'Predikce', data: [...Array(data.dau.history.length - 1).fill(null), data.dau.history[data.dau.history.length - 1], ...data.dau.forecast], borderColor: '#ec4899', borderDash: [5, 5], backgroundColor: 'rgba(236, 72, 153, 0.05)', fill: true, tension: 0.4 }] },
                     options: {
                         interaction: { intersect: false, mode: 'index' },
-                        plugins: { legend: { display: true, position: 'bottom' } },
-                        scales: { x: { display: false } }
+                        plugins: { legend: { display: true, position: 'bottom' }},
+                        scales: { x: { display: false }}
                     }
                 });
             }
@@ -474,7 +474,7 @@
                 new Chart(document.getElementById('mauChart'), {
                     type: 'bar',
                     data: { labels: ['Nyní', '+1 měsíc', '+2 měsíce', '+3 měsíce'], datasets: [{ label: 'MAU Predikce', data: data.mau.forecast, backgroundColor: ['#3b82f6', 'rgba(59,130,246,0.7)', 'rgba(59,130,246,0.5)', 'rgba(59,130,246,0.3)'], borderRadius: 4 }] },
-                    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+                    options: { plugins: { legend: { display: false }}, scales: { y: { beginAtZero: true }} }
                 });
             }
 
@@ -486,7 +486,7 @@
                     if (h >= 18 && h <= 22) base *= 2.5; else if (h >= 14 && h <= 17) base *= 1.5; else if (h >= 3 && h <= 8) base *= 0.2;
                     hourlyPrediction.push(Math.round(base));
                 }
-                new Chart(document.getElementById('peakHoursChart'), { type: 'line', data: { labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ label: 'Predikce', data: hourlyPrediction, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', fill: true, tension: 0.4 }] }, options: { plugins: { legend: { display: false } }, scales: { x: { display: false } } } });
+                new Chart(document.getElementById('peakHoursChart'), { type: 'line', data: { labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ label: 'Predikce', data: hourlyPrediction, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', fill: true, tension: 0.4 }] }, options: { plugins: { legend: { display: false }}, scales: { x: { display: false }} }});
             }
 
             // Seasonal
@@ -495,7 +495,7 @@
                     type: 'radar',
                     data: { labels: data.forecast.days || ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'], datasets: [{ label: 'Aktivita', data: data.forecast.activity, borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.2)' }] },
                     options: {
-                        plugins: { legend: { display: false } },
+                        plugins: { legend: { display: false }},
                         scales: {
                             r: {
                                 ticks: { showLabelBackdrop: false, color: '#9ca3af' },
@@ -513,20 +513,20 @@
                 const predictedEng = data.dau?.forecast ? Math.round(data.dau.forecast.slice(-1)[0] / (data.mau?.forecast?.slice(-1)[0] || 1) * 100) : currentEng;
                 safeSetText('eng-current', currentEng + '%');
                 safeSetText('eng-predicted', predictedEng + '%');
-                new Chart(document.getElementById('engagementChart'), { type: 'line', data: { labels: ['Nyní', '+1d', '+2d', '+3d', '+4d', '+5d', '+6d', '+7d'], datasets: [{ label: 'Engagement %', data: [currentEng, ...Array(7).fill(0).map((_, i) => currentEng + (predictedEng - currentEng) * (i + 1) / 7 | 0)], borderColor: '#ec4899', tension: 0.4 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } } });
+                new Chart(document.getElementById('engagementChart'), { type: 'line', data: { labels: ['Nyní', '+1d', '+2d', '+3d', '+4d', '+5d', '+6d', '+7d'], datasets: [{ label: 'Engagement %', data: [currentEng, ...Array(7).fill(0).map((_, i) => currentEng + (predictedEng - currentEng) * (i + 1) / 7 | 0)], borderColor: '#ec4899', tension: 0.4 }] }, options: { plugins: { legend: { display: false }}, scales: { y: { beginAtZero: true, max: 100 }} }});
             }
 
             // New vs Returning
             if (document.getElementById('newVsReturningChart')) {
                 const avgMonthlyGrowth = data.predictions.avg_monthly_growth || 5;
                 const totalMembers = data.predictions.current_members || 500;
-                new Chart(document.getElementById('newVsReturningChart'), { type: 'doughnut', data: { labels: ['Vracející se', 'Noví'], datasets: [{ data: [Math.round(totalMembers * 0.7), Math.round(avgMonthlyGrowth)], backgroundColor: ['#3b82f6', '#10b981'], borderWidth: 0 }] }, options: { plugins: { legend: { display: true, position: 'bottom' } }, cutout: '50%' } });
+                new Chart(document.getElementById('newVsReturningChart'), { type: 'doughnut', data: { labels: ['Vracející se', 'Noví'], datasets: [{ data: [Math.round(totalMembers * 0.7), Math.round(avgMonthlyGrowth)], backgroundColor: ['#3b82f6', '#10b981'], borderWidth: 0 }] }, options: { plugins: { legend: { display: true, position: 'bottom' }}, cutout: '50%' }});
             }
 
             // Voice (Simplified)
             if (document.getElementById('voiceChart')) {
                 const voicePred = data.forecast.activity.map(a => Math.round(a * 0.15));
-                new Chart(document.getElementById('voiceChart'), { type: 'bar', data: { labels: data.forecast.days, datasets: [{ label: 'Minuty', data: voicePred, backgroundColor: '#10b981', borderRadius: 4 }] }, options: { plugins: { legend: { display: false } } } });
+                new Chart(document.getElementById('voiceChart'), { type: 'bar', data: { labels: data.forecast.days, datasets: [{ label: 'Minuty', data: voicePred, backgroundColor: '#10b981', borderRadius: 4 }] }, options: { plugins: { legend: { display: false }} }});
             }
 
             // Channels Prediction Chart

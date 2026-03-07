@@ -41,7 +41,9 @@ class AutoModCustom(commands.Cog):
                 new_data.append({
                     "pattern": pattern,
                     "allowed_roles": [],
-                    "allowed_channels": []
+                    "allowed_channels": [],
+                    "whitelist": [],
+                    "action": "approve"
                 })
             # Save the migrated data
             await self.save_filters(guild_id, new_data)
@@ -56,6 +58,15 @@ class AutoModCustom(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        await self.process_automod(message)
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        if before.content == after.content:
+            return
+        await self.process_automod(after)
+
+    async def process_automod(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
 
@@ -70,7 +81,8 @@ class AutoModCustom(commands.Cog):
             allowed_channels = f_data.get("allowed_channels", [])
 
             try:
-                if re.search(pattern, message.content, re.IGNORECASE):
+                matches = list(re.finditer(pattern, message.content, re.IGNORECASE))
+                if matches:
                     # Check exemptions
                     is_exempt = False
                     
@@ -85,28 +97,51 @@ class AutoModCustom(commands.Cog):
                             is_exempt = True
                     
                     if not is_exempt:
+                        # Universal Whitelist - Check if ALL matches are whitelisted
+                        whitelist = f_data.get("whitelist", [])
+                        if whitelist:
+                            is_fully_whitelisted = True
+                            content_lower = message.content.lower()
+                            for m in matches:
+                                # Find surrounding "word" (contiguous non-whitespace)
+                                start_idx = message.content.rfind(' ', 0, m.start()) + 1
+                                end_idx = message.content.find(' ', m.end())
+                                if end_idx == -1: end_idx = len(message.content)
+                                word = content_lower[start_idx:end_idx]
+                                
+                                # If this match isn't covered by ANY whitelisted keyword, fail
+                                if not any(w.lower() in word for w in whitelist):
+                                    is_fully_whitelisted = False
+                                    break
+                            
+                            if is_fully_whitelisted:
+                                is_exempt = True
+
+                    if not is_exempt:
                         matched_filter = f_data
                         break
             except re.error:
                 continue
 
         if matched_filter:
-            await self.handle_filtered_message(message)
+            action = matched_filter.get("action", "approve")
+            await self.handle_filtered_message(message, action=action)
 
-    async def handle_filtered_message(self, message: discord.Message):
-        # 1. Store message data in Redis for later approval
-        r = await get_redis_client()
-        msg_data = {
-            "content": message.content,
-            "author_id": message.author.id,
-            "author_name": message.author.name,
-            "author_avatar": str(message.author.display_avatar.url),
-            "channel_id": message.channel.id,
-            "guild_id": message.guild.id
-        }
-        # Use a temporary key with TTL
-        await r.setex(f"automod:pending:{message.id}", 86400, json.dumps(msg_data))
-        await r.close()
+    async def handle_filtered_message(self, message: discord.Message, action: str = "approve"):
+        # 1. Store message data in Redis for later approval (if not auto-reject)
+        if action == "approve":
+            r = await get_redis_client()
+            msg_data = {
+                "content": message.content,
+                "author_id": message.author.id,
+                "author_name": message.author.name,
+                "author_avatar": str(message.author.display_avatar.url),
+                "channel_id": message.channel.id,
+                "guild_id": message.guild.id
+            }
+            # Use a temporary key with TTL
+            await r.setex(f"automod:pending:{message.id}", 86400, json.dumps(msg_data))
+            await r.close()
 
         # 2. Delete the original message
         try:
@@ -119,18 +154,31 @@ class AutoModCustom(commands.Cog):
         if not approval_channel:
             return
 
-        embed = discord.Embed(
-            title="🛡️ AutoMod: Message Awaiting Approval",
-            description=message.content,
-            color=discord.Color.orange(),
-            timestamp=discord.utils.utcnow()
-        )
-        embed.set_author(name=f"{message.author} ({message.author.id})", icon_url=message.author.display_avatar.url)
-        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-        embed.set_footer(text=f"Message ID: {message.id}")
+        if action == "auto_reject":
+            embed = discord.Embed(
+                title="🛡️ AutoMod: Message Auto-Rejected",
+                description=message.content,
+                color=discord.Color.red(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_author(name=f"{message.author} ({message.author.id})", icon_url=message.author.display_avatar.url)
+            embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+            embed.add_field(name="Reason", value="Blacklisted link (Auto-Reject)", inline=True)
+            embed.set_footer(text=f"Message ID: {message.id}")
+            await approval_channel.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                title="🛡️ AutoMod: Message Awaiting Approval",
+                description=message.content,
+                color=discord.Color.orange(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_author(name=f"{message.author} ({message.author.id})", icon_url=message.author.display_avatar.url)
+            embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+            embed.set_footer(text=f"Message ID: {message.id}")
 
-        view = ApprovalView(message.id, self)
-        await approval_channel.send(embed=embed, view=view)
+            view = ApprovalView(message.id, self)
+            await approval_channel.send(embed=embed, view=view)
 
     # --- Slash Commands ---
     automod = app_commands.Group(name="automod", description="Custom AutoMod Management")
@@ -139,10 +187,16 @@ class AutoModCustom(commands.Cog):
     @app_commands.describe(
         pattern="Regex pattern to filter",
         allowed_roles="Roles that can use this pattern (mentions or IDs, comma separated)",
-        allowed_channels="Channels where this pattern is allowed (mentions or IDs, comma separated)"
+        allowed_channels="Channels where this pattern is allowed (mentions or IDs, comma separated)",
+        whitelist="Keywords that exempt the message from this filter (comma separated)",
+        action="Action to take (approve/auto_reject)"
     )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Require Approval", value="approve"),
+        app_commands.Choice(name="Auto-Reject", value="auto_reject")
+    ])
     @commands.has_permissions(manage_guild=True)
-    async def filter_add(self, interaction: discord.Interaction, pattern: str, allowed_roles: Optional[str] = None, allowed_channels: Optional[str] = None):
+    async def filter_add(self, interaction: discord.Interaction, pattern: str, allowed_roles: Optional[str] = None, allowed_channels: Optional[str] = None, whitelist: Optional[str] = None, action: str = "approve"):
         try:
             re.compile(pattern) # Test if valid regex
         except re.error:
@@ -169,6 +223,11 @@ class AutoModCustom(commands.Cog):
                 if match:
                     channel_ids.append(int(match.group(1)))
 
+        # Parse whitelist
+        whitelist_items = []
+        if whitelist:
+            whitelist_items = [i.strip() for i in whitelist.split(",") if i.strip()]
+
         filters = await self.get_filters(interaction.guild_id)
         if any(f["pattern"] == pattern for f in filters):
             await interaction.response.send_message(f"⚠️ Pattern already exists.", ephemeral=True)
@@ -177,7 +236,9 @@ class AutoModCustom(commands.Cog):
         filters.append({
             "pattern": pattern,
             "allowed_roles": role_ids,
-            "allowed_channels": channel_ids
+            "allowed_channels": channel_ids,
+            "whitelist": whitelist_items,
+            "action": action
         })
         await self.save_filters(interaction.guild_id, filters)
         
@@ -186,8 +247,10 @@ class AutoModCustom(commands.Cog):
             exemption_text += f"\n- Roles: " + ", ".join([f"<@&{rid}>" for rid in role_ids])
         if channel_ids:
             exemption_text += f"\n- Channels: " + ", ".join([f"<#{cid}>" for cid in channel_ids])
+        if whitelist_items:
+            exemption_text += f"\n- Whitelist: " + ", ".join([f"`{w}`" for w in whitelist_items])
             
-        await interaction.response.send_message(f"✅ Pattern added: `{pattern}`{exemption_text}", ephemeral=True)
+        await interaction.response.send_message(f"✅ Pattern added: `{pattern}` (Action: {action}){exemption_text}", ephemeral=True)
 
     @automod.command(name="filter_list", description="List all regex filters")
     @commands.has_permissions(manage_guild=True)
@@ -202,8 +265,10 @@ class AutoModCustom(commands.Cog):
             pattern = f["pattern"]
             roles = f.get("allowed_roles", [])
             channels = f.get("allowed_channels", [])
+            whitelist = f.get("whitelist", [])
+            action = f.get("action", "approve")
             
-            line = f"{i+1}. `{pattern}`"
+            line = f"{i+1}. `{pattern}` [Action: {action}]"
             exempts = []
             if roles:
                 exempt_roles = " ".join([f"<@&{r}>" for r in roles])
@@ -211,6 +276,9 @@ class AutoModCustom(commands.Cog):
             if channels:
                 exempt_channels = " ".join([f"<#{c}>" for c in channels])
                 exempts.append(f"Chans: {exempt_channels}")
+            if whitelist:
+                whitelist_text = ", ".join([f"`{w}`" for w in whitelist])
+                exempts.append(f"Whitelist: {whitelist_text}")
             
             if exempts:
                 line += " | Exempted: [" + ", ".join(exempts) + "]"

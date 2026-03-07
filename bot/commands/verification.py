@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -15,6 +14,8 @@ import asyncio
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Optional, Dict, List, Iterable
+from shared.redis_client import get_redis_client
+from shared.keycloak_client import keycloak_client
 
 
 try:
@@ -65,6 +66,75 @@ DEFAULT_SETTINGS_DATA = {
     "log_failed_attempts": True,
     "require_avatar": False,
 }
+
+# Role Mapping: Keycloak Group Path -> Discord Role ID
+GROUP_MAPPING = {
+    "/Dobrovolníci/E-koučové": 1022056088062918707,
+    "/Dobrovolníci/Moderátoři Discord": 1022049035705655316,
+    "/Dobrovolníci/Moderátoři fórum": 1252505707534745681,
+    "/Pracovníci NP/Koordinátoři": 1191708314673877124
+}
+
+class SSOStatusView(discord.ui.View):
+    def __init__(self, bot: commands.Bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(label="Ověřit stav (Check Status)", style=discord.ButtonStyle.primary, emoji="🔄", custom_id="sso_check_status")
+    async def btn_check_status(self, interaction: Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        
+        r = await get_redis_client()
+        user_id = str(interaction.user.id)
+        
+        # 1. Check if user is linked in Redis
+        kc_user_id = await r.get(f"sso:keycloak_link:{user_id}")
+        if not kc_user_id:
+            await interaction.followup.send(
+                "❌ **Tvůj Discord účet není propojen s NePornu ID.**\n"
+                "Klikni na tlačítko 'Propojit účet' výše a přihlas se.",
+                ephemeral=True
+            )
+            return
+
+        # 2. Fetch groups from Keycloak
+        groups = await keycloak_client.get_user_groups(kc_user_id)
+        if not groups and not isinstance(groups, list):
+            await interaction.followup.send("❌ Nepodařilo se načíst data z Keycloaku. Zkus to prosím později.", ephemeral=True)
+            return
+
+        # 3. Map groups to roles
+        assigned_roles = []
+        failed_roles = []
+        
+        group_paths = [g.get("path") for g in groups]
+        logging.info(f"SSO Check for {interaction.user.name} ({user_id}): KC_UID={kc_user_id}, Groups={group_paths}")
+
+        for group_path, role_id in GROUP_MAPPING.items():
+            if group_path in group_paths:
+                role = interaction.guild.get_role(role_id)
+                if role:
+                    if role not in interaction.user.roles:
+                        try:
+                            await interaction.user.add_roles(role, reason="SSO Verification")
+                            assigned_roles.append(role.name)
+                        except Exception as e:
+                            logging.error(f"Failed to add role {role.name} to {user_id}: {e}")
+                            failed_roles.append(role.name)
+                else:
+                    logging.warning(f"Role ID {role_id} not found in guild for group {group_path}")
+
+        if assigned_roles:
+            msg = f"✅ **Úspěšně ověřeno!** Byly ti přiděleny role: {', '.join(assigned_roles)}"
+            if failed_roles:
+                msg += f"\n⚠️ Nepodařilo se přidělit: {', '.join(failed_roles)} (Kontaktuj adminy)"
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.followup.send(
+                "ℹ️ **Propojení je v pořádku**, ale ve tvém NePornu ID nemáš žádné speciální skupiny (např. E-kouč).\n"
+                "Pokud si myslíš, že je to chyba, kontaktuj svého koordinátora.",
+                ephemeral=True
+            )
 
 
 def chunked(seq: Iterable, n: int) -> Iterable[list]:
@@ -124,8 +194,8 @@ class VerificationModView(discord.ui.View):
         self.member_id = member_id
         self.waiting_approval = waiting_approval
         
-        
-        self.children[0].disabled = not waiting_approval
+        if len(self.children) > 0:
+            self.children[0].disabled = not waiting_approval
 
     async def get_member(self, guild: discord.Guild) -> Optional[discord.Member]:
         return guild.get_member(self.member_id)
@@ -146,7 +216,6 @@ class VerificationModView(discord.ui.View):
             
         success = await cog.approve_user(member, approver=interaction.user)
         if success:
-            
             self.stop()
         else:
             await interaction.followup.send("❌ Chyba při schvalování (Role? Config?).", ephemeral=True)
@@ -299,7 +368,6 @@ class VerificationCog(commands.Cog):
     async def _delete_verification_message_delayed(self, guild: discord.Guild, user_id: int, delay: int = 60, cleanup_after: bool = False):
         """Delete verification message after a delay"""
         try:
-            
             st = self.state.get(str(user_id))
             if not st or not st.get("verification_message_id"):
                 return
@@ -307,9 +375,7 @@ class VerificationCog(commands.Cog):
             msg_id = st["verification_message_id"]
             logging.info(f"Scheduled verification message deletion for user {user_id} in {delay} seconds")
             
-            
             await asyncio.sleep(delay)
-            
             
             verification_ch = guild.get_channel(VERIFICATION_CHANNEL_ID)
             if not verification_ch:
@@ -318,7 +384,6 @@ class VerificationCog(commands.Cog):
             msg = await verification_ch.fetch_message(msg_id)
             await msg.delete()
             logging.info(f"Deleted verification message for user {user_id}")
-            
             
             if cleanup_after:
                 self.cleanup_state(user_id)
@@ -338,7 +403,6 @@ class VerificationCog(commands.Cog):
             logging.error(f"Verified role {VERIFIED_ROLE_ID} not found.")
             return False
 
-        
         st = self.get_user_state(member.id)
         approval_time = datetime.now().timestamp()
         self.update_user_state(member.id, approved_at=approval_time)
@@ -349,26 +413,19 @@ class VerificationCog(commands.Cog):
             logging.error(f"Failed to remove role: {e}")
             return False
 
-        
         if WELCOME_CHANNEL_ID:
             ch = guild.get_channel(WELCOME_CHANNEL_ID)
             if ch:
-                rules_ch = f"<#{RULES_CHANNEL_ID}>" if RULES_CHANNEL_ID else "⁠📗pravidla"
-                info_ch = f"<#{INFO_CHANNEL_ID}>" if INFO_CHANNEL_ID else "⁠ℹ️úvod"
-                intro_ch = "<#1191296600631431198>"
-                
                 welcome_msg = (
                     f"Nový člen se k nám připojil! Všichni přivítejme {member.mention}!"
                 )
                 try: await ch.send(welcome_msg)
                 except: pass
 
-        
         try:
             await member.send("✅ **Ověření úspěšné!** Byli jste schváleni a máte přístup na server. Vítejte!")
         except: pass
 
-        
         join_time = self.format_timestamp(st.get("created_at"))
         code_time = self.format_timestamp(st.get("code_entered_at")) if st.get("code_entered_at") else "N/A"
         approval_time_str = self.format_timestamp(approval_time)
@@ -382,8 +439,6 @@ class VerificationCog(commands.Cog):
             f"  Bypass: {bypass_used}"
         )
 
-        
-        
         log_ch = guild.get_channel(VERIFICATION_LOG_CHANNEL_ID)
         if log_ch and st and st.get("log_message_id"):
             try:
@@ -397,15 +452,12 @@ class VerificationCog(commands.Cog):
                 else:
                     approval_type = f"Schválil {approver.mention}" if approver else "Schváleno"
                 
-                
                 updated_content = log_msg_obj.content
                 join_time = self.format_timestamp(st.get("created_at"))
                 code_time = self.format_timestamp(st.get("code_entered_at")) if st.get("code_entered_at") else "N/A"
                 approval_time_str = self.format_timestamp(approval_time)
                 
-                
                 updated_content = updated_content.replace("📥 **Nový uživatel se připojil!**", "✅ **Uživatel ověřen:**")
-                
                 
                 timeline_start = updated_content.find("**Časový průběh:**")
                 if timeline_start != -1:
@@ -425,7 +477,6 @@ class VerificationCog(commands.Cog):
             except Exception as e:
                 logging.error(f"Failed to update approval log: {e}")
         
-        
         if st and st.get("verification_message_id"):
             verification_ch = guild.get_channel(VERIFICATION_CHANNEL_ID)
             if verification_ch:
@@ -441,7 +492,6 @@ class VerificationCog(commands.Cog):
         self.cleanup_state(member.id)
         return True
 
-    
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         if member.bot: return
@@ -453,24 +503,26 @@ class VerificationCog(commands.Cog):
         st = self.get_user_state(member.id)
         otp = st["otp"]
         
-        
         created_at_fmt = f"<t:{int(member.created_at.timestamp())}:f> (<t:{int(member.created_at.timestamp())}:R>)"
-        avatar_url = member.display_avatar.url
+        avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
         
         sec_ok, sec_reason = await self.check_security(member)
         
+        # NSFW Check Integration
+        nsfw_score_str = "N/A"
+        avatar_nsfw_cog = self.bot.get_cog("AvatarNSFW")
+        if avatar_nsfw_cog:
+            try:
+                _, nsfw_score_str = await avatar_nsfw_cog.get_user_nsfw_score(member)
+            except Exception as e:
+                logging.error(f"Failed to get NSFW score for {member.id}: {e}")
         
         verification_ch = member.guild.get_channel(VERIFICATION_CHANNEL_ID)
         if verification_ch:
             try:
-                
-                age_days = (datetime.now(member.created_at.tzinfo) - member.created_at).days
-                
-                
                 bio_text = "Bio není dostupné"
                 if hasattr(member, 'bio') and member.bio:
                     bio_text = member.bio
-                
                 
                 desc = (
                     f"**Nový uživatel se připojil na server!**\n\n"
@@ -478,6 +530,7 @@ class VerificationCog(commands.Cog):
                     f"**ID:** {member.id}\n"
                     f"**Účet vytvořen:** {created_at_fmt}\n"
                     f"**Avatar:** {avatar_url}\n"
+                    f"**Pravděpodobnost NSFW:** {nsfw_score_str}\n"
                     f"**Bio:** {bio_text}\n\n"
                     f"Automaticky mu byla přidělena ověřovací role.\n\n"
                     f"⏳ **Status:** Čeká na zadání kódu..."
@@ -486,18 +539,15 @@ class VerificationCog(commands.Cog):
                 if not sec_ok:
                     desc += f"\n\n⚠️ **Bezpečnostní varování:**\n{sec_reason}"
                 
-                
                 view = VerificationModView(self.bot, member.id, waiting_approval=False)
                 m = await verification_ch.send(desc, view=view)
                 self.update_user_state(member.id, verification_message_id=m.id)
             except Exception as e:
                 logging.error(f"Failed to send verification message: {e}")
         
-        
         log_ch = member.guild.get_channel(VERIFICATION_LOG_CHANNEL_ID)
         if log_ch and VERIFICATION_LOG_CHANNEL_ID != VERIFICATION_CHANNEL_ID:  
             try:
-                
                 bio_text = "Bio není dostupné"
                 if hasattr(member, 'bio') and member.bio:
                     bio_text = member.bio
@@ -510,6 +560,7 @@ class VerificationCog(commands.Cog):
                     f"**ID:** {member.id}\n"
                     f"**Účet vytvořen:** {created_at_fmt}\n"
                     f"**Avatar:** {avatar_url}\n"
+                    f"**Pravděpodobnost NSFW:** {nsfw_score_str}\n"
                     f"**Bio:** {bio_text}\n\n"
                     f"Automaticky mu byla přidělena ověřovací role.\n\n"
                     f"**Časový průběh:**\n"
@@ -520,13 +571,11 @@ class VerificationCog(commands.Cog):
                 if not sec_ok:
                     log_msg += f"\n\n⚠️ **Bezpečnostní varování:**\n{sec_reason}"
                 
-                
                 log_m = await log_ch.send(log_msg)
                 self.update_user_state(member.id, log_message_id=log_m.id)
             except Exception as e:
                 logging.error(f"Failed to send log message: {e}")
 
-        
         try:
             dm_msg = await self.send_verification_dm(member, otp)
             if dm_msg:
@@ -541,16 +590,13 @@ class VerificationCog(commands.Cog):
             st = self.state.get(str(member.id))
             leave_time = self.format_timestamp(datetime.now().timestamp())
             
-            
             log_ch = member.guild.get_channel(VERIFICATION_LOG_CHANNEL_ID)
             if log_ch and st and st.get("log_message_id"):
                 try:
                     log_msg_obj = await log_ch.fetch_message(st["log_message_id"])
                     updated_content = log_msg_obj.content
                     
-                    
                     updated_content = updated_content.replace("📥 **Nový uživatel se připojil!**", "❌ **Uživatel opustil server**")
-                    
                     
                     warning_pos = updated_content.find("\n\n⚠️")
                     leave_info = f"\n\n**Výsledek:** ❌ Opustil server během verifikace.\n**Čas opuštění:** `{leave_time}`"
@@ -563,14 +609,12 @@ class VerificationCog(commands.Cog):
                 except Exception as e:
                     logging.error(f"Failed to update log on member leave: {e}")
             
-            
             final_msg = (
                f"**Uživatel:** {member.mention} (`{member.name}`)\n"
                f"**ID:** {member.id}\n"
                f"**Výsledek:** ❌ **Opustil server** během verifikace."
             )
             await self._update_verification_message(member.guild, member.id, content=final_msg, view=None)
-            
             
             self.bot.loop.create_task(self._delete_verification_message_delayed(member.guild, member.id, 60, cleanup_after=True))
 
@@ -582,12 +626,10 @@ class VerificationCog(commands.Cog):
         
         st = self.state[sid]
         
-        
         if st.get("status") == "LOCKED" or (st["locked_until"] > datetime.now().timestamp()):
             await message.channel.send("⛔ **Verifikace zablokována.** Kontaktuj moderátory na serveru.")
             return
             
-        
         if st.get("status") == "WAITING_FOR_APPROVAL":
             await message.channel.send("⏳ **Čekání na schválení.** Moderátoři byli upozorněni.")
             return
@@ -598,22 +640,18 @@ class VerificationCog(commands.Cog):
         member = guild.get_member(message.author.id)
         if not member: return
 
-        
         bypass_hash = self.settings.get("bypass_password_hash")
         if bypass_hash and verify_password(user_input, bypass_hash):
             await self.approve_user(member, bypass_used=True)
             await message.channel.send("✅ **Tajné heslo přijato.** Vstup povolen.")
             return
 
-        
         if user_input == st["otp"] or (VERIFICATION_CODE and user_input.upper() == VERIFICATION_CODE.upper()):
             code_entered_time = datetime.now().timestamp()
             self.update_user_state(member.id, status="WAITING_FOR_APPROVAL", code_entered_at=code_entered_time)
             await message.channel.send("✅ **Kód je správný.** Nyní prosím čekej, než moderátor potvrdí tvůj přístup.")
             
-            
             logging.info(f"User {member.name} ({member.id}) entered correct code at {self.format_timestamp(code_entered_time)}")
-            
             
             try:
                 log_ch = guild.get_channel(VERIFICATION_LOG_CHANNEL_ID)
@@ -624,10 +662,8 @@ class VerificationCog(commands.Cog):
                     join_time = self.format_timestamp(st.get("created_at"))
                     code_time = self.format_timestamp(code_entered_time)
                     
-                    
                     timeline_start = updated_content.find("**Časový průběh:**")
                     if timeline_start != -1:
-                        
                         warning_start = updated_content.find("\n\n⚠️", timeline_start)
                         if warning_start == -1:
                             warning_start = len(updated_content)
@@ -643,14 +679,10 @@ class VerificationCog(commands.Cog):
             except Exception as e:
                 logging.error(f"Failed to update log message on code entry: {e}")
             
-            
             try:
                 verification_ch = guild.get_channel(VERIFICATION_CHANNEL_ID)
                 if verification_ch and st.get("verification_message_id"):
-                    
                     msg = await verification_ch.fetch_message(st["verification_message_id"])
-                    
-                    
                     new_view = VerificationModView(self.bot, member.id, waiting_approval=True)
                     await msg.edit(view=new_view)
             except Exception as e:
@@ -658,14 +690,11 @@ class VerificationCog(commands.Cog):
             
             return
 
-        
         attempts = st["attempts"] + 1
         self.update_user_state(member.id, attempts=attempts)
         
-        
         await message.channel.send(f"❌ **Špatný kód.** Zkus to znovu. (Pokus #{attempts})")
 
-    
     verify_group = app_commands.Group(name="verify", description="Příkazy pro ověření")
 
     @verify_group.command(name="set_bypass", description="Nastaví tajné bypass heslo.")
@@ -695,82 +724,36 @@ class VerificationCog(commands.Cog):
         except:
              await itx.followup.send("❌ Nelze poslat DM.")
 
-    
-    reverify = app_commands.Group(name="reverify", description="Hromadná re-verifikace")
-
-    @reverify.command(name="run", description="Spustí hromadné rozeslání kódů všem čekajícím uživatelům.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def rev_run(self, itx: Interaction, delay: float = 0.5, send_apology: bool = True):
-        await itx.response.defer(ephemeral=True)
-        guild = itx.guild
-        if not guild:
-            return await itx.followup.send("❌ Tento příkaz lze použít pouze na serveru.")
-
-        pending_users = [
-            (uid, st) for uid, st in self.state.items()
-            if st.get("status") == "PENDING"
-        ]
-
-        if not pending_users:
-            return await itx.followup.send("✅ Žádní čekající uživatelé.")
-
-        sent = 0
-        failed = 0
-        not_found = 0
-
-        await itx.followup.send(f"⏳ Posílám re-verifikaci {len(pending_users)} čekajícím uživatelům...")
-
-        for uid_str, st in pending_users:
-            uid = int(uid_str)
-            member = guild.get_member(uid)
-            if not member:
-                not_found += 1
-                continue
-
-            # Generate new OTP
-            new_otp = generate_otp()
-            self.update_user_state(uid, otp=new_otp, attempts=0)
-
-            try:
-                if send_apology:
-                    msg = (
-                        f"**🔒 Re-verifikace účtu — Omlouváme se!**\n\n"
-                        f"Ahoj **{member.name}**!\n\n"
-                        f"Omlouváme se za prodlevu s ověřením — měli jsme technický problém "
-                        f"s naším ověřovacím systémem, který je nyní opraven.\n\n"
-                        f"Pro dokončení ověření prosím pošli sem do chatu tento nový kód:\n\n"
-                        f"> **`{new_otp}`**\n\n"
-                        f"Děkujeme za trpělivost! 🙏"
-                    )
-                else:
-                    msg = (
-                        f"**🔒 Re-verifikace účtu**\n\n"
-                        f"Ahoj **{member.name}**!\n"
-                        f"Pro dokončení ověření prosím pošli sem do chatu tento kód:\n\n"
-                        f"> **`{new_otp}`**\n"
-                    )
-                await member.send(msg)
-                sent += 1
-                logging.info(f"Re-verification DM sent to {member.name} ({uid})")
-            except Exception as e:
-                failed += 1
-                logging.error(f"Failed to send re-verification DM to {uid}: {e}")
-
-            await asyncio.sleep(delay)
-
-        await self.save_state()
-
-        verification_ch = guild.get_channel(VERIFICATION_CHANNEL_ID)
-        summary = (
-            f"📊 **Re-verifikace dokončena**\n"
-            f"✅ Odesláno: {sent}\n"
-            f"❌ Selhalo: {failed}\n"
-            f"👻 Nenalezeno na serveru: {not_found}\n"
-            f"📝 Celkem čekajících: {len(pending_users)}"
+    @verify_group.command(name="nepornu", description="Propojí tvůj Discord s interním systémem NePornu")
+    async def verify_nepornu(self, interaction: Interaction):
+        """Sends an interactive message to link Keycloak and Discord"""
+        embed = discord.Embed(
+            title="🔗 Propojení s NePornu ID",
+            description=(
+                "Tento příkaz slouží k propojení tvého Discord účtu s interním systémem NePornu (Keycloak).\n\n"
+                "**Postup:**\n"
+                "1. Klikni na tlačítko **'Propojit účet'** níže.\n"
+                "2. Přihlas se svými údaji (nebo si je vyžádej od koordinátora).\n"
+                "3. Po úspěšném přihlášení a schválení se vrať sem.\n"
+                "4. Klikni na tlačítko **'Ověřit stav'**.\n\n"
+                "*Tip: Pokud jsi E-kouč, Moderátor nebo Koordinátor, automaticky získáš své role.*"
+            ),
+            color=discord.Color.blue()
         )
-        if verification_ch:
-            await verification_ch.send(summary)
-        await itx.followup.send(summary)
+        
+        view = SSOStatusView(self.bot)
+        # Add link button
+        link_button = discord.ui.Button(
+            label="Propojit účet (Link SSO)",
+            url="https://portal.nepornu.cz",
+            style=discord.ButtonStyle.link,
+            emoji="🔑"
+        )
+        view.add_item(link_button)
+        
+        await interaction.response.send_message(embed=embed, view=view)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(VerificationCog(bot))
+    # Register persistent views
+    bot.add_view(SSOStatusView(bot))

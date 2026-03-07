@@ -31,12 +31,13 @@ services:
       - ./data:/app/data
     networks:
       - botnet
+      - sso-net
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
         reservations:
-          memory: 64M
+          memory: 128M
 
   discord-bot-dashboard:
     build: .
@@ -61,13 +62,13 @@ services:
         reservations:
           memory: 64M
 
-  web-dashboard:
+  metricord-dashboard:
     build: .
     container_name: web-dashboard
     restart: always
     depends_on:
       - redis
-    command: [ "uvicorn", "web.backend.main:app", "--host", "0.0.0.0", "--port", "8092" ]
+    command: [ "uvicorn", "web.backend.dashboard:app", "--host", "0.0.0.0", "--port", "8092" ]
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DASHBOARD_SECRET_KEY=${DASHBOARD_SECRET_KEY}
@@ -76,6 +77,7 @@ services:
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
       - DISCORD_REDIRECT_URI=http://207.180.223.191:8092/auth/callback
       - BOT_TOKEN=${BOT_TOKEN}
+      - SESSION_COOKIE_NAME=metricord_session
       - TZ=Europe/Prague
     ports:
       - "8092:8092"
@@ -116,7 +118,10 @@ services:
 
 networks:
   botnet:
-    name: botnet
+    external: true
+  fluxer_default:
+    external: true
+  sso-net:
     external: true
 
 volumes:

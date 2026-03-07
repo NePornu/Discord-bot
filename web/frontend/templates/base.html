@@ -29,14 +29,11 @@
         </div>
         <nav>
             {% if request.session.role != 'guest' %}
-            <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">
+            <a href="/overview" class="nav-link {% if request.url.path == '/overview' %}active{% endif %}">
                 <i class="fas fa-chart-pie"></i> Přehled
             </a>
             <a href="/analytics" class="nav-link {% if request.url.path == '/analytics' %}active{% endif %}">
                 <i class="fas fa-chart-line"></i> Analytics
-            </a>
-            <a href="/predictions" class="nav-link {% if request.url.path == '/predictions' %}active{% endif %}">
-                <i class="fas fa-lightbulb"></i> Predikce
             </a>
             <a href="/activity" class="nav-link {% if request.url.path == '/activity' %}active{% endif %}">
                 <i class="fas fa-bolt"></i> Aktivita

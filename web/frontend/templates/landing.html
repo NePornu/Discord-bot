@@ -2,6 +2,8 @@
 <html lang="cs">
 
 <head>
+    {% set dashboard_url = "http://" + server_ip + ":" + (dash_port|string) %}
+    {% set training_url = "http://" + server_ip + ":" + (train_port|string) %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metricord</title>
@@ -695,18 +697,34 @@
         <p>Nejpokročilejší analytický nástroj pro Discord servery. Sledujte růst, aktivitu hlasových kanálů, retenci
             uživatelů a mnohem více v reálném čase.</p>
 
-        <div class="hero-actions">
-            <a href="/login" class="btn-large btn-primary">
-                <i class="fa-solid fa-rocket"></i> Začít zdarma
-            </a>
-            <a href="#features" class="btn-large btn-secondary">
-                <i class="fa-solid fa-layer-group"></i> Prozkoumat
-            </a>
+        <div class="hero-actions"
+            style="margin-top: 2rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 32px; width: 100%; max-width: 900px; justify-content: center;">
+            <!-- CARD 1: DASHBOARD -->
+            <div class="entry-card"
+                style="background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 20px; padding: 40px 32px; transition: all 0.3s; animation: fadeUp 0.8s ease-out 0.4s backwards; text-align: left; display: flex; flex-direction: column;">
+                <div
+                    style="width: 50px; height: 50px; background: rgba(139, 92, 246, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; font-size: 1.5rem; color: var(--primary);">
+                    <i class="fas fa-chart-pie"></i>
+                </div>
+                <h3 style="font-size: 1.6rem; margin-bottom: 12px; font-weight: 700;">Analytický Dashboard</h3>
+                <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 32px; flex-grow: 1;">Detailní
+                    statistiky, grafy aktivity, žebříčky a analýza vaší komunity v reálném čase.</p>
+                {% if request.session.authenticated %}
+                <a href="{{ dashboard_url }}/overview" class="btn-large btn-primary" style="justify-content: center;">
+                    <i class="fas fa-arrow-right"></i> Vstoupit do Dashboardu
+                </a>
+                {% else %}
+                <a href="{{ dashboard_url }}/login?target=dashboard" class="btn-large btn-primary"
+                    style="justify-content: center;">
+                    <i class="fa-brands fa-discord"></i> Přihlásit se přes Discord
+                </a>
+                {% endif %}
+            </div>
+
         </div>
 
         <div class="dashboard-preview">
             <div class="preview-card">
-
                 <img src="/static/img/dashboard_2026_v1.png" alt="Metricord Preview" class="preview-img">
             </div>
         </div>

@@ -1040,8 +1040,8 @@
             status: "{{ s.status }}",
             uptime_pct: {{ s.uptime_pct }},
         type: "{{ s.type|default('http') }}",
-            history: { { s.history | tojson } },
-        ssl_days: { { s.ssl_days | tojson } }
+            history: {{ s.history | tojson }},
+        ssl_days: {{ s.ssl_days | tojson }}
         };
         {% endfor %}
 
@@ -1484,9 +1484,9 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
-                    plugins: { legend: { display: false } },
+                    plugins: { legend: { display: false }},
                     scales: {
-                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' }},
                         x: { display: false }
                     }
                 }

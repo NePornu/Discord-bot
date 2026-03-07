@@ -116,6 +116,54 @@ class AvatarNSFW(commands.Cog):
         if self.scan_task:
             self.scan_task.cancel()
 
+    def format_nsfw_score(self, score: float) -> str:
+        """Returns a human-readable representation of the NSFW score."""
+        percentage = min(max(score * 100, 0), 100)
+        
+        if score < 0.2:
+            level = "Velmi nízká"
+        elif score < 0.5:
+            level = "Nízká"
+        elif score < 0.8:
+            level = "Možná"
+        elif score < 0.95:
+            level = "Vysoká"
+        else:
+            level = "Kritická"
+            
+        return f"{level} ({percentage:.1f}%)"
+
+    async def get_user_nsfw_score(self, user: discord.User) -> tuple[float, str]:
+        """
+        Returns (raw_score, formatted_score) for a user's avatar.
+        This method does not send any alerts.
+        """
+        if not user.display_avatar:
+            return 0.0, "Žádný avatar"
+
+        try:
+            url = user.display_avatar.replace(size=256).url
+            img_bytes = await self.download_image(url)
+            if not img_bytes:
+                return 0.0, "Nelze stáhnout"
+
+            img_hash = hashlib.md5(img_bytes).hexdigest()
+
+            if img_hash in self.cache:
+                scores = self.cache[img_hash]
+            else:
+                arr = self.preprocess(img_bytes)
+                if arr is None:
+                    return 0.0, "Chyba při zpracování"
+                scores = self.predict(arr)
+                self.update_cache(img_hash, scores)
+
+            score = scores[1]
+            return score, self.format_nsfw_score(score)
+        except Exception as e:
+            print(f"[NSFW] Error in get_user_nsfw_score: {e}")
+            return 0.0, f"Chyba: {str(e)}"
+
     async def initial_scan(self):
         # Wait for bot to be ready if it's not
         await self.bot.wait_until_ready()
@@ -244,6 +292,7 @@ class AvatarNSFW(commands.Cog):
                     print(f"[NSFW] Nelze najít alert channel {alert_channel_id}: {e}")
             
             is_nsfw = score > threshold
+            formatted_score = self.format_nsfw_score(score)
             
             # ROUTING:
             # - NSFW: only to alert_channel (PROFILE_LOG_CHANNEL_ID) with buttons
@@ -266,7 +315,7 @@ class AvatarNSFW(commands.Cog):
                 if alert_channel:
                     embed = discord.Embed(
                         title="🚨 NSFW Avatar Detekován",
-                        description=f"Uživatel {user.mention} (`{user.id}`) má potenciálně závadnou profilovku.\nSkóre: `{score:.4f}`",
+                        description=f"Uživatel {user.mention} (`{user.id}`) má potenciálně závadnou profilovku.\nPravděpodobnost NSFW: `{formatted_score}`",
                         color=discord.Color.red(),
                         timestamp=discord.utils.utcnow()
                     )
@@ -287,7 +336,7 @@ class AvatarNSFW(commands.Cog):
                 if log_channel:
                     log_embed = discord.Embed(
                         title="✅ Avatar Check",
-                        description=f"User: {user.mention} (`{user.id}`)\nScore: `{score:.4f}`\nStatus: **OK**",
+                        description=f"User: {user.mention} (`{user.id}`)\nScore: `{formatted_score}`\nStatus: **OK**",
                         color=discord.Color.green(),
                         timestamp=discord.utils.utcnow()
                     )
@@ -317,26 +366,52 @@ class AvatarNSFW(commands.Cog):
 
     @commands.is_owner()
     @commands.command(name="nsfwsync")
-    async def nsfw_sync_cmd(self, ctx):
-        """Ruční spuštění skenu všech avatarů (prefix)."""
-        await ctx.send("⏳ Spouštím sken všech avatarů...")
-        await self.run_full_scan(ctx.channel)
+    async def nsfw_sync_cmd(self, ctx, limit: int = None, user: discord.Member = None):
+        """Ruční spuštění skenu avatarů (prefix)."""
+        if user:
+            await ctx.send(f"⏳ Skenuji uživatele: {user.display_name}")
+            await self.run_user_scan(ctx.channel, user)
+        else:
+            msg = f"⏳ Spouštím sken {'všech' if not limit else limit} avatarů..."
+            await ctx.send(msg)
+            await self.run_full_scan(ctx.channel, limit)
 
-    @discord.app_commands.command(name="nsfwsync", description="Manuální sken všech profilovek na serveru")
+    @discord.app_commands.command(name="nsfwsync", description="Manuální sken profilovek na serveru")
+    @discord.app_commands.describe(limit="Maximální počet uživatelů k otestování (volitelné)", user="Konkrétní uživatel k otestování (volitelné)")
     @discord.app_commands.checks.has_permissions(administrator=True)
-    async def nsfw_sync_slash(self, interaction: discord.Interaction):
-        """Ruční spuštění skenu všech avatarů (slash)."""
-        await interaction.response.send_message("⏳ Spouštím kompletní sken všech profilovek...", ephemeral=True)
-        await self.run_full_scan(interaction.channel)
+    async def nsfw_sync_slash(self, interaction: discord.Interaction, limit: int = None, user: discord.Member = None):
+        """Ruční spuštění skenu avatarů (slash)."""
+        if user:
+            await interaction.response.send_message(f"⏳ Skenuji uživatele: {user.display_name}", ephemeral=True)
+            await self.run_user_scan(interaction.channel, user)
+        else:
+            msg = f"⏳ Spouštím sken {'všech' if not limit else limit} profilovek..."
+            await interaction.response.send_message(msg, ephemeral=True)
+            await self.run_full_scan(interaction.channel, limit)
 
-    async def run_full_scan(self, channel):
+    async def run_user_scan(self, channel, user: discord.Member):
+        if user.avatar or user.display_avatar:
+             await self.check_avatar(user)
+             if channel:
+                 await channel.send(f"✅ Sken dokončen pro uživatele {user.display_name}.")
+        else:
+             if channel:
+                 await channel.send(f"❌ Uživatel {user.display_name} nemá profilovku.")
+
+    async def run_full_scan(self, channel, limit: int = None):
         count = 0
         for guild in self.bot.guilds:
             for member in guild.members:
-                if member.avatar:
+                if limit and count >= limit:
+                    break
+                
+                if member.avatar or member.display_avatar:
                     await self.check_avatar(member)
                     count += 1
                     await asyncio.sleep(0.3)
+            
+            if limit and count >= limit:
+                break
         
         if channel:
             await channel.send(f"✅ Sken dokončen. Zkontrolováno {count} avatarů.")

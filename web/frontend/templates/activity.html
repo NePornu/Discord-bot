@@ -226,7 +226,14 @@
                             {% endif %}
                         </div>
                         <div>
-                            <div style="font-weight: 700; font-size: 1rem;">{{ user.name }}</div>
+                            <div style="font-weight: 700; font-size: 1rem;">
+                                <a href="/activity/user/{{ user.user_id }}"
+                                    style="color: white; text-decoration: none; transition: 0.2s;"
+                                    onmouseover="this.style.color='var(--primary)'"
+                                    onmouseout="this.style.color='white'">
+                                    {{ user.name }}
+                                </a>
+                            </div>
                             <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
                                 {% for role in user.role_names %}
                                 <span
@@ -239,7 +246,7 @@
                 </td>
                 <td class="lb-cell" style="width: 200px;">
                     <div style="margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 0.85rem;">
-                        <span style="color: var(--text-muted);">Skóre Příspěvku</span>
+                        <span style="color: var(--text-muted);">Aktivita (čas)</span>
                         <span style="font-weight: bold; color: white;">
                             {% if user.weighted_h < 1 and user.weighted_h> 0 %}
                                 {{ (user.weighted_h * 60)|round|int }}m
@@ -276,8 +283,8 @@
 </div>
 
 <script>
-    const labels = {{ daily_labels | tojson }};
-    const data = {{ daily_hours | tojson }};
+    const labels = {{ daily_labels | default ([]) | tojson | safe }};
+    const data = {{ daily_hours | default ([]) | tojson | safe }};
 
     document.addEventListener('DOMContentLoaded', function () {
         const ctx = document.getElementById('activityTrendChart').getContext('2d');
