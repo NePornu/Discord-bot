@@ -16,6 +16,8 @@ import (
 	"github.com/nepornucz/discord-bot-core/internal/verification"
 	"github.com/nepornucz/discord-bot-core/internal/automod"
 	"github.com/nepornucz/discord-bot-core/internal/notifications"
+	"github.com/nepornucz/discord-bot-core/internal/challenge"
+	"github.com/nepornucz/discord-bot-core/internal/calendar"
 )
 
 func main() {
@@ -42,6 +44,8 @@ func main() {
 	verifyService := verification.NewVerificationService(cfg)
 	automodService := automod.NewAutoModService(cfg)
 	notifyService := notifications.NewNotifyService(cfg)
+	challengeService := challenge.NewChallengeService(cfg)
+	calendarService := calendar.NewCalendarService(cfg)
 
 	dg, err := discordgo.New("Bot " + cfg.BotToken)
 	if err != nil {
@@ -256,6 +260,42 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:        "challenge",
+				Description: "Správa výzev",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "setup",
+						Description: "Nastavit výzvu",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionRole,
+								Name:        "role",
+								Description: "Role k udělení",
+								Required:    true,
+							},
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "emojis",
+								Description: "Seznam emoji",
+								Required:    true,
+							},
+							{
+								Type:        discordgo.ApplicationCommandOptionChannel,
+								Name:        "channel",
+								Description: "Kanál",
+								Required:    false,
+							},
+						},
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "info",
+						Description: "Informace o výzvě",
+					},
+				},
+			},
 		}
 
 		for _, cmd := range cmdList {
@@ -307,6 +347,8 @@ func main() {
 			automodService.HandleAutoModCommand(s, i)
 		case "notify":
 			notifyService.HandleNotifyCommand(s, i)
+		case "challenge":
+			challengeService.HandleChallengeCommand(s, i)
 		}
 	})
 
@@ -324,12 +366,15 @@ func main() {
 	dg.AddHandler(verifyService.OnMessageCreate)
 	dg.AddHandler(automodService.OnMessage)
 	dg.AddHandler(automodService.OnMessageUpdate)
+	dg.AddHandler(challengeService.OnMessage)
+	dg.AddHandler(challengeService.OnReactionAdd)
 
 	// Interaction Handler (Buttons / Selects)
 	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if i.Type == discordgo.InteractionMessageComponent {
 			verifyService.HandleButtonClick(s, i)
 			automodService.HandleInteraction(s, i)
+			calendarService.HandleInteraction(s, i)
 		}
 	})
 

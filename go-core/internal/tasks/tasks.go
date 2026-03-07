@@ -13,6 +13,9 @@ func StartHeartbeat() {
 	ticker := time.NewTicker(60 * time.Second)
 	go func() {
 		for range ticker.C {
+			if redis_client.Client == nil {
+				continue
+			}
 			err := redis_client.Client.Set(redis_client.Ctx, "bot:heartbeat", strconv.FormatInt(time.Now().Unix(), 10), 0).Err()
 			if err != nil {
 				log.Printf("[ERROR] Heartbeat failed: %v", err)
@@ -39,6 +42,10 @@ func StartMemberStats(s *discordgo.Session) {
 					if p.Status != discordgo.StatusOffline {
 						onlineCount++
 					}
+				}
+
+				if redis_client.Client == nil {
+					continue
 				}
 
 				pipe := redis_client.Client.Pipeline()
