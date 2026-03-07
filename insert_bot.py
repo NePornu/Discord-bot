@@ -9,7 +9,7 @@ session = cluster.connect('fluxer')
 
 BOT_ID = 1227269599951589508
 USERNAME = "NePornu Bot"
-BOT_TOKEN = "MTIyNzI2OTU5OTk1MTU4OTUwOA.GsCoHP.OEpQd6iF6thu7cbvnBl3c5-48rIREWgoLEY6MY"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 APP_ID = BOT_ID
 
 print(f"Injecting Bot ID: {BOT_ID} into fluxer database...")
