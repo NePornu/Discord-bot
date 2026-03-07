@@ -20,6 +20,7 @@ type Config struct {
 	WelcomeChannel      string
 	VerifiedRole        string
 	VerificationCode    string
+	ConsoleChannelID    string
 }
 
 func LoadConfig() *Config {
@@ -45,5 +46,6 @@ func LoadConfig() *Config {
 		WelcomeChannel:      os.Getenv("WELCOME_CHANNEL_ID"),
 		VerifiedRole:        os.Getenv("VERIFIED_ROLE_ID"),
 		VerificationCode:    os.Getenv("VERIFICATION_CODE"),
+		ConsoleChannelID:    os.Getenv("CONSOLE_CHANNEL_ID"),
 	}
 }

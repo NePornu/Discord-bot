@@ -89,9 +89,8 @@ async def sync_tree(ctx: commands.Context):
 
 async def load_commands():
     start = time.time()
-    is_lite = os.getenv("BOT_LITE_MODE") == "1"
     
-    await send_console_log(f"START: načítání cogů (Lite Mode: {is_lite})…")
+    await send_console_log("START: načítání cogů (Python Worker)…")
     
     commands_dir = os.path.join(os.path.dirname(__file__), "commands")
     if not os.path.exists(commands_dir):
@@ -101,12 +100,6 @@ async def load_commands():
     for filename in os.listdir(commands_dir):
         if filename.endswith(".py") and not filename.startswith("_") and filename != "__init__.py":
             module_name = f"bot.commands.{filename[:-3]}"
-            
-            # Hybrid Skip Logic
-            lite_skip_keywords = ["ping", "status", "verification", "log", "presence"]
-            if is_lite and any(k in filename.lower() for k in lite_skip_keywords):
-                await send_console_log(f"⏩ {module_name} vynechán (Hybrid Lite Mode)")
-                continue
 
             await send_console_log(f"Načítám: {module_name}")
             try:
@@ -186,9 +179,9 @@ async def acquire_instance_lock(r: redis.Redis, is_lite: bool) -> bool:
     return bool(success)
 
 @tasks.loop(seconds=20)
-async def refresh_instance_lock_task(is_lite: bool):
+async def refresh_instance_lock_task():
     """Periodically refreshes the instance lock TTL."""
-    lock_key = f"bot:lock:{'lite' if is_lite else 'primary'}"
+    lock_key = "bot:lock:worker"
     try:
         r = await get_redis_client()
         current_pid = await r.get(lock_key)
@@ -230,8 +223,7 @@ async def on_ready():
     await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
     
     
-    is_lite = os.getenv("BOT_LITE_MODE") == "1"
-    status_msg = "Analytics 📈" if is_lite else "nepornu.cz"
+    status_msg = "Analytics 📈"
     activity = discord.Activity(type=discord.ActivityType.watching, name=status_msg)
     await bot.change_presence(status=discord.Status.online, activity=activity)
     
@@ -242,7 +234,7 @@ async def on_ready():
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
         
-        idx_key = "bot:guilds:dashboard" if is_lite else "bot:guilds:primary"
+        idx_key = "bot:guilds:worker"
         
         
         await r.delete(idx_key)
@@ -325,8 +317,7 @@ async def on_guild_join(guild: discord.Guild):
     
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
-        is_lite = os.getenv("BOT_LITE_MODE") == "1"
-        idx_key = "bot:guilds:dashboard" if is_lite else "bot:guilds:primary"
+        idx_key = "bot:guilds:worker"
         
         await r.sadd(idx_key, str(guild.id))
         await r.sadd("bot:guilds", str(guild.id))
@@ -351,8 +342,7 @@ async def on_guild_remove(guild: discord.Guild):
     
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
-        is_lite = os.getenv("BOT_LITE_MODE") == "1"
-        idx_key = "bot:guilds:dashboard" if is_lite else "bot:guilds:primary"
+        idx_key = "bot:guilds:worker"
         
         await r.srem(idx_key, str(guild.id))
         
@@ -438,38 +428,19 @@ async def globally_block_commands(ctx: commands.Context):
 async def main():
     await log_start_info()
     await send_console_log("Inicializace…")
-    is_lite = os.getenv("BOT_LITE_MODE") == "1"
-    
-    token = os.getenv("BOT_TOKEN") or getattr(bot_token, "TOKEN", None)
-    
-    if not token or len(token) < 30:
-        await send_console_log("[FATAL] Chybí validní bot token")
-        print(ts(), "[FATAL] Chybí validní bot token")
-        return
-    await send_console_log("Token OK, startuji…")
-    
-
-    if not member_stats_task.is_running():
-        member_stats_task.start()
-        print(ts(), "✅ Background task: Member stats sync started (from main)")
-
-    if not heartbeat_task.is_running():
-        heartbeat_task.start()
-        print(ts(), "✅ Background task: Heartbeat started (from main)")
-    
     # Instance Locking
     r_lock = await get_redis_client()
-    if not await acquire_instance_lock(r_lock, is_lite):
-        current_holder = await r_lock.get(f"bot:lock:{'lite' if is_lite else 'primary'}")
+    if not await acquire_instance_lock(r_lock):
+        current_holder = await r_lock.get("bot:lock:worker")
         await r_lock.close()
-        msg = f"[FATAL] Another instance is already running ({'Lite' if is_lite else 'Primary'}, PID: {current_holder})"
+        msg = f"[FATAL] Another instance is already running (Worker, PID: {current_holder})"
         print(ts(), msg)
         # We can't use send_console_log yet because bot isn't started, but we print to stdout
         return
     await r_lock.close()
     
-    refresh_instance_lock_task.start(is_lite)
-    print(ts(), f"✅ Instance lock acquired ({'Lite' if is_lite else 'Primary'})")
+    refresh_instance_lock_task.start()
+    print(ts(), "✅ Instance lock acquired (Worker)")
 
     await bot.start(token)
 

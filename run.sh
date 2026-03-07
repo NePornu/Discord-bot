@@ -24,6 +24,10 @@ echo "Starting Go Core..."
 GO_PID=$!
 echo "Go Core started with PID $GO_PID (Logs: go_bot.log)"
 
+# Clear potentially stale locks
+echo "Clearing stale Redis locks..."
+redis-cli -u redis://localhost:6379/0 del bot:lock:lite bot:lock:primary > /dev/null 2>&1
+
 # 3. Start Python Worker in background
 echo "Starting Python Sidecar (Lite Mode)..."
 cd $BOT_DIR

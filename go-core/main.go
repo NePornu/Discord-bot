@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/nepornucz/discord-bot-core/internal/config"
@@ -302,6 +305,27 @@ func main() {
 			_, err := s.ApplicationCommandCreate(s.State.User.ID, "", cmd)
 			if err != nil {
 				log.Printf("Cannot create command %v: %v", cmd.Name, err)
+			}
+		}
+
+		if cfg.ConsoleChannelID != "" {
+			host, _ := os.Hostname()
+			uptimeMs := time.Now().Format("2006-01-02 15:04:05")
+			msg := fmt.Sprintf("```ini\n[=== GO CORE SPUŠTĚN ===]\nČas: %s\nHost: %s\nPlatforma: %s %s\nGo Verze: %s\nDiscordGo: %s\nPID: %d\nRegistrované příkazy: %d\nSlužby:\n- Redis: %v\n- SQLite: %v\n- Keycloak: %v\n```",
+				uptimeMs,
+				host,
+				runtime.GOOS, runtime.GOARCH,
+				runtime.Version(),
+				discordgo.VERSION,
+				os.Getpid(),
+				len(cmdList),
+				cfg.RedisURL != "",
+				true, // SQLite is part of Calendar
+				cfg.KCInternalURL != "",
+			)
+			_, err := s.ChannelMessageSend(cfg.ConsoleChannelID, msg)
+			if err != nil {
+				log.Printf("Failed to send startup message: %v", err)
 			}
 		}
 	})
