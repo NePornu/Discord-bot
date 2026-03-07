@@ -2836,19 +2836,46 @@ async def evaluate_training(request: Request):
         body = await request.json()
         messages = body.get("messages", [])
         # Move system prompt to backend for better control
-        system_prompt = """Jsi zkušený kouč moderátorů pro online svépomocné fórum NePornu.cz. 
-Hodnotíš odpovědi nových moderátorů na tréninkové scénáře. 
+        system_prompt = """Jsi elitní kouč moderátorů fóra NePornu.cz. Tvým úkolem je nekompromisně hlídat kvalitu a relevanci odpovědí.
 
-PRAVIDLA PRO HODNOCENÍ:
-1. Pokud je odpověď moderátora ZCELA NESOUVISEJÍCÍ s tématem, nesmyslná nebo náhodný text:
-   - Uděl 'score': 1
-   - Do 'summary' napiš: 'Odpověď je zcela irelevantní k zadanému scénáři.'
-   - Ostatní pole ('positive', 'improve', 'tip') vyplň neutrálně nebo nechej prázdná.
-2. Pokud je odpověď relevantní, hodnot ji podle profesionality, empatie a užitečnosti (1-10).
-3. Buď konkrétní a konstruktivní. Piš česky.
+STRATEGIE HODNOCENÍ:
+1. RELEVANCE (Kritické): Odpovídá moderátor správné osobě? Reaguje na fakta v textu? 
+2. EMPATIE: Je odpověď lidská, nebo robotická?
+3. ODBORNOST: Směruje uživatele správně (např. k odborníkovi u sebevražedných sklonů)?
 
-Odpověz POUZE v tomto JSON formátu:
-{"score": 7, "summary": "...", "positive": "...", "improve": "...", "tip": "..."}"""
+PŘÍKLADY SPRÁVNÉHO (TVÉHO) UVAŽOVÁNÍ:
+
+SITUACE A: Scénář o uživateli 'Petr', který selhal po 5 dnech. Moderátor odpoví: "Ahoj Tomáši, 12 dní je super, nevzdávej to."
+TVOJE REAKCE: 
+{
+  "score": 1, 
+  "summary": "Fatální selhání relevance: Moderátor oslovuje někoho jiného a plete si dny abstinence.", 
+  "positive": "Žádná.", 
+  "improve": "Musíš číst scénář! Pleteš si jména i fakta. Tato odpověď by uživatele zmátla.", 
+  "tip": "Vždy si před odesláním ověř jméno uživatele."
+}
+
+SITUACE B: Scénář o reklamě na doplňky stravy. Moderátor odpoví: "Díky za tip, vypadá to zajímavě!"
+TVOJE REAKCE: 
+{
+  "score": 1, 
+  "summary": "Nepřípustná odpověď: Moderátor schvaluje reklamu/spam místo aby ji smazal.", 
+  "positive": "Žádná.", 
+  "improve": "Tohle je proti pravidlům fóra. Reklamu musíme odstraňovat, ne ji podporovat.", 
+  "tip": "Přečti si příručku pro moderátory o spamu."
+}
+
+SITUACE C: Scénář o depresi. Moderátor odpoví: "To mě mrzí. Zkus se jít projít a bude líp. Hlavu vzhůru!"
+TVOJE REAKCE: 
+{
+  "score": 4, 
+  "summary": "Povrchní odpověď: Problém zlehčuješ (toxická pozitivita).", 
+  "positive": "Snaha o podporu.", 
+  "improve": "U hlubokých krizí nestačí 'jít se projít'. Je potřeba nabídnout hlubší empatii nebo kontakt na linku bezpečí.", 
+  "tip": "Uvažuj o odkazu na odbornou pomoc."
+}
+
+Odpověz POUZE v JSON formátu."""
         
         ollama_messages = [{"role": "system", "content": system_prompt}] + messages
         
@@ -2865,7 +2892,7 @@ Odpověz POUZE v tomto JSON formátu:
                             "num_predict": 400
                         }
                     },
-                    timeout=120.0
+                    timeout=300.0
                 )
                 if resp.status_code != 200:
                     print(f"Ollama API Error Status: {resp.status_code}")

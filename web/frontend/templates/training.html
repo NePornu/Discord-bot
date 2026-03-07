@@ -1011,6 +1011,57 @@
       white-space: pre-wrap;
     }
 
+    /* ===== PROGRESS BAR ===== */
+    .progress-container {
+      width: 100%;
+      height: 6px;
+      background: #e8f0fe;
+      border-radius: 10px;
+      margin-top: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), #64b5f6);
+      width: 0%;
+      transition: width 0.5s ease;
+      position: relative;
+    }
+
+    .progress-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg,
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0.3) 50%,
+          rgba(255, 255, 255, 0) 100%);
+      animation: shimmer 1.5s infinite;
+    }
+
+    @keyframes shimmer {
+      from {
+        transform: translateX(-100%);
+      }
+
+      to {
+        transform: translateX(100%);
+      }
+    }
+
+    .progress-label {
+      font-size: 11px;
+      color: var(--text-light);
+      margin-top: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+
     @media (max-width: 600px) {
       .coach-stats {
         grid-template-columns: repeat(2, 1fr);
@@ -1585,13 +1636,47 @@ Nevím co dělat, nevím na koho se obrátit. Přišla jsem sem, protože nevím
       document.getElementById('reply-zone').style.display = 'none';
 
       // Show loading eval
-      const evalContainer = document.getElementById('inline-eval-container');
       evalContainer.innerHTML = `
         <div class="inline-eval loading">
-          <div class="eval-score-row"><span class="spinner"></span> AI analyzuje tvou odpověď…</div>
-          <div style="font-size:11px; opacity:0.7; margin-top:4px;">(Lokální běh na CPU, může to trvat až 90 sekund)</div>
+          <div class="eval-score-row">
+            <span class="spinner"></span> 
+            <span>AI analyzuje tvou odpověď…</span>
+          </div>
+          <div class="progress-container">
+            <div class="progress-bar" id="eval-progress"></div>
+          </div>
+          <div class="progress-label">
+            <span id="progress-status">Přemýšlím...</span>
+            <span id="progress-percent">0%</span>
+          </div>
         </div>
       `;
+
+      // Simulating progress
+      const progressBar = document.getElementById('eval-progress');
+      const progressStatus = document.getElementById('progress-status');
+      const progressPercent = document.getElementById('progress-percent');
+
+      let progress = 0;
+      const statusSteps = [
+        { p: 10, s: "Načítám kontext..." },
+        { p: 30, s: "Analyzuji tón odpovědi..." },
+        { p: 50, s: "Srovnávám s pravidly fóra..." },
+        { p: 70, s: "Generuji konstruktivní zpětnou vazbu..." },
+        { p: 90, s: "Finalizuji hodnocení..." }
+      ];
+
+      const progressInterval = setInterval(() => {
+        if (progress < 95) {
+          progress += Math.random() * 2;
+          if (progress > 95) progress = 95;
+          progressBar.style.width = progress + '%';
+          progressPercent.textContent = Math.round(progress) + '%';
+
+          const step = statusSteps.find(s => progress < s.p);
+          if (step) progressStatus.textContent = step.s;
+        }
+      }, 800);
 
       let evalText = '';
       let score = 5;
@@ -1654,6 +1739,8 @@ Nevím co dělat, nevím na koho se obrátit. Přišla jsem sem, protože nevím
         console.error(e);
         score = 5;
         evalText = 'Chyba při hodnocení: ' + e.message + '\n\nKouč přezkoumá odpověď ručně.';
+      } finally {
+        clearInterval(progressInterval);
       }
 
       // Save
@@ -1734,8 +1821,10 @@ Nevím co dělat, nevím na koho se obrátit. Přišla jsem sem, protože nevím
       mode = m;
       document.getElementById('moderator-view').style.display = m === 'moderator' ? 'block' : 'none';
       document.getElementById('coach-view').style.display = m === 'coach' ? 'block' : 'none';
-      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-      document.querySelector(`.mode-btn:${m === 'moderator' ? 'first-child' : 'nth-child(2)'}`).classList.add('active');
+      document.querySelectorAll('.mode-btn').forEach((b, i) => {
+        const isTarget = (m === 'moderator' && i === 0) || (m === 'coach' && i === 1);
+        b.classList.toggle('active', isTarget);
+      });
 
       if (m === 'coach') renderCoachView();
     }
