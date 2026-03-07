@@ -14,6 +14,8 @@ import (
 	"github.com/nepornucz/discord-bot-core/internal/logging"
 	"github.com/nepornucz/discord-bot-core/internal/listeners"
 	"github.com/nepornucz/discord-bot-core/internal/verification"
+	"github.com/nepornucz/discord-bot-core/internal/automod"
+	"github.com/nepornucz/discord-bot-core/internal/notifications"
 )
 
 func main() {
@@ -37,6 +39,9 @@ func main() {
 	// Initialize Listeners
 	levelsListener := listeners.NewLevelsListener()
 	activityListener := listeners.NewActivityListener()
+	verifyService := verification.NewVerificationService(cfg)
+	automodService := automod.NewAutoModService(cfg)
+	notifyService := notifications.NewNotifyService(cfg)
 
 	dg, err := discordgo.New("Bot " + cfg.BotToken)
 	if err != nil {
@@ -163,6 +168,94 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:        "verify",
+				Description: "Příkazy pro ověření uživatelů",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "bypass",
+						Description: "Manuálně schválí uživatele",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionUser,
+								Name:        "uzivatel",
+								Description: "Uživatel k schválení",
+								Required:    true,
+							},
+						},
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "nepornu",
+						Description: "Propojí tvůj Discord s NePornu ID",
+					},
+				},
+			},
+			{
+				Name:        "automod",
+				Description: "Správa automatické moderace",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "filter-add",
+						Description: "Přidat regex filtr",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "pattern",
+								Description: "Regex vzor",
+								Required:    true,
+							},
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "action",
+								Description: "Akce (approve/auto_reject)",
+								Choices: []*discordgo.ApplicationCommandOptionChoice{
+									{Name: "Schválení", Value: "approve"},
+									{Name: "Auto-Reject", Value: "auto_reject"},
+								},
+							},
+						},
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "filter-list",
+						Description: "Seznam filtrů",
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "filter-remove",
+						Description: "Odstranit filtr",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionInteger,
+								Name:        "index",
+								Description: "Číslo filtru k odstranění",
+								Required:    true,
+							},
+						},
+					},
+				},
+			},
+			{
+				Name:        "notify",
+				Description: "Poslat hromadné DM oznámení (Admin only)",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionString,
+						Name:        "zprava",
+						Description: "Text oznámení",
+						Required:    true,
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionString,
+						Name:        "cil",
+						Description: "Cíl (ALL nebo název role)",
+						Required:    false,
+					},
+				},
+			},
 		}
 
 		for _, cmd := range cmdList {
@@ -208,6 +301,12 @@ func main() {
 			commands.HandleSSOStatus(s, i)
 		case "status":
 			commands.HandleStatus(s, i)
+		case "verify":
+			verifyService.HandleVerifyCommand(s, i)
+		case "automod":
+			automodService.HandleAutoModCommand(s, i)
+		case "notify":
+			notifyService.HandleNotifyCommand(s, i)
 		}
 	})
 
@@ -221,13 +320,16 @@ func main() {
 	dg.AddHandler(levelsListener.OnMessage)
 	dg.AddHandler(activityListener.OnMessage)
 
-	// Initialize Verification Service
-	verifyService := verification.NewVerificationService(cfg)
+	dg.AddHandler(verifyService.OnMemberJoin)
+	dg.AddHandler(verifyService.OnMessageCreate)
+	dg.AddHandler(automodService.OnMessage)
+	dg.AddHandler(automodService.OnMessageUpdate)
 
 	// Interaction Handler (Buttons / Selects)
 	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if i.Type == discordgo.InteractionMessageComponent {
 			verifyService.HandleButtonClick(s, i)
+			automodService.HandleInteraction(s, i)
 		}
 	})
 

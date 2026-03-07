@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
 	"github.com/nepornucz/discord-bot-core/internal/redis_client"
 )
 
