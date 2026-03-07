@@ -66,16 +66,16 @@ async def send_console_log(msg: str):
         print(f"[ERROR] send_console_log failed: {e}")
 
 async def log_start_info():
-    await send_console_log("=== SPUŠTĚNÍ BOTA LOG ===")
-    await send_console_log(f"Platforma: {platform.platform()} | Python: {sys.version.replace(chr(10), ' ')}")
-    await send_console_log(f"discord.py: {discord.__version__}")
-    await send_console_log(f"PID: {os.getpid()} | CWD: {os.getcwd()}")
-    await send_console_log(f"Token v souboru: {'ANO' if hasattr(bot_token, 'TOKEN') else 'NE'}")
-    await send_console_log(f"Prefix: {config.BOT_PREFIX!r}")
-    await send_console_log(f"CONSOLE_CHANNEL_ID: {config.CONSOLE_CHANNEL_ID}")
+    print("=== SPUŠTĚNÍ BOTA LOG ===")
+    print(f"Platforma: {platform.platform()} | Python: {sys.version.replace(chr(10), ' ')}")
+    print(f"discord.py: {discord.__version__}")
+    print(f"PID: {os.getpid()} | CWD: {os.getcwd()}")
+    print(f"Token v souboru: {'ANO' if hasattr(bot_token, 'TOKEN') else 'NE'}")
+    print(f"Prefix: {config.BOT_PREFIX!r}")
+    print(f"CONSOLE_CHANNEL_ID: {config.CONSOLE_CHANNEL_ID}")
     commands_path = os.path.join(os.path.dirname(__file__), "commands")
-    await send_console_log(f"'commands' existuje: {os.path.exists(commands_path)}")
-    await send_console_log(f"Obsah 'commands': {os.listdir(commands_path) if os.path.exists(commands_path) else '—'}")
+    print(f"'commands' existuje: {os.path.exists(commands_path)}")
+    print(f"Obsah 'commands': {os.listdir(commands_path) if os.path.exists(commands_path) else '—'}")
 
 @bot.command(name="sync")
 @commands.has_permissions(administrator=True)
@@ -89,14 +89,14 @@ async def sync_tree(ctx: commands.Context):
 
 async def load_commands():
     start = time.time()
-    
     await send_console_log("START: načítání cogů (Python Worker)…")
     
     commands_dir = os.path.join(os.path.dirname(__file__), "commands")
     if not os.path.exists(commands_dir):
         await send_console_log(f"[FATAL] složka '{commands_dir}' neexistuje")
-        return
+        return []
 
+    loaded_cogs = []
     for filename in os.listdir(commands_dir):
         if filename.endswith(".py") and not filename.startswith("_") and filename != "__init__.py":
             module_name = f"bot.commands.{filename[:-3]}"
@@ -105,21 +105,17 @@ async def load_commands():
             try:
                 await bot.load_extension(module_name)
                 await send_console_log(f"✅ {module_name} načten")
+                loaded_cogs.append(filename[:-3])
             except Exception as e:
                 import traceback
                 tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))[-1800:]
                 await send_console_log(f"❌ Chyba při načtení {module_name}: {e}\n```{tb}```")
+                global pending_console_msgs
+                pending_console_msgs.append(f"❌ Chyba při načtení {module_name}: {e}")
                 continue
 
-        
-        try:
-            mod = __import__(module_name, fromlist=['*'])
-            classes = [attr for attr in dir(mod) if isinstance(getattr(mod, attr), type)]
-            await send_console_log(f" - Třídy: {classes}")
-        except Exception as e:
-            await send_console_log(f" - Nelze vypsat třídy: {e}")
-
     await send_console_log(f"Načítání cogů hotovo za {time.time()-start:.2f}s")
+    return loaded_cogs
 
 
 @tasks.loop(seconds=10)
@@ -181,7 +177,8 @@ async def acquire_instance_lock(r: redis.Redis, is_lite: bool) -> bool:
 @tasks.loop(seconds=20)
 async def refresh_instance_lock_task():
     """Periodically refreshes the instance lock TTL."""
-    lock_key = "bot:lock:worker"
+    is_lite = os.getenv("BOT_LITE_MODE", "0") == "1"
+    lock_key = f"bot:lock:{'lite' if is_lite else 'primary'}"
     try:
         r = await get_redis_client()
         current_pid = await r.get(lock_key)
@@ -219,9 +216,14 @@ async def before_heartbeat_task():
 
 @bot.event
 async def on_ready():
-    await load_commands()
-    await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
+    import platform
+    import sys
+    await send_console_log("=== PYTHON WORKER SPUŠTĚN ===")
+    await send_console_log(f"Platforma: {platform.platform()} | Python: {sys.version.split(' ')[0]}")
+    await send_console_log(f"PID: {os.getpid()} | CWD: {os.getcwd()}")
     
+    loaded_cogs = await load_commands()
+    await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
     
     status_msg = "Analytics 📈"
     activity = discord.Activity(type=discord.ActivityType.watching, name=status_msg)
@@ -230,36 +232,25 @@ async def on_ready():
     guilds = list(bot.guilds)
     await send_console_log(f"Členem {len(guilds)} serverů: {[g.name for g in guilds]}")
 
-    
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
-        
         idx_key = "bot:guilds:worker"
-        
-        
         await r.delete(idx_key)
-        
-        
         if guilds:
-            
             gids = [str(g.id) for g in guilds]
             await r.sadd(idx_key, *gids)
-            
             await r.sadd("bot:guilds", *gids)
-            
         await send_console_log(f"✅ Cache aktualizována ({idx_key}): {len(guilds)} serverů")
         await r.close()
     except Exception as e:
         await send_console_log(f"⚠️ Chyba cache: {e}")
 
+    global pending_console_msgs
+    errors = [m for m in pending_console_msgs if "FATAL" in m or "ERROR" in m or "Chyba" in m]
+    pending_console_msgs.clear()
     
-    if pending_console_msgs:
-        channel = bot.get_channel(config.CONSOLE_CHANNEL_ID)
-        if channel:
-            for msg in pending_console_msgs:
-                for i in range(0, len(msg), 1900):
-                    await channel.send(f"```{msg[i:i+1900]}```")
-        pending_console_msgs.clear()
+    for err in errors:
+        await send_console_log(err)
 
 
     # await send_console_log("Načítám cogy…")
@@ -428,9 +419,21 @@ async def globally_block_commands(ctx: commands.Context):
 async def main():
     await log_start_info()
     await send_console_log("Inicializace…")
+    
+    import os
+    token = os.getenv("BOT_TOKEN")
+    if not token or len(token) < 30:
+        await send_console_log("[FATAL] Chybí validní bot token")
+        print(ts(), "[FATAL] Chybí validní bot token")
+        return
+    await send_console_log("Token OK, startuji…")
+    
+    import os
+    is_lite = os.getenv("BOT_LITE_MODE", "0") == "1"
+    
     # Instance Locking
     r_lock = await get_redis_client()
-    if not await acquire_instance_lock(r_lock):
+    if not await acquire_instance_lock(r_lock, is_lite):
         current_holder = await r_lock.get("bot:lock:worker")
         await r_lock.close()
         msg = f"[FATAL] Another instance is already running (Worker, PID: {current_holder})"

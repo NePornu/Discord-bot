@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,18 @@ import (
 	"github.com/nepornucz/discord-bot-core/internal/challenge"
 	"github.com/nepornucz/discord-bot-core/internal/calendar"
 )
+
+func sendConsoleLog(s *discordgo.Session, channelID string, msg string) {
+	if channelID == "" {
+		return
+	}
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	fullMsg := fmt.Sprintf("```[%s] %s```", ts, msg)
+	_, err := s.ChannelMessageSend(channelID, fullMsg)
+	if err != nil {
+		log.Printf("Failed to send console log: %v", err)
+	}
+}
 
 func main() {
 	cfg := config.LoadConfig()
@@ -194,6 +207,24 @@ func main() {
 					},
 					{
 						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "set_bypass",
+						Description: "Nastaví tajné bypass heslo",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "heslo",
+								Description: "Nové heslo",
+								Required:    true,
+							},
+						},
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "ping",
+						Description: "Pošle ti testovací DM s OTP",
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
 						Name:        "nepornu",
 						Description: "Propojí tvůj Discord s NePornu ID",
 					},
@@ -311,22 +342,22 @@ func main() {
 		if cfg.ConsoleChannelID != "" {
 			host, _ := os.Hostname()
 			uptimeMs := time.Now().Format("2006-01-02 15:04:05")
-			msg := fmt.Sprintf("```ini\n[=== GO CORE SPUŠTĚN ===]\nČas: %s\nHost: %s\nPlatforma: %s %s\nGo Verze: %s\nDiscordGo: %s\nPID: %d\nRegistrované příkazy: %d\nSlužby:\n- Redis: %v\n- SQLite: %v\n- Keycloak: %v\n```",
-				uptimeMs,
-				host,
-				runtime.GOOS, runtime.GOARCH,
-				runtime.Version(),
-				discordgo.VERSION,
-				os.Getpid(),
-				len(cmdList),
-				cfg.RedisURL != "",
-				true, // SQLite is part of Calendar
-				cfg.KCInternalURL != "",
-			)
-			_, err := s.ChannelMessageSend(cfg.ConsoleChannelID, msg)
-			if err != nil {
-				log.Printf("Failed to send startup message: %v", err)
+			
+			// Build dynamic list of commands
+			cmdNames := make([]string, len(cmdList))
+			for i, cmd := range cmdList {
+				cmdNames[i] = cmd.Name
 			}
+			cmdListStr := strings.Join(cmdNames, ", ")
+
+			sendConsoleLog(s, cfg.ConsoleChannelID, "[=== GO CORE SPUŠTĚN ===]")
+			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("Čas: %s", uptimeMs))
+			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("Platforma: %s %s | Go: %s", runtime.GOOS, runtime.GOARCH, runtime.Version()))
+			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("discordgo: %s", discordgo.VERSION))
+			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("PID: %d | Host: %s", os.Getpid(), host))
+			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("Registrované příkazy (%d):\n- %s", len(cmdList), cmdListStr))
+			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("Služby: Redis=%v, SQLite=%v, Keycloak=%v", cfg.RedisURL != "", true, cfg.KCInternalURL != ""))
+			sendConsoleLog(s, cfg.ConsoleChannelID, "Načtené moduly: internal/verification, internal/automod, internal/notifications, internal/challenge, internal/calendar, internal/stats, internal/logging, internal/commands")
 		}
 	})
 

@@ -68,6 +68,39 @@ func (v *VerificationService) HandleVerifyCommand(s *discordgo.Session, i *disco
 
 		targetUser := options[0].Options[0].UserValue(s)
 		v.HandleApprove(s, i, targetUser.ID)
+
+	case "set_bypass":
+		if (i.Member.Permissions & discordgo.PermissionAdministrator) == 0 {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "❌ Nemáš oprávnění pro nastavení bypass hesla.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+		newPassword := options[0].Options[0].StringValue()
+		redis_client.Client.Set(redis_client.Ctx, "verify:bypass_hash", newPassword, 0)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "✅ Heslo nastaveno (ukládáno v plain textu v redis cache pro zpětnou kompatibilitu dočasně).",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+
+	case "ping":
+		otp := v.GenerateOTP()
+		v.sendDM(s, i.Member.User.ID, otp)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "✅ Testovací DM odesláno.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+
 	case "nepornu":
 		v.handleSSOLink(s, i)
 	}
@@ -169,7 +202,19 @@ func (v *VerificationService) OnMessageCreate(s *discordgo.Session, m *discordgo
 	otp := state["otp"]
 	globalCode := v.Config.VerificationCode
 
-	if userInput == otp || (globalCode != "" && strings.ToUpper(userInput) == strings.ToUpper(globalCode)) {
+	bypassHash, _ := redis_client.Client.Get(redis_client.Ctx, "verify:bypass_hash").Result()
+	if bypassHash != "" && userInput == bypassHash {
+		v.HandleApprove(s, &discordgo.InteractionCreate{
+			Interaction: &discordgo.Interaction{
+				GuildID: m.GuildID,
+				Member:  m.Member,
+			},
+		}, uid)
+		s.ChannelMessageSend(m.ChannelID, "✅ **Tajné heslo přijato.** Vstup povolen.")
+		return
+	}
+
+	if userInput == otp || (globalCode != "" && strings.EqualFold(userInput, globalCode)) {
 		redis_client.Client.HSet(redis_client.Ctx, key, "status", "WAITING_FOR_APPROVAL")
 		redis_client.Client.HSet(redis_client.Ctx, key, "code_entered_at", time.Now().Unix())
 
