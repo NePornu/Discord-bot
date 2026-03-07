@@ -40,18 +40,18 @@ except ImportError:
     SECRET_KEY = os.getenv("DASHBOARD_SECRET_KEY", secrets.token_urlsafe(32))
     ACCESS_TOKEN = os.getenv("DASHBOARD_ACCESS_TOKEN", secrets.token_urlsafe(32))
     SESSION_EXPIRY_HOURS = int(os.getenv("SESSION_EXPIRY_HOURS", 24))
-    DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "1227269599951589508")
-    DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "KucYzPIvgrMnbVUW9BI4arnRdwh0OB-n")
+    DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+    DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
     DISCORD_REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "http://207.180.223.191:8092/auth/callback")
     
-    admin_ids_raw = os.getenv("ADMIN_USER_IDS", "471218810964410368")
+    admin_ids_raw = os.getenv("ADMIN_USER_IDS", "")
     try:
         ADMIN_USER_IDS = [int(x.strip()) for x in admin_ids_raw.split(",") if x.strip()]
     except:
-        ADMIN_USER_IDS = [471218810964410368]
+        ADMIN_USER_IDS = []
         
-    BOT_TOKEN = os.getenv("BOT_TOKEN", "MTIyNzI2OTU5OTk1MTU4OTUwOA.GsCoHP.OEpQd6iF6thu7cbvnBl3c5-48rIREWgoLEY6MY")
-    print(f"INFO: Using secrets from environment or defaults.")
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    print(f"INFO: Using secrets from environment.")
 
 APP_MODE = os.getenv("APP_MODE", "dashboard") # dashboard or training
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "metricord_session")
