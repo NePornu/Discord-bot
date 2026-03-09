@@ -24,6 +24,11 @@ func NewLevelsHandler() *LevelsHandler {
 }
 
 func (h *LevelsHandler) HandleRank(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{},
+	})
+
 	target := i.Member.User
 	options := i.ApplicationCommandData().Options
 	if len(options) > 0 {
@@ -60,25 +65,25 @@ func (h *LevelsHandler) HandleRank(s *discordgo.Session, i *discordgo.Interactio
 		},
 	}
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
 }
 
 func (h *LevelsHandler) HandleLeaderboard(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{},
+	})
+
 	gid := i.GuildID
 	xpKey := fmt.Sprintf("levels:xp:%s", gid)
 
 	topUsers, err := redis_client.Client.ZRevRangeWithScores(redis_client.Ctx, xpKey, 0, 9).Result()
 	if err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Žádná data pro leaderboard.",
-			},
+		content := "Žádná data pro leaderboard."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 		return
 	}
@@ -96,11 +101,8 @@ func (h *LevelsHandler) HandleLeaderboard(s *discordgo.Session, i *discordgo.Int
 		Color:       0xF1C40F,
 	}
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
 }
 

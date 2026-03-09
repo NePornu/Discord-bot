@@ -209,6 +209,13 @@ func (a *AutoModService) logViolation(s *discordgo.Session, m *discordgo.Message
 }
 
 func (a *AutoModService) HandleAutoModCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: 64, // Ephemeral
+		},
+	})
+
 	options := i.ApplicationCommandData().Options
 	subcommand := options[0].Name
 
@@ -242,9 +249,9 @@ func (a *AutoModService) handleFilterAdd(s *discordgo.Session, i *discordgo.Inte
 
 	// Validate Regex
 	if _, err := regexp.Compile(f.Pattern); err != nil {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{Content: "❌ Neplatný regulární výraz.", Flags: 64},
+		content := "❌ Neplatný regulární výraz."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 		return
 	}
@@ -253,18 +260,18 @@ func (a *AutoModService) handleFilterAdd(s *discordgo.Session, i *discordgo.Inte
 	filters = append(filters, f)
 	a.SaveFilters(i.GuildID, filters)
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Content: fmt.Sprintf("✅ Filtr přidán: `%s` [%s]", f.Pattern, f.Action), Flags: 64},
+	content := fmt.Sprintf("✅ Filtr přidán: `%s` [%s]", f.Pattern, f.Action)
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
 	})
 }
 
 func (a *AutoModService) handleFilterList(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	filters, _ := a.GetFilters(i.GuildID)
 	if len(filters) == 0 {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{Content: "📭 Žádné aktivní filtry.", Flags: 64},
+		content := "📭 Žádné aktivní filtry."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 		return
 	}
@@ -275,9 +282,9 @@ func (a *AutoModService) handleFilterList(s *discordgo.Session, i *discordgo.Int
 		sb.WriteString(fmt.Sprintf("%d. `%s` [%s]\n", i+1, f.Pattern, f.Action))
 	}
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Content: sb.String(), Flags: 64},
+	content := sb.String()
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
 	})
 }
 
@@ -286,9 +293,9 @@ func (a *AutoModService) handleFilterRemove(s *discordgo.Session, i *discordgo.I
 	filters, _ := a.GetFilters(i.GuildID)
 
 	if index < 0 || index >= len(filters) {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{Content: "❌ Neplatný index.", Flags: 64},
+		content := "❌ Neplatný index."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 		return
 	}
@@ -297,9 +304,9 @@ func (a *AutoModService) handleFilterRemove(s *discordgo.Session, i *discordgo.I
 	filters = append(filters[:index], filters[index+1:]...)
 	a.SaveFilters(i.GuildID, filters)
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Content: fmt.Sprintf("✅ Odstraněn filtr: `%s`", removed.Pattern), Flags: 64},
+	content := fmt.Sprintf("✅ Odstraněn filtr: `%s`", removed.Pattern)
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
 	})
 }
 

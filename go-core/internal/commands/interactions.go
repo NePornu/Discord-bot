@@ -6,6 +6,13 @@ import (
 )
 
 func HandleReport(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+
 	options := i.ApplicationCommandData().Options
 	optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption)
 	for _, opt := range options {
@@ -15,12 +22,9 @@ func HandleReport(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *con
 	target := optionMap["uzivatel"].UserValue(s)
 	reason := optionMap["duvod"].StringValue()
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "✅ Nahlášení bylo odesláno moderátorům.",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
+	content := "✅ Nahlášení bylo odesláno moderátorům."
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
 	})
 
 	embed := &discordgo.MessageEmbed{
@@ -38,14 +42,19 @@ func HandleReport(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *con
 
 func HandleGDPR(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "📜 **Vaše data v NePornu Botu**\n\nPodle GDPR máte právo na výpis dat. Náš bot o vás ukládá:\n" +
-				"- Discord ID a uživatelské jméno\n" +
-				"- Datum připojení na server\n" +
-				"- Informace o propojení s NePornu ID (pokud jste se ověřili)\n\n" +
-				"Pro úplný výpis nebo smazání kontaktujte administrátory.",
 			Flags: discordgo.MessageFlagsEphemeral,
 		},
+	})
+
+	content := "📜 **Vaše data v NePornu Botu**\n\nPodle GDPR máte právo na výpis dat. Náš bot o vás ukládá:\n" +
+		"- Discord ID a uživatelské jméno\n" +
+		"- Datum připojení na server\n" +
+		"- Informace o propojení s NePornu ID (pokud jste se ověřili)\n\n" +
+		"Pro úplný výpis nebo smazání kontaktujte administrátory."
+
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
 	})
 }

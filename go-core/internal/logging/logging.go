@@ -73,7 +73,7 @@ func (l *Logger) OnGuildMemberAdd(s *discordgo.Session, m *discordgo.GuildMember
 		Color:     0x00FF00,
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
-	s.ChannelMessageSendEmbed(l.Config.AlertChannelID, embed)
+	s.ChannelMessageSendEmbed(l.Config.VerifLogChannel, embed)
 }
 
 func (l *Logger) OnGuildMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
@@ -83,7 +83,7 @@ func (l *Logger) OnGuildMemberRemove(s *discordgo.Session, m *discordgo.GuildMem
 		Color:       0xFF0000,
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
-	s.ChannelMessageSendEmbed(l.Config.AlertChannelID, embed)
+	s.ChannelMessageSendEmbed(l.Config.VerifLogChannel, embed)
 }
 
 func (l *Logger) truncate(s string, max int) string {

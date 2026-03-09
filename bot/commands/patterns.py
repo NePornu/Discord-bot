@@ -1222,6 +1222,7 @@ class PatternDetectorCog(commands.Cog):
     @pattern_group.command(name="list", description="Seznam všech detekovaných vzorců chování.")
     @app_commands.checks.has_permissions(administrator=True)
     async def list_patterns(self, itx: discord.Interaction):
+        await itx.response.defer(ephemeral=True)
         # Mapping for the list command (manually compiled from the engine logic)
         patterns = [
             ("Jednorázovka", "👋", "Uživatel napíše 1 zprávu a pak se odmlčí."),
@@ -1252,7 +1253,7 @@ class PatternDetectorCog(commands.Cog):
         for name, emoji, desc in patterns:
             embed1.add_field(name=f"{emoji} {name}", value=desc, inline=True)
             
-        await itx.response.send_message(embed=embed1, ephemeral=True)
+        await itx.followup.send(embed=embed1, ephemeral=True)
 
     @pattern_group.command(name="scan", description="ADMIN: Spustit okamžitý scan vzorců.")
     @app_commands.checks.has_permissions(administrator=True)

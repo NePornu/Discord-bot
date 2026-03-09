@@ -11,11 +11,18 @@ import (
 	"github.com/nepornucz/discord-bot-core/internal/config"
 )
 
+type cacheEntry struct {
+	Groups    []interface{}
+	Timestamp time.Time
+}
+
 type KeycloakClient struct {
-	Config    *config.Config
-	Token     string
-	TokenMu   sync.RWMutex
+	Config     *config.Config
+	Token      string
+	TokenMu    sync.RWMutex
 	HTTPClient *http.Client
+	groupCache sync.Map
+	cacheTTL   time.Duration
 }
 
 func NewClient(cfg *config.Config) *KeycloakClient {
@@ -24,6 +31,7 @@ func NewClient(cfg *config.Config) *KeycloakClient {
 		HTTPClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		cacheTTL: 5 * time.Minute,
 	}
 }
 
@@ -60,6 +68,13 @@ func (c *KeycloakClient) getToken() (string, error) {
 }
 
 func (c *KeycloakClient) GetUserGroups(kcUserID string) ([]interface{}, error) {
+	if val, ok := c.groupCache.Load(kcUserID); ok {
+		entry := val.(cacheEntry)
+		if time.Since(entry.Timestamp) < c.cacheTTL {
+			return entry.Groups, nil
+		}
+	}
+
 	c.TokenMu.RLock()
 	token := c.Token
 	c.TokenMu.RUnlock()
@@ -73,7 +88,7 @@ func (c *KeycloakClient) GetUserGroups(kcUserID string) ([]interface{}, error) {
 	}
 
 	endpoint := fmt.Sprintf("%s/admin/realms/nepornu/users/%s/groups", c.Config.KCInternalURL, kcUserID)
-	
+
 	fetchGroups := func(tk string) (*http.Response, error) {
 		req, _ := http.NewRequest("GET", endpoint, nil)
 		req.Header.Set("Authorization", "Bearer "+tk)
@@ -106,6 +121,11 @@ func (c *KeycloakClient) GetUserGroups(kcUserID string) ([]interface{}, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&groups); err != nil {
 		return nil, err
 	}
+
+	c.groupCache.Store(kcUserID, cacheEntry{
+		Groups:    groups,
+		Timestamp: time.Now(),
+	})
 
 	return groups, nil
 }

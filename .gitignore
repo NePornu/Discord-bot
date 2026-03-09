@@ -1,25 +1,61 @@
+# Python
 __pycache__/
-*.pyc
-.env
-*.log
-*.db
-config/bot_token.py
-data/*.json
-bot_data/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 venv/
+.venv/
+
+# Go
+go-core/bot_go
+go-core/data/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+config/bot_token.py
+
+# Logs & Data
+*.log
+bot_std.log/
+dashboard_std.log/
+bot_data/
+data/
+!data/.gitkeep
+
+# System
 .DS_Store
+Thumbs.db
 
-# Python source files
-Python-3.9.18/
-*.tgz
+# VS Code
+.vscode/
 
-# Generated HTML files
+# Project Specific
+*.db
 debug_status.html
 status_page_output.html
-
-# VSCode settings
-.vscode/
-\n# Logs & Dumps
-*.log
-*_std.log/
-*.json
+Python-3.9.18/
+*.tgz

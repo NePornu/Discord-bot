@@ -17,6 +17,13 @@ func NewNotifyService(cfg *config.Config) *NotifyService {
 }
 
 func (n *NotifyService) HandleNotifyCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: 64, // Ephemeral
+		},
+	})
+
 	options := i.ApplicationCommandData().Options
 	message := options[0].StringValue()
 	target := "ALL"
@@ -26,9 +33,9 @@ func (n *NotifyService) HandleNotifyCommand(s *discordgo.Session, i *discordgo.I
 
 	// Permission check
 	if (i.Member.Permissions & discordgo.PermissionAdministrator) == 0 {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{Content: "❌ Pouze administrátoři mohou posílat oznámení.", Flags: 64},
+		content := "❌ Pouze administrátoři mohou posílat oznámení."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 		return
 	}
@@ -47,14 +54,11 @@ func (n *NotifyService) HandleNotifyCommand(s *discordgo.Session, i *discordgo.I
 		CustomID: "notify_confirm",
 	}
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{btnConfirm},
-				},
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
+		Components: &[]discordgo.MessageComponent{
+			discordgo.ActionsRow{
+				Components: []discordgo.MessageComponent{btnConfirm},
 			},
 		},
 	})

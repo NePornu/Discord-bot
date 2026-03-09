@@ -24,7 +24,9 @@ for env_path in env_paths:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     key, val = line.split("=", 1)
-                    os.environ[key] = val.strip('"').strip("'")
+                    # Don't overwrite existing environment variables (respect run.sh overrides)
+                    if key not in os.environ:
+                        os.environ[key] = val.strip('"').strip("'")
         break
 
 import discord
@@ -79,13 +81,26 @@ async def log_start_info():
 
 @bot.command(name="sync")
 @commands.has_permissions(administrator=True)
-async def sync_tree(ctx: commands.Context):
-    await ctx.send("⏳ Synchronizuji slash příkazy...")
-    try:
-        synced = await bot.tree.sync()
-        await ctx.send(f"✅ Synchronizováno {len(synced)} příkazů.")
-    except Exception as e:
-        await ctx.send(f"❌ Chyba: {e}")
+async def sync_tree(ctx: commands.Context, scope: str = "guild"):
+    """
+    Synchronizace slash příkazů.
+    Použití: !sync (pro tento server) | !sync global (globálně)
+    """
+    if scope == "global":
+        await ctx.send("⏳ Synchronizuji slash příkazy GLOBÁLNĚ (může přepsat Go-core příkazy)...")
+        try:
+            synced = await bot.tree.sync()
+            await ctx.send(f"✅ Globálně synchronizováno {len(synced)} příkazů.")
+        except Exception as e:
+            await ctx.send(f"❌ Chyba při globální synchronizaci: {e}")
+    else:
+        await ctx.send("⏳ Synchronizuji slash příkazy pro TENTO SERVER...")
+        try:
+            bot.tree.copy_global_to(guild=ctx.guild)
+            synced = await bot.tree.sync(guild=ctx.guild)
+            await ctx.send(f"✅ Synchronizováno {len(synced)} příkazů pro tento server.")
+        except Exception as e:
+            await ctx.send(f"❌ Chyba při synchronizaci na serveru: {e}")
 
 async def load_commands():
     start = time.time()
@@ -225,7 +240,7 @@ async def on_ready():
     loaded_cogs = await load_commands()
     await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
     
-    status_msg = "Analytics 📈"
+    status_msg = "nepornu.cz"
     activity = discord.Activity(type=discord.ActivityType.watching, name=status_msg)
     await bot.change_presence(status=discord.Status.online, activity=activity)
     
@@ -259,13 +274,9 @@ async def on_ready():
 
     
     
-    try:
-        synced = await bot.tree.sync()
-        await send_console_log(f"✅ Synchronizováno {len(synced)} slash příkazů.")
-        
-
-    except Exception as e:
-        await send_console_log(f"❌ Sync selhal: {e}")
+    # Automatic global sync removed to prevent conflicts with Go-core commands.
+    # Use !sync command manually if needed.
+    pass
 
 
 @bot.tree.error
@@ -273,14 +284,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
     try:
         import discord.app_commands as app_errors
         if isinstance(error, app_errors.errors.CommandNotFound):
-            try:
-                await interaction.response.send_message(
-                    "Tento příkaz momentálně není dostupný. Zkuste to prosím znovu za chvíli.",
-                    ephemeral=True,
-                )
-            except Exception:
-                pass
-            return
+            return # Be silent, might be handled by Go-core
         # log other app command errors
         await send_console_log(f"⚠️ App command error: {error}")
     except Exception as e:

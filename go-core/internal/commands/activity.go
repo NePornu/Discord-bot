@@ -9,6 +9,11 @@ import (
 )
 
 func HandleActivityStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{},
+	})
+
 	target := i.Member.User
 	options := i.ApplicationCommandData().Options
 	for _, opt := range options {
@@ -37,15 +42,17 @@ func HandleActivityStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		},
 	}
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
 }
 
 func HandleActivityLeaderboard(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{},
+	})
+
 	gid := i.GuildID
 	pattern := fmt.Sprintf("events:msg:%s:*", gid)
 	keys, _ := redis_client.Client.Keys(redis_client.Ctx, pattern).Result()
@@ -71,8 +78,10 @@ func HandleActivityLeaderboard(s *discordgo.Session, i *discordgo.InteractionCre
 
 	var desc string
 	limit := 10
-	if len(scores) < limit { limit = len(scores) }
-	
+	if len(scores) < limit {
+		limit = len(scores)
+	}
+
 	for idx, sc := range scores[:limit] {
 		desc += fmt.Sprintf("**%d.** <@%s> — `%d` zpráv\n", idx+1, sc.ID, sc.Count)
 	}
@@ -83,10 +92,7 @@ func HandleActivityLeaderboard(s *discordgo.Session, i *discordgo.InteractionCre
 		Color:       0xE67E22,
 	}
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
 }

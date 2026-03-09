@@ -48,8 +48,6 @@ func main() {
 		redis_client.Init(cfg.RedisURL)
 	}
 
-	// Initialize Keycloak
-	commands.InitKeycloak(cfg)
 
 	// Initialize Logger
 	logHandler := logging.NewLogger(cfg)
@@ -161,10 +159,6 @@ func main() {
 				Description: "TOP 10 nejaktivnějších (podle zpráv)",
 			},
 			{
-				Name:        "sso_status",
-				Description: "Check your Keycloak/SSO verification status",
-			},
-			{
 				Name:        "status",
 				Description: "Odešle embed s aktuálním stavem služby",
 				Options: []*discordgo.ApplicationCommandOption{
@@ -222,11 +216,6 @@ func main() {
 						Type:        discordgo.ApplicationCommandOptionSubCommand,
 						Name:        "ping",
 						Description: "Pošle ti testovací DM s OTP",
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "nepornu",
-						Description: "Propojí tvůj Discord s NePornu ID",
 					},
 				},
 			},
@@ -392,8 +381,6 @@ func main() {
 			commands.HandleActivityStats(s, i)
 		case "activity-leaderboard":
 			commands.HandleActivityLeaderboard(s, i)
-		case "sso_status":
-			commands.HandleSSOStatus(s, i)
 		case "status":
 			commands.HandleStatus(s, i)
 		case "verify":

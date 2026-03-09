@@ -56,6 +56,11 @@ var CodeMap = map[string]StatusType{
 }
 
 func HandleStatus(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{},
+	})
+
 	options := i.ApplicationCommandData().Options
 	optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption)
 	for _, opt := range options {
@@ -77,12 +82,9 @@ func HandleStatus(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	data, ok := StatusMap[statusType]
 	if !ok {
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "❌ Neplatný stav. Použijte kód (1-11) nebo název stavu.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
+		content := "❌ Neplatný stav. Použijte kód (1-11) nebo název stavu."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 		return
 	}
@@ -107,10 +109,7 @@ func HandleStatus(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-		},
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
 }

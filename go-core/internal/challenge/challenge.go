@@ -269,6 +269,13 @@ func (s *ChallengeService) OnReactionAdd(dg *discordgo.Session, r *discordgo.Mes
 }
 
 func (s *ChallengeService) HandleChallengeCommand(dg *discordgo.Session, i *discordgo.InteractionCreate) {
+	dg.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: 64, // Ephemeral
+		},
+	})
+
 	options := i.ApplicationCommandData().Options
 	subcommand := options[0].Name
 
@@ -310,21 +317,18 @@ func (s *ChallengeService) handleSetup(dg *discordgo.Session, i *discordgo.Inter
 	s.Configs[channelID] = cfg
 	s.SaveConfigs()
 
-	dg.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("✅ Výzva nastavena pro <#%s>!", channelID),
-			Flags: 64,
-		},
+	content := fmt.Sprintf("✅ Výzva nastavena pro <#%s>!", channelID)
+	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
 	})
 }
 
 func (s *ChallengeService) handleInfo(dg *discordgo.Session, i *discordgo.InteractionCreate) {
 	cfg, exists := s.Configs[i.ChannelID]
 	if !exists {
-		dg.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{Content: "❌ Žádná výzva v tomto kanále.", Flags: 64},
+		content := "❌ Žádná výzva v tomto kanále."
+		dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 		return
 	}
@@ -339,8 +343,7 @@ func (s *ChallengeService) handleInfo(dg *discordgo.Session, i *discordgo.Intera
 		},
 	}
 
-	dg.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Embeds: []*discordgo.MessageEmbed{embed}, Flags: 64},
+	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
 }

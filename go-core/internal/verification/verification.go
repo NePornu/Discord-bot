@@ -30,22 +30,33 @@ func (v *VerificationService) HandleButtonClick(s *discordgo.Session, i *discord
 		v.HandleApprove(s, i, userID)
 		return
 	}
+	if strings.HasPrefix(customID, "verif_warn:") {
+		userID := strings.TrimPrefix(customID, "verif_warn:")
+		v.HandleWarn(s, i, userID)
+		return
+	}
+	if strings.HasPrefix(customID, "verif_kick:") {
+		userID := strings.TrimPrefix(customID, "verif_kick:")
+		v.HandleKick(s, i, userID)
+		return
+	}
 
 	switch customID {
 	case "verify_button":
 		// Reserved for future use
 	case "sso_verify_button":
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "🔗 Pro verifikaci přes SSO použij `/verify nepornu` nebo klikni na odkaz v dashboardu.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+		// Removed SSO integration
 	}
 }
 
 func (v *VerificationService) HandleVerifyCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+
 	options := i.ApplicationCommandData().Options
 	if len(options) == 0 {
 		return
@@ -54,14 +65,10 @@ func (v *VerificationService) HandleVerifyCommand(s *discordgo.Session, i *disco
 
 	switch subcommand {
 	case "bypass":
-		// Permission check: only those who can kick members can bypass
 		if (i.Member.Permissions & discordgo.PermissionKickMembers) == 0 {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "❌ Nemáš oprávnění pro bypass verifikace.",
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
+			content := "❌ Nemáš oprávnění pro bypass verifikace."
+			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: &content,
 			})
 			return
 		}
@@ -71,38 +78,27 @@ func (v *VerificationService) HandleVerifyCommand(s *discordgo.Session, i *disco
 
 	case "set_bypass":
 		if (i.Member.Permissions & discordgo.PermissionAdministrator) == 0 {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "❌ Nemáš oprávnění pro nastavení bypass hesla.",
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
+			content := "❌ Nemáš oprávnění pro nastavení bypass hesla."
+			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: &content,
 			})
 			return
 		}
 		newPassword := options[0].Options[0].StringValue()
 		redis_client.Client.Set(redis_client.Ctx, "verify:bypass_hash", newPassword, 0)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "✅ Heslo nastaveno (ukládáno v plain textu v redis cache pro zpětnou kompatibilitu dočasně).",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
+		content := "✅ Heslo nastaveno."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 
 	case "ping":
 		otp := v.GenerateOTP()
 		v.sendDM(s, i.Member.User.ID, otp)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "✅ Testovací DM odesláno.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
+		content := "✅ Testovací DM odesláno."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
 		})
 
-	case "nepornu":
-		v.handleSSOLink(s, i)
 	}
 }
 
@@ -157,27 +153,37 @@ func (v *VerificationService) sendDM(s *discordgo.Session, userID string, otp st
 }
 
 func (v *VerificationService) logJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd) {
-	if v.Config.VerifLogChannel == "" {
+	if v.Config.VerificationChannel == "" {
 		return
 	}
 
+	creationTime := v.getCreationTime(m.User.ID)
+	
 	embed := &discordgo.MessageEmbed{
-		Title: "📥 Nový uživatel se připojil",
+		Title: "Nový uživatel se připojil na server!",
 		Color: 0x3498db,
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
 			URL: m.User.AvatarURL(""),
 		},
 		Fields: []*discordgo.MessageEmbedField{
-			{Name: "Uživatel", Value: m.User.Mention(), Inline: true},
+			{Name: "Uživatel", Value: fmt.Sprintf("%s (%s)", m.User.Mention(), m.User.Username), Inline: false},
 			{Name: "ID", Value: m.User.ID, Inline: true},
-			{Name: "Status", Value: "⏳ Čeká na zadání kódu...", Inline: false},
+			{Name: "Účet vytvořen", Value: fmt.Sprintf("<t:%d:F> (<t:%d:R>)", creationTime, creationTime), Inline: false},
+			{Name: "Avatar", Value: fmt.Sprintf("[Odkaz](%s)", m.User.AvatarURL("")), Inline: true},
+			{Name: "Bio", Value: "_Bio není dostupné_", Inline: true},
 		},
+		Description: "Automaticky mu byla přidělena ověřovací role.\n\n⏳ **Status:** Čeká na zadání kódu...",
 	}
 
-	msg, err := s.ChannelMessageSendEmbed(v.Config.VerifLogChannel, embed)
+	msg, err := s.ChannelMessageSendEmbed(v.Config.VerificationChannel, embed)
 	if err == nil {
 		key := fmt.Sprintf("verify:state:%s", m.User.ID)
-		redis_client.Client.HSet(redis_client.Ctx, key, "log_msg_id", msg.ID)
+		redis_client.Client.HSet(redis_client.Ctx, key, "approve_msg_id", msg.ID)
+	}
+
+	// Also send a simple log to the log channel
+	if v.Config.VerifLogChannel != "" {
+		s.ChannelMessageSend(v.Config.VerifLogChannel, fmt.Sprintf("📥 **Nový uživatel:** %s (%s) se připojil a čeká na ověření.", m.User.Mention(), m.User.ID))
 	}
 }
 
@@ -228,27 +234,47 @@ func (v *VerificationService) OnMessageCreate(s *discordgo.Session, m *discordgo
 
 func (v *VerificationService) notifyMods(s *discordgo.Session, userID string) {
 	key := fmt.Sprintf("verify:state:%s", userID)
-	logMsgID, _ := redis_client.Client.HGet(redis_client.Ctx, key, "log_msg_id").Result()
+	msgID, _ := redis_client.Client.HGet(redis_client.Ctx, key, "approve_msg_id").Result()
 
-	if logMsgID != "" {
-		btn := discordgo.Button{
+	if msgID != "" && v.Config.VerificationChannel != "" {
+		btnApprove := discordgo.Button{
 			Label:    "Schválit (Approve)",
 			Style:    discordgo.SuccessButton,
 			CustomID: "verif_approve:" + userID,
 			Emoji:    &discordgo.ComponentEmoji{Name: "✅"},
 		}
+		btnWarn := discordgo.Button{
+			Label:    "Upozornit",
+			Style:    discordgo.SecondaryButton, // Gray/Secondary
+			CustomID: "verif_warn:" + userID,
+			Emoji:    &discordgo.ComponentEmoji{Name: "⚠️"},
+		}
+		btnKick := discordgo.Button{
+			Label:    "Vyhodit (Kick)",
+			Style:    discordgo.DangerButton,
+			CustomID: "verif_kick:" + userID,
+			Emoji:    &discordgo.ComponentEmoji{Name: "🚪"},
+		}
 
 		comps := []discordgo.MessageComponent{
 			discordgo.ActionsRow{
-				Components: []discordgo.MessageComponent{btn},
+				Components: []discordgo.MessageComponent{btnApprove, btnWarn, btnKick},
 			},
 		}
 
-		s.ChannelMessageEditComplex(&discordgo.MessageEdit{
-			ID:         logMsgID,
-			Channel:    v.Config.VerifLogChannel,
-			Components: &comps,
-		})
+		// Update the embed status
+		msg, err := s.ChannelMessage(v.Config.VerificationChannel, msgID)
+		if err == nil && len(msg.Embeds) > 0 {
+			embed := msg.Embeds[0]
+			embed.Description = "Automaticky mu byla přidělena ověřovací role.\n\n✅ **Status:** Kód zadán. Čeká na schválení."
+			
+			s.ChannelMessageEditComplex(&discordgo.MessageEdit{
+				ID:         msgID,
+				Channel:    v.Config.VerificationChannel,
+				Embeds:     &[]*discordgo.MessageEmbed{embed},
+				Components: &comps,
+			})
+		}
 	}
 }
 
@@ -261,57 +287,127 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 	}
 
 	key := fmt.Sprintf("verify:state:%s", userID)
+	state, _ := redis_client.Client.HGetAll(redis_client.Ctx, key).Result()
+	
 	redis_client.Client.HSet(redis_client.Ctx, key, "status", "APPROVED")
-	redis_client.Client.HSet(redis_client.Ctx, key, "approved_at", time.Now().Unix())
+	now := time.Now()
+	redis_client.Client.HSet(redis_client.Ctx, key, "approved_at", now.Unix())
 
 	v.confirmSuccess(s, userID)
 
+	// Fetch detailed user info
+	u, _ := s.User(userID)
+	username := userID
+	avatar := ""
+	if u != nil {
+		username = u.Username
+		avatar = u.AvatarURL("")
+	}
+	creationTime := v.getCreationTime(userID)
+	accountAge := time.Since(time.Unix(creationTime, 0))
+	ageStr := fmt.Sprintf("%d dnech", int(accountAge.Hours()/24))
+	if accountAge.Hours() > 24*365 {
+		ageStr = fmt.Sprintf("%.1f letech", accountAge.Hours()/(24*365))
+	}
+
+	joinTime := time.Unix(v.parseInt(state["created_at"]), 0)
+	codeTime := time.Unix(v.parseInt(state["code_entered_at"]), 0)
+
+	logContent := fmt.Sprintf("**Uživatel ověřen:**\n\n"+
+		"**Uživatel:** <@%s> (%s)\n"+
+		"**ID:** %s\n"+
+		"**Účet vytvořen:** <t:%d:F> (<t:%d:R>)\n"+
+		"**Věk účtu:** %s\n"+
+		"**Avatar:** %s\n\n"+
+		"Automaticky mu byla přidělena ověřovací role.\n\n"+
+		"**Časový průběh:**\n"+
+		"• Připojení: %s\n"+
+		"• Zadání kódu: %s\n"+
+		"• Schválení: %s\n\n"+
+		"**Moderátor:** Schválil <@%s>",
+		userID, username, userID, creationTime, creationTime, ageStr, avatar,
+		joinTime.Format("2006-01-02 15:04:05"),
+		codeTime.Format("2006-01-02 15:04:05"),
+		now.Format("2006-01-02 15:04:05"),
+		i.Member.User.ID)
+
+	s.ChannelMessageSend(v.Config.VerifLogChannel, logContent)
+
+	content := fmt.Sprintf("✅ **Uživatel <@%s> byl schválen moderátorem <@%s>.**", userID, i.Member.User.ID)
+
+	if i.Type == discordgo.InteractionMessageComponent {
+		// Try to keep the embed if we can access it
+		msg, err := s.ChannelMessage(v.Config.VerificationChannel, i.Message.ID)
+		if err == nil && len(msg.Embeds) > 0 {
+			embed := msg.Embeds[0]
+			embed.Description = fmt.Sprintf("Automaticky mu byla přidělena ověřovací role.\n\n✅ **Status:** Schváleno moderátorem <@%s>", i.Member.User.ID)
+			embed.Color = 0x2ecc71 // Success Green
+			
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseUpdateMessage,
+				Data: &discordgo.InteractionResponseData{
+					Embeds:     []*discordgo.MessageEmbed{embed},
+					Components: []discordgo.MessageComponent{},
+				},
+			})
+		} else {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseUpdateMessage,
+				Data: &discordgo.InteractionResponseData{
+					Content:    content,
+					Components: []discordgo.MessageComponent{},
+				},
+			})
+		}
+	} else {
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
+	}
+}
+
+func (v *VerificationService) HandleWarn(s *discordgo.Session, i *discordgo.InteractionCreate, userID string) {
+	content := fmt.Sprintf("⚠️ **Varování pro <@%s> bylo zaznamenáno moderátorem <@%s>.**", userID, i.Member.User.ID)
+	// For now just respond, we can add more logic later
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+			Flags:   64,
+		},
+	})
+}
+
+func (v *VerificationService) HandleKick(s *discordgo.Session, i *discordgo.InteractionCreate, userID string) {
+	err := s.GuildMemberDeleteWithReason(i.GuildID, userID, fmt.Sprintf("Verification rejected by %s", i.Member.User.Username))
+	content := ""
+	if err != nil {
+		content = fmt.Sprintf("❌ Nepodařilo se vyhodit uživatele: %v", err)
+	} else {
+		content = fmt.Sprintf("🚪 **Uživatel <@%s> byl vyhozen moderátorem <@%s>.**", userID, i.Member.User.ID)
+	}
+	
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
-			Content:    fmt.Sprintf("✅ **Uživatel <@%s> byl schválen moderátorem <@%s>.**", userID, i.Member.User.ID),
+			Content:    content,
 			Components: []discordgo.MessageComponent{},
 		},
 	})
 }
 
-func (v *VerificationService) handleSSOLink(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	embed := &discordgo.MessageEmbed{
-		Title: "🔗 Propojení s NePornu ID",
-		Description: "Tento příkaz slouží k propojení tvého Discord účtu s interním systémem NePornu (Keycloak).\n\n" +
-			"1. Klikni na tlačítko **'Propojit účet'** níže.\n" +
-			"2. Přihlas se svými údaji.\n" +
-			"3. Po úspěšném přihlášení klikni na **'Ověřit stav'**.\n\n" +
-			"*Tip: Pokud jsi E-kouč nebo Moderátor, automaticky získáš své role.*",
-		Color: 0x3498db,
-	}
-
-	btnLink := discordgo.Button{
-		Label: "Propojit účet (Link SSO)",
-		URL:   "https://portal.nepornu.cz",
-		Style: discordgo.LinkButton,
-		Emoji: &discordgo.ComponentEmoji{Name: "🔑"},
-	}
-
-	btnStatus := discordgo.Button{
-		Label:    "Ověřit stav (Check Status)",
-		Style:    discordgo.PrimaryButton,
-		CustomID: "sso_verify_button",
-		Emoji:    &discordgo.ComponentEmoji{Name: "🔄"},
-	}
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{btnLink, btnStatus},
-				},
-			},
-		},
-	})
+func (v *VerificationService) getCreationTime(idStr string) int64 {
+	var id int64
+	fmt.Sscanf(idStr, "%d", &id)
+	return (id >> 22) / 1000 + 1420070400
 }
+
+func (v *VerificationService) parseInt(s string) int64 {
+	var val int64
+	fmt.Sscanf(s, "%d", &val)
+	return val
+}
+
 
 func (v *VerificationService) confirmSuccess(s *discordgo.Session, userID string) {
 	channel, err := s.UserChannelCreate(userID)
