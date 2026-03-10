@@ -9,7 +9,7 @@ import httpx
 import sys
 sys.path.append('/root/discord-bot')
 
-from shared.redis_client import get_redis, REDIS_URL
+from shared.python.redis_client import get_redis, REDIS_URL
 from functools import wraps
 import hashlib
 
@@ -17,8 +17,8 @@ def redis_cache(ttl=300):
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            from shared.redis_client import get_redis
-            r = await get_redis()
+            from shared.python.redis_client import get_redis_client
+            r = await get_redis_client()
             key_parts = [func.__name__]
             for arg in args:
                 if isinstance(arg, (str, int, float, bool, bytes)):

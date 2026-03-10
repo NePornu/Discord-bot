@@ -3,11 +3,11 @@ import asyncio
 import redis.asyncio as redis
 import sys
 sys.path.append('/root/discord-bot')
-from shared.redis_client import REDIS_URL
+from shared.python.redis_client import get_redis_client
 import json
 
 async def inspect_events():
-    r = redis.from_url(REDIS_URL, decode_responses=True)
+    r = get_redis_client()
     guild_id = 615171377783242769
     
     print("Scanning for message events...")

@@ -8,9 +8,7 @@ import io
 import hashlib
 import asyncio
 import os
-from config import config
-
-from config import config
+from shared.python.config import config
 
 class WarnUserModal(discord.ui.Modal, title="⚠️ Upozornit uživatele"):
     def __init__(self, user: discord.User):

@@ -53,8 +53,8 @@ async def on_ready():
     print(f"Logged in as {client.user}")
     
     
-    from shared.redis_client import get_redis
-    r = await get_redis()
+    from shared.python.redis_client import get_redis_client
+    r = await get_redis_client()
     
     for guild in client.guilds:
         await reconstruct_guild(guild, r)

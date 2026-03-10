@@ -21,7 +21,7 @@ import redis.asyncio as aioredis
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from shared.pattern_logic import count_keywords, count_words
-from shared.redis_client import REDIS_URL
+from shared.python.redis_client import get_redis_sync
 
 # Setup logging
 logging.basicConfig(

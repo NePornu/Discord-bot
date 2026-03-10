@@ -5,7 +5,7 @@ import sys
 import math
 import random
 sys.path.append('/root/discord-bot')
-from shared.redis_client import REDIS_URL
+from shared.python.redis_client import get_redis_client
 
 
 

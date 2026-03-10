@@ -153,18 +153,20 @@ async def refresh_instance_lock_task():
     """Periodically refreshes the instance lock TTL."""
     is_lite = os.getenv("BOT_LITE_MODE", "0") == "1"
     lock_key = f"bot:lock:{'lite' if is_lite else 'primary'}"
+    r = None
     try:
         r = await get_redis_client()
         current_pid = await r.get(lock_key)
-        if current_pid == str(os.getpid()):
+        my_pid = str(os.getpid())
+        if current_pid == my_pid:
             await r.expire(lock_key, 60)
         else:
-            # If the lock is gone or belongs to someone else, we have a problem
-            # But we'll just try to re-acquire or log it
-            await send_console_log(f"⚠️ [WARN] Instance lock for {lock_key} was lost or stolen!")
-        await r.close()
+            await send_console_log(f"⚠️ [WARN] Instance lock for {lock_key} was lost or stolen! (My PID: {my_pid}, Current in Redis: {current_pid})")
     except Exception as e:
-        print(f"Error refreshing instance lock: {e}")
+        print(f"Error in lock refresh: {e}")
+    finally:
+        if r:
+            await r.aclose()
 
 
 @member_stats_task.before_loop
@@ -174,12 +176,15 @@ async def before_member_stats_task():
 @tasks.loop(seconds=60)
 async def heartbeat_task():
     """Updates a heartbeat key in Redis to show the bot is alive."""
+    r = None
     try:
         r = await get_redis_client()
         await r.set("bot:heartbeat", str(time.time()))
-        await r.close()
     except Exception as e:
         print(f"[{ts()}] [ERROR] Heartbeat failed: {e}")
+    finally:
+        if r:
+            await r.aclose()
 
 @heartbeat_task.before_loop
 async def before_heartbeat_task():
@@ -201,6 +206,7 @@ async def on_ready():
     guilds = list(bot.guilds)
     await send_console_log(f"Členem {len(guilds)} serverů: {[g.name for g in guilds]}")
 
+    r = None
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
         idx_key = "bot:guilds:worker"
@@ -210,9 +216,11 @@ async def on_ready():
             await r.sadd(idx_key, *gids)
             await r.sadd("bot:guilds", *gids)
         await send_console_log(f"✅ Cache aktualizována ({idx_key}): {len(guilds)} serverů")
-        await r.close()
     except Exception as e:
         await send_console_log(f"⚠️ Chyba cache: {e}")
+    finally:
+        if r:
+            await r.aclose()
 
     global pending_console_msgs
     errors = [m for m in pending_console_msgs if "FATAL" in m or "ERROR" in m or "Chyba" in m]
@@ -263,16 +271,18 @@ async def on_guild_join(guild: discord.Guild):
         except Exception as e:
             await send_console_log(f"❌ Auto-backfill selhal: {e}")
 
-    
+    r = None
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
         idx_key = "bot:guilds:worker"
         
         await r.sadd(idx_key, str(guild.id))
         await r.sadd("bot:guilds", str(guild.id))
-        await r.close()
     except Exception as e:
         print(f"Redis add error: {e}")
+    finally:
+        if r:
+            await r.aclose()
 
     await send_console_log("✅ Start dokončen, bot připraven.")
 
@@ -280,6 +290,7 @@ async def on_guild_join(guild: discord.Guild):
 async def on_guild_remove(guild: discord.Guild):
     await send_console_log(f"👋 ODPOJEN ZE SERVERU: {guild.name} ({guild.id})")
     
+    r = None
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
         idx_key = "bot:guilds:worker"
@@ -289,9 +300,11 @@ async def on_guild_remove(guild: discord.Guild):
         
         await r.srem("bot:guilds", str(guild.id)) 
         
-        await r.close()
     except Exception as e:
         print(f"Redis remove error: {e}")
+    finally:
+        if r:
+            await r.aclose()
 
 
 
@@ -383,13 +396,10 @@ async def main():
     # Instance Locking
     r_lock = await get_redis_client()
     if not await acquire_instance_lock(r_lock, is_lite):
-        current_holder = await r_lock.get("bot:lock:worker")
-        await r_lock.close()
-        msg = f"[FATAL] Another instance is already running (Worker, PID: {current_holder})"
-        print(ts(), msg)
-        # We can't use send_console_log yet because bot isn't started, but we print to stdout
+        print(f"❌ [ERROR] Instance lock is already taken! (Lite: {is_lite})")
+        await r_lock.aclose()
         return
-    await r_lock.close()
+    await r_lock.aclose()
     
     refresh_instance_lock_task.start()
     print(ts(), "✅ Instance lock acquired (Worker)")

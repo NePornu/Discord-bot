@@ -58,7 +58,7 @@ async def require_admin(request: Request):
     # Check session role
     if request.session.get("role") != "admin":
         # Additional deep check for dynamic admins
-        from shared.redis_client import get_redis_client
+        from shared.python.redis_client import get_redis_client
         import json
         user = request.session.get("discord_user")
         if user:

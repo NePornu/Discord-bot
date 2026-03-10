@@ -14,7 +14,7 @@ if os.path.exists(env_path):
                 os.environ[key] = val.strip('"').strip("'")
 
 sys.path.append("/root/discord-bot")
-from shared.redis_client import get_redis_client
+from shared.python.redis_client import get_redis_client
 
 GUILD_ID = 615171377783242769
 

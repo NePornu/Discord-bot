@@ -2,7 +2,7 @@ import json
 import subprocess
 import os
 import asyncio
-from shared.redis_client import get_redis
+from shared.python.redis_client import get_redis_client
 
 async def extract_discourse_knowledge(limit=200):
     """Extract a large batch of forum posts for training data."""

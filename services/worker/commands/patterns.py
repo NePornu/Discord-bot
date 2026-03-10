@@ -25,12 +25,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from config import config
-from shared.redis_client import get_redis_client
+from shared.python.config import config
+from shared.python.redis_client import get_redis_client
 
 logger = logging.getLogger("PatternDetector")
 
-from shared.pattern_logic import KEYWORD_GROUPS, count_keywords, count_words, normalize_text
+from shared.python.pattern_logic import KEYWORD_GROUPS, count_keywords, count_words, normalize_text
 
 
 # ─── Pattern Alert ────────────────────────────────────────────────────

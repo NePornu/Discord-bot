@@ -1,7 +1,7 @@
 import asyncio
 import json
 import re
-from shared.redis_client import get_redis_client
+from shared.python.redis_client import get_redis_client
 
 # Domains from user request
 DOMAINS = [

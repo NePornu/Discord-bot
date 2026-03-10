@@ -3,8 +3,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import redis.asyncio as redis
-from config import config
-from shared.redis_client import get_redis_client
+from shared.python.config import config
+from shared.python.redis_client import get_redis_client
 from datetime import datetime
 import time
 
