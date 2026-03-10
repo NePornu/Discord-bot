@@ -12,8 +12,9 @@ echo "--- NePornu Hybrid Bot System ---"
 
 # --- Cleanup existing instances ---
 echo "Cleaning up existing bot processes..."
-pkill -f "services/worker/main.py" > /dev/null 2>&1
-pkill -f "bot_go" > /dev/null 2>&1
+# Use broader pkill to catch processes started before restructuring
+pkill -9 -f "main.py" > /dev/null 2>&1
+pkill -9 -f "bot_go" > /dev/null 2>&1
 sleep 1 # Wait for processes to exit
 
 echo "Using Python: $PYTHON_CMD"

@@ -6,11 +6,10 @@ cd "$REPO_DIR"
 
 echo "--- GIT HISTORY SCRUB & RESTRUCTURING FIX ---"
 
-# 1. Kill duplicate bot processes 
+# 1. Kill bot processes (broad match to catch old paths)
 echo "[1/4] Terminating existing bot processes..."
-pkill -9 -f "python.*services/worker/main.py" || true
-pkill -9 -f "python.*services/dashboard/backend/dashboard.py" || true
-pkill -9 -f "python.*services/dashboard/backend/main.py" || true
+pkill -9 -f "main.py" || true
+pkill -9 -f "bot_go" || true
 echo "Processes cleared."
 
 # 2. Scrub History (The Big Reset)
