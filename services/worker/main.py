@@ -148,32 +148,33 @@ async def acquire_instance_lock(r: redis.Redis, is_lite: bool) -> bool:
     success = await r.set(lock_key, str(os.getpid()), ex=60, nx=True)
     return bool(success)
 
-@tasks.loop(seconds=20)
+@tasks.loop(seconds=10)
 async def refresh_instance_lock_task():
-    """Periodically refreshes the instance lock TTL."""
+    """Periodically refreshes the instance lock TTL with higher frequency and buffer."""
     is_lite = os.getenv("BOT_LITE_MODE", "0") == "1"
     lock_key = f"bot:lock:{'lite' if is_lite else 'primary'}"
+    my_pid = str(os.getpid())
     r = None
     try:
         r = await get_redis_client()
-        current_pid = await r.get(lock_key)
-        my_pid = str(os.getpid())
-        if current_pid == my_pid:
-            # We still own the lock, just refresh it
-            await r.expire(lock_key, 60)
-        elif current_pid is None:
-            # Lock expired or was deleted, try to re-acquire
-            success = await r.set(lock_key, my_pid, ex=60, nx=True)
+        val = await r.get(lock_key)
+        
+        if val == my_pid:
+            # We own it, refresh with 2 minute TTL for safety
+            await r.expire(lock_key, 120)
+        elif val is None:
+            # Lock expired but nobody else took it - reclaim it
+            success = await r.set(lock_key, my_pid, ex=120, nx=True)
             if success:
-                print(f"[{ts()}] [INFO] Instance lock for {lock_key} was re-acquired.")
+                print(f"[{ts()}] [INFO] Instance lock {lock_key} was silently re-acquired.")
             else:
-                # Someone else took it in the split second between get and set
-                await send_console_log(f"⚠️ [WARN] Instance lock for {lock_key} was stolen! (Another process took it)")
+                # Beaten in a race condition
+                await send_console_log(f"⚠️ [CRITICAL] Instance lock {lock_key} stolen during re-acquisition!")
         else:
-            # Different PID has the lock
-            await send_console_log(f"⚠️ [WARN] Instance lock for {lock_key} is held by another process! (Current: {current_pid}, Mine: {my_pid})")
+            # Someone else actually has it
+            await send_console_log(f"⚠️ [CRITICAL] Instance lock {lock_key} is held by another process (PID: {val})!")
     except Exception as e:
-        print(f"Error in lock refresh: {e}")
+        print(f"[{ts()}] [ERROR] Lock refresh failed: {e}")
     finally:
         if r:
             await r.aclose()
