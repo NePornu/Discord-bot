@@ -159,9 +159,19 @@ async def refresh_instance_lock_task():
         current_pid = await r.get(lock_key)
         my_pid = str(os.getpid())
         if current_pid == my_pid:
+            # We still own the lock, just refresh it
             await r.expire(lock_key, 60)
+        elif current_pid is None:
+            # Lock expired or was deleted, try to re-acquire
+            success = await r.set(lock_key, my_pid, ex=60, nx=True)
+            if success:
+                print(f"[{ts()}] [INFO] Instance lock for {lock_key} was re-acquired.")
+            else:
+                # Someone else took it in the split second between get and set
+                await send_console_log(f"⚠️ [WARN] Instance lock for {lock_key} was stolen! (Another process took it)")
         else:
-            await send_console_log(f"⚠️ [WARN] Instance lock for {lock_key} was lost or stolen! (My PID: {my_pid}, Current in Redis: {current_pid})")
+            # Different PID has the lock
+            await send_console_log(f"⚠️ [WARN] Instance lock for {lock_key} is held by another process! (Current: {current_pid}, Mine: {my_pid})")
     except Exception as e:
         print(f"Error in lock refresh: {e}")
     finally:
