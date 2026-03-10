@@ -282,6 +282,8 @@ class PatternDetectorCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
+        if os.getenv("BOT_LITE_MODE") == "1":
+            return
         if member.bot or member.guild.id != self._guild_id:
             return
         try:

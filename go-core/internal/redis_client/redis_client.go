@@ -3,6 +3,7 @@ package redis_client
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -19,9 +20,17 @@ func Init(redisURL string) {
 	}
 
 	Client = redis.NewClient(opts)
-	_, err = Client.Ping(Ctx).Result()
-	if err != nil {
-		log.Fatalf("Error connecting to Redis: %v", err)
+	
+	// Add retry logic
+	for i := 0; i < 5; i++ {
+		_, err = Client.Ping(Ctx).Result()
+		if err == nil {
+			log.Println("Connected to Redis successfully")
+			return
+		}
+		log.Printf("Attempt %d: Error connecting to Redis: %v. Retrying in 2s...", i+1, err)
+		time.Sleep(2 * time.Second)
 	}
-	log.Println("Connected to Redis successfully")
+	
+	log.Fatalf("Error connecting to Redis after 5 attempts: %v", err)
 }

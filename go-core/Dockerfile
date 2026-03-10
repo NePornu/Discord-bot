@@ -5,18 +5,19 @@ WORKDIR /app
 # Install build dependencies
 RUN apk add --no-cache git
 
-# Copy go mod and sum files
+# Copy go.mod and go.sum first to leverage Docker cache
 COPY go-core/go.mod go-core/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download && go mod tidy
 
-# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
-RUN go mod download
-
-# Copy the source from the current directory to the Working Directory inside the container
+# Copy the rest of the source code
 COPY go-core .
 COPY .env ../.env
 
 # Build the Go app
-RUN go build -o bot_go main.go
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=linux go build -o bot_go main.go
 
 ######## Start a new stage from scratch #######
 FROM alpine:latest  

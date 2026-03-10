@@ -1,159 +1,110 @@
 package calendar
 
 import (
-	"database/sql"
-	"os"
+	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/redis/go-redis/v9"
 )
 
 type Calendar struct {
-	ID            int
-	MessageID     string
-	ChannelID     string
-	Name          string
-	StartDate     string
-	NumDays       int
-	TestMode      bool
-	BroadcastDays int
-	LastBroadcast sql.NullString
+	ID            int    `json:"id"`
+	MessageID     string `json:"message_id"`
+	ChannelID     string `json:"channel_id"`
+	Name          string `json:"name"`
+	StartDate     string `json:"start_date"`
+	NumDays       int    `json:"num_days"`
+	TestMode      bool   `json:"test_mode"`
+	BroadcastDays int    `json:"broadcast_days"`
+	LastBroadcast string `json:"last_broadcast"`
 }
 
 type Day struct {
-	ID          int
-	CalendarID  int
-	DayNum      int
-	Title       string
-	Emoji       string
-	BtnLabel    string
-	BtnEmoji    string
-	RewardText  string
-	RewardLink  string
-	RewardImage string
-	RewardRole  string
+	ID          int    `json:"id"`
+	CalendarID  int    `json:"calendar_id"`
+	DayNum      int    `json:"day"`
+	Title       string `json:"title"`
+	Emoji       string `json:"emoji"`
+	BtnLabel    string `json:"btn_label"`
+	BtnEmoji    string `json:"btn_emoji"`
+	RewardText  string `json:"reward_text"`
+	RewardLink  string `json:"reward_link"`
+	RewardImage string `json:"reward_image"`
+	RewardRole  string `json:"reward_role"`
 }
 
 type CalendarDB struct {
-	db *sql.DB
+	redis *redis.Client
+	ctx   context.Context
 }
 
-func NewCalendarDB(path string) (*CalendarDB, error) {
-	if _, err := os.Stat("data"); os.IsNotExist(err) {
-		os.Mkdir("data", 0755)
+func NewCalendarDB(client *redis.Client) *CalendarDB {
+	return &CalendarDB{
+		redis: client,
+		ctx:   context.Background(),
 	}
-
-	db, err := sql.Open("sqlite3", path)
-	if err != nil {
-		return nil, err
-	}
-
-	c := &CalendarDB{db: db}
-	if err := c.Init(); err != nil {
-		return nil, err
-	}
-
-	return c, nil
-}
-
-func (c *CalendarDB) Init() error {
-	queries := []string{
-		`CREATE TABLE IF NOT EXISTS calendars (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			message_id TEXT,
-			channel_id TEXT,
-			name TEXT,
-			start_date TEXT,
-			num_days INTEGER,
-			test_mode INTEGER DEFAULT 0,
-			broadcast_days INTEGER DEFAULT 0,
-			last_broadcast TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS days (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			calendar_id INTEGER,
-			day INTEGER,
-			title TEXT,
-			emoji TEXT,
-			btn_label TEXT,
-			btn_emoji TEXT,
-			reward_text TEXT,
-			reward_link TEXT,
-			reward_image TEXT,
-			reward_role TEXT,
-			UNIQUE(calendar_id, day)
-		)`,
-		`CREATE TABLE IF NOT EXISTS claims (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			calendar_id INTEGER,
-			day INTEGER,
-			user TEXT,
-			UNIQUE(calendar_id, day, user)
-		)`,
-	}
-
-	for _, q := range queries {
-		if _, err := c.db.Exec(q); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (c *CalendarDB) GetCalendar(id int) (*Calendar, error) {
-	row := c.db.QueryRow("SELECT id, message_id, channel_id, name, start_date, num_days, test_mode, broadcast_days, last_broadcast FROM calendars WHERE id = ?", id)
-	cal := &Calendar{}
-	err := row.Scan(&cal.ID, &cal.MessageID, &cal.ChannelID, &cal.Name, &cal.StartDate, &cal.NumDays, &cal.TestMode, &cal.BroadcastDays, &cal.LastBroadcast)
+	data, err := c.redis.Get(c.ctx, fmt.Sprintf("calendar:%d", id)).Result()
 	if err != nil {
 		return nil, err
 	}
-	return cal, nil
+	var cal Calendar
+	if err := json.Unmarshal([]byte(data), &cal); err != nil {
+		return nil, err
+	}
+	return &cal, nil
 }
 
 func (c *CalendarDB) GetDay(calendarID, dayNum int) (*Day, error) {
-	row := c.db.QueryRow("SELECT id, calendar_id, day, title, emoji, btn_label, btn_emoji, reward_text, reward_link, reward_image, reward_role FROM days WHERE calendar_id = ? AND day = ?", calendarID, dayNum)
-	d := &Day{}
-	err := row.Scan(&d.ID, &d.CalendarID, &d.DayNum, &d.Title, &d.Emoji, &d.BtnLabel, &d.BtnEmoji, &d.RewardText, &d.RewardLink, &d.RewardImage, &d.RewardRole)
+	data, err := c.redis.Get(c.ctx, fmt.Sprintf("calendar:%d:day:%d", calendarID, dayNum)).Result()
 	if err != nil {
 		return nil, err
 	}
-	return d, nil
+	var d Day
+	if err := json.Unmarshal([]byte(data), &d); err != nil {
+		return nil, err
+	}
+	return &d, nil
 }
 
 func (c *CalendarDB) IsClaimed(calendarID, dayNum int, userID string) bool {
-	var id int
-	err := c.db.QueryRow("SELECT id FROM claims WHERE calendar_id = ? AND day = ? AND user = ?", calendarID, dayNum, userID).Scan(&id)
-	return err == nil
+	res, _ := c.redis.SIsMember(c.ctx, fmt.Sprintf("calendar:%d:claims:%d", calendarID, dayNum), userID).Result()
+	return res
 }
 
 func (c *CalendarDB) SaveClaim(calendarID, dayNum int, userID string) error {
-	_, err := c.db.Exec("INSERT INTO claims (calendar_id, day, user) VALUES (?, ?, ?)", calendarID, dayNum, userID)
-	return err
+	return c.redis.SAdd(c.ctx, fmt.Sprintf("calendar:%d:claims:%d", calendarID, dayNum), userID).Err()
 }
 
 func (c *CalendarDB) ListActiveCalendars() ([]*Calendar, error) {
-	rows, err := c.db.Query("SELECT id, message_id, channel_id, name, start_date, num_days, test_mode, broadcast_days, last_broadcast FROM calendars ORDER BY id DESC")
-	if err != nil { return nil, err }
-	defer rows.Close()
+	ids, err := c.redis.SMembers(c.ctx, "calendars:list").Result()
+	if err != nil {
+		return nil, err
+	}
 
 	var cals []*Calendar
-	for rows.Next() {
-		cal := &Calendar{}
-		rows.Scan(&cal.ID, &cal.MessageID, &cal.ChannelID, &cal.Name, &cal.StartDate, &cal.NumDays, &cal.TestMode, &cal.BroadcastDays, &cal.LastBroadcast)
-		cals = append(cals, cal)
+	for _, idStr := range ids {
+		id, _ := strconv.Atoi(idStr)
+		cal, err := c.GetCalendar(id)
+		if err == nil {
+			cals = append(cals, cal)
+		}
 	}
 	return cals, nil
 }
 
 func (c *CalendarDB) ListDays(calendarID int) ([]*Day, error) {
-	rows, err := c.db.Query("SELECT id, calendar_id, day, title, emoji, btn_label, btn_emoji FROM days WHERE calendar_id = ? ORDER BY day", calendarID)
-	if err != nil { return nil, err }
-	defer rows.Close()
-
+	// In Redis we might store keys for days in a sorted set or just iterate
 	var days []*Day
-	for rows.Next() {
-		d := &Day{}
-		rows.Scan(&d.ID, &d.CalendarID, &d.DayNum, &d.Title, &d.Emoji, &d.BtnLabel, &d.BtnEmoji)
-		days = append(days, d)
+	for i := 1; i <= 31; i++ {
+		d, err := c.GetDay(calendarID, i)
+		if err == nil {
+			days = append(days, d)
+		}
 	}
 	return days, nil
 }

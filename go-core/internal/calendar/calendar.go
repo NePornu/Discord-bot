@@ -2,13 +2,13 @@ package calendar
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/nepornucz/discord-bot-core/internal/config"
+	"github.com/redis/go-redis/v9"
 )
 
 type CalendarService struct {
@@ -16,11 +16,8 @@ type CalendarService struct {
 	DB     *CalendarDB
 }
 
-func NewCalendarService(cfg *config.Config) *CalendarService {
-	db, err := NewCalendarDB("data/calendar.db")
-	if err != nil {
-		log.Fatalf("Failed to initialize calendar DB: %v", err)
-	}
+func NewCalendarService(cfg *config.Config, client *redis.Client) *CalendarService {
+	db := NewCalendarDB(client)
 	return &CalendarService{
 		Config: cfg,
 		DB:     db,

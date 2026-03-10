@@ -85,7 +85,9 @@ func (v *VerificationService) HandleVerifyCommand(s *discordgo.Session, i *disco
 			return
 		}
 		newPassword := options[0].Options[0].StringValue()
-		redis_client.Client.Set(redis_client.Ctx, "verify:bypass_hash", newPassword, 0)
+		if redis_client.Client != nil {
+			redis_client.Client.Set(redis_client.Ctx, "verify:bypass_hash", newPassword, 0)
+		}
 		content := "✅ Heslo nastaveno."
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: &content,
@@ -112,32 +114,42 @@ func (v *VerificationService) GenerateOTP() string {
 }
 
 func (v *VerificationService) OnMemberJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd) {
+	log.Printf("DEBUG: OnMemberJoin triggered for user %s (%s)", m.User.Username, m.User.ID)
 	if m.User.Bot {
 		return
 	}
 
-	// 1. Add unverified role
-	if v.Config.VerifiedRole != "" {
-		err := s.GuildMemberRoleAdd(m.GuildID, m.User.ID, v.Config.VerifiedRole)
-		if err != nil {
-			log.Printf("Error adding initial role to %s: %v", m.User.ID, err)
-		}
+	// 1. Initial setup - add waiting role
+	if v.Config.WaitingRoleID != "" {
+		s.GuildMemberRoleAdd(m.GuildID, m.User.ID, v.Config.WaitingRoleID)
 	}
 
-	// 2. Setup state in Redis
+	// 2. Setup state in Redis & Prevent Duplicate DMs (lock for 10s)
 	otp := v.GenerateOTP()
 	key := fmt.Sprintf("verify:state:%s", m.User.ID)
-	redis_client.Client.HSet(redis_client.Ctx, key, map[string]interface{}{
-		"otp":        otp,
-		"status":     "PENDING",
-		"created_at": time.Now().Unix(),
-		"attempts":   0,
-	})
+	lockKey := fmt.Sprintf("verify:dm_lock:%s", m.User.ID)
+	
+	if redis_client.Client != nil {
+		// Try to acquire lock to send DM
+		locked, _ := redis_client.Client.SetNX(redis_client.Ctx, lockKey, "1", 10*time.Second).Result()
+		
+		redis_client.Client.HSet(redis_client.Ctx, key, map[string]interface{}{
+			"otp":        otp,
+			"status":     "PENDING",
+			"created_at": time.Now().Unix(),
+			"attempts":   0,
+		})
 
-	// 3. Send DM
-	v.sendDM(s, m.User.ID, otp)
+		if locked {
+			// 3. Send DM only if we got the lock
+			v.sendDM(s, m.User.ID, otp)
+		}
+	} else {
+		// No Redis, just send DM (no deduplication possible)
+		v.sendDM(s, m.User.ID, otp)
+	}
 
-	// 4. Log join in mod channel
+	// 4. Log join in mod channel (čakárna-log)
 	v.logJoin(s, m)
 }
 
@@ -153,37 +165,33 @@ func (v *VerificationService) sendDM(s *discordgo.Session, userID string, otp st
 }
 
 func (v *VerificationService) logJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd) {
-	if v.Config.VerificationChannel == "" {
-		return
+	logChannel := v.Config.VerificationChannel
+	if logChannel == "" {
+		return // Don't log to random IDs if not configured
 	}
 
 	creationTime := v.getCreationTime(m.User.ID)
 	
-	embed := &discordgo.MessageEmbed{
-		Title: "Nový uživatel se připojil na server!",
-		Color: 0x3498db,
-		Thumbnail: &discordgo.MessageEmbedThumbnail{
-			URL: m.User.AvatarURL(""),
-		},
-		Fields: []*discordgo.MessageEmbedField{
-			{Name: "Uživatel", Value: fmt.Sprintf("%s (%s)", m.User.Mention(), m.User.Username), Inline: false},
-			{Name: "ID", Value: m.User.ID, Inline: true},
-			{Name: "Účet vytvořen", Value: fmt.Sprintf("<t:%d:F> (<t:%d:R>)", creationTime, creationTime), Inline: false},
-			{Name: "Avatar", Value: fmt.Sprintf("[Odkaz](%s)", m.User.AvatarURL("")), Inline: true},
-			{Name: "Bio", Value: "_Bio není dostupné_", Inline: true},
-		},
-		Description: "Automaticky mu byla přidělena ověřovací role.\n\n⏳ **Status:** Čeká na zadání kódu...",
+	msgContent := fmt.Sprintf("**Nový uživatel se připojil na server!**\n\n"+
+		"**Uživatel:** %s (%s)\n"+
+		"**ID:** %s\n"+
+		"**Účet vytvořen:** <t:%d:F> (<t:%d:R>)\n"+
+		"**Avatar:** [Odkaz](%s)\n"+
+		"**Bio:** _Bio není dostupné_\n\n"+
+		"Automaticky mu byla přidělena ověřovací role.\n\n"+
+		"⏳ **Status:** Čeká na zadání kódu...",
+		m.User.Mention(), m.User.Username, m.User.ID, creationTime, creationTime, m.User.AvatarURL("1024"))
+
+	log.Printf("DEBUG: Sending join log to channel %s", logChannel)
+	msg, err := s.ChannelMessageSend(logChannel, msgContent)
+	if err != nil {
+		log.Printf("Error sending join log to channel %s: %v", logChannel, err)
+		return
 	}
 
-	msg, err := s.ChannelMessageSendEmbed(v.Config.VerificationChannel, embed)
-	if err == nil {
-		key := fmt.Sprintf("verify:state:%s", m.User.ID)
+	key := fmt.Sprintf("verify:state:%s", m.User.ID)
+	if redis_client.Client != nil {
 		redis_client.Client.HSet(redis_client.Ctx, key, "approve_msg_id", msg.ID)
-	}
-
-	// Also send a simple log to the log channel
-	if v.Config.VerifLogChannel != "" {
-		s.ChannelMessageSend(v.Config.VerifLogChannel, fmt.Sprintf("📥 **Nový uživatel:** %s (%s) se připojil a čeká na ověření.", m.User.Mention(), m.User.ID))
 	}
 }
 
@@ -194,6 +202,10 @@ func (v *VerificationService) OnMessageCreate(s *discordgo.Session, m *discordgo
 
 	uid := m.Author.ID
 	key := fmt.Sprintf("verify:state:%s", uid)
+
+	if redis_client.Client == nil {
+		return
+	}
 
 	state, err := redis_client.Client.HGetAll(redis_client.Ctx, key).Result()
 	if err != nil || len(state) == 0 {
@@ -208,35 +220,49 @@ func (v *VerificationService) OnMessageCreate(s *discordgo.Session, m *discordgo
 	otp := state["otp"]
 	globalCode := v.Config.VerificationCode
 
-	bypassHash, _ := redis_client.Client.Get(redis_client.Ctx, "verify:bypass_hash").Result()
-	if bypassHash != "" && userInput == bypassHash {
-		v.HandleApprove(s, &discordgo.InteractionCreate{
-			Interaction: &discordgo.Interaction{
-				GuildID: m.GuildID,
-				Member:  m.Member,
-			},
-		}, uid)
-		s.ChannelMessageSend(m.ChannelID, "✅ **Tajné heslo přijato.** Vstup povolen.")
-		return
+	if redis_client.Client != nil {
+		bypassHash, _ := redis_client.Client.Get(redis_client.Ctx, "verify:bypass_hash").Result()
+		if bypassHash != "" && userInput == bypassHash {
+			v.HandleApprove(s, &discordgo.InteractionCreate{
+				Interaction: &discordgo.Interaction{
+					GuildID: m.GuildID,
+					Member:  m.Member,
+				},
+			}, uid)
+			s.ChannelMessageSend(m.ChannelID, "✅ **Tajné heslo přijato.** Vstup povolen.")
+			return
+		}
 	}
 
 	if userInput == otp || (globalCode != "" && strings.EqualFold(userInput, globalCode)) {
-		redis_client.Client.HSet(redis_client.Ctx, key, "status", "WAITING_FOR_APPROVAL")
-		redis_client.Client.HSet(redis_client.Ctx, key, "code_entered_at", time.Now().Unix())
+		if redis_client.Client != nil {
+			redis_client.Client.HSet(redis_client.Ctx, key, "status", "WAITING_FOR_APPROVAL")
+			redis_client.Client.HSet(redis_client.Ctx, key, "code_entered_at", time.Now().Unix())
+		}
 
 		s.ChannelMessageSend(m.ChannelID, "✅ **Kód je správný.** Nyní prosím čekej, než moderátor potvrdí tvůj přístup.")
 		v.notifyMods(s, uid)
 	} else {
-		redis_client.Client.HIncrBy(redis_client.Ctx, key, "attempts", 1)
+		if redis_client.Client != nil {
+			redis_client.Client.HIncrBy(redis_client.Ctx, key, "attempts", 1)
+		}
 		s.ChannelMessageSend(m.ChannelID, "❌ **Špatný kód.** Zkus to znovu.")
 	}
 }
 
 func (v *VerificationService) notifyMods(s *discordgo.Session, userID string) {
+	logChannel := v.Config.VerificationChannel
+	if logChannel == "" {
+		return
+	}
 	key := fmt.Sprintf("verify:state:%s", userID)
-	msgID, _ := redis_client.Client.HGet(redis_client.Ctx, key, "approve_msg_id").Result()
+	msgID := ""
+	if redis_client.Client != nil {
+		msgID, _ = redis_client.Client.HGet(redis_client.Ctx, key, "approve_msg_id").Result()
+	}
 
-	if msgID != "" && v.Config.VerificationChannel != "" {
+	if msgID != "" {
+		log.Printf("DEBUG: Notifying mods for user %s, editing message %s", userID, msgID)
 		btnApprove := discordgo.Button{
 			Label:    "Schválit (Approve)",
 			Style:    discordgo.SuccessButton,
@@ -245,7 +271,7 @@ func (v *VerificationService) notifyMods(s *discordgo.Session, userID string) {
 		}
 		btnWarn := discordgo.Button{
 			Label:    "Upozornit",
-			Style:    discordgo.SecondaryButton, // Gray/Secondary
+			Style:    discordgo.SecondaryButton,
 			CustomID: "verif_warn:" + userID,
 			Emoji:    &discordgo.ComponentEmoji{Name: "⚠️"},
 		}
@@ -262,36 +288,56 @@ func (v *VerificationService) notifyMods(s *discordgo.Session, userID string) {
 			},
 		}
 
-		// Update the embed status
-		msg, err := s.ChannelMessage(v.Config.VerificationChannel, msgID)
-		if err == nil && len(msg.Embeds) > 0 {
-			embed := msg.Embeds[0]
-			embed.Description = "Automaticky mu byla přidělena ověřovací role.\n\n✅ **Status:** Kód zadán. Čeká na schválení."
-			
-			s.ChannelMessageEditComplex(&discordgo.MessageEdit{
-				ID:         msgID,
-				Channel:    v.Config.VerificationChannel,
-				Embeds:     &[]*discordgo.MessageEmbed{embed},
-				Components: &comps,
-			})
+		// Update the status in the text message
+		msg, err := s.ChannelMessage(logChannel, msgID)
+		if err != nil {
+			log.Printf("ERROR: Failed to fetch join log message %s: %v", msgID, err)
+			return
 		}
+
+		newContent := msg.Content
+		if strings.Contains(newContent, "Status") {
+			newContent = strings.ReplaceAll(newContent, "⏳ **Status:** Čeká na zadání kódu...", "✅ **Status:** Kód zadán. Čeká na schválení.")
+		} else {
+			newContent += "\n\n✅ **Status:** Kód zadán. Čeká na schválení."
+		}
+
+		_, err = s.ChannelMessageEditComplex(&discordgo.MessageEdit{
+			ID:         msgID,
+			Channel:    logChannel,
+			Content:    &newContent,
+			Components: &comps,
+		})
+		if err != nil {
+			log.Printf("ERROR: Failed to edit join log message %s: %v", msgID, err)
+		} else {
+			log.Printf("DEBUG: Successfully updated moderator buttons for user %s", userID)
+		}
+	} else {
+		log.Printf("WARN: No join log message ID found in Redis for user %s", userID)
 	}
 }
 
 func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, userID string) {
-	if v.Config.VerifiedRole != "" {
-		err := s.GuildMemberRoleRemove(i.GuildID, userID, v.Config.VerifiedRole)
-		if err != nil {
-			log.Printf("Error removing role from %s: %v", userID, err)
-		}
+	// 1. Manage roles - Remove waiting role only (as clarified: "verified není jen se odebere role")
+	if v.Config.WaitingRoleID != "" {
+		s.GuildMemberRoleRemove(i.GuildID, userID, v.Config.WaitingRoleID)
+	}
+
+	// 2. Send Greeting to Welcome Channel
+	if v.Config.WelcomeChannel != "" {
+		greeting := fmt.Sprintf("Nový člen se k nám připojil! Všichni přivítejme <@%s>! Nezapomeň se podívat do 📗pravidla a ℹ️úvod Můžeš se představit v 👋představ-se", userID)
+		s.ChannelMessageSend(v.Config.WelcomeChannel, greeting)
 	}
 
 	key := fmt.Sprintf("verify:state:%s", userID)
-	state, _ := redis_client.Client.HGetAll(redis_client.Ctx, key).Result()
-	
-	redis_client.Client.HSet(redis_client.Ctx, key, "status", "APPROVED")
+	var state map[string]string
 	now := time.Now()
-	redis_client.Client.HSet(redis_client.Ctx, key, "approved_at", now.Unix())
+	if redis_client.Client != nil {
+		state, _ = redis_client.Client.HGetAll(redis_client.Ctx, key).Result()
+		redis_client.Client.HSet(redis_client.Ctx, key, "status", "APPROVED")
+		redis_client.Client.HSet(redis_client.Ctx, key, "approved_at", now.Unix())
+	}
 
 	v.confirmSuccess(s, userID)
 

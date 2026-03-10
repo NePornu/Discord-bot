@@ -37,32 +37,59 @@ func sendConsoleLog(s *discordgo.Session, channelID string, msg string) {
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("CRITICAL PANIC RECOVERED: %v\n", r)
+			log.Printf("CRITICAL PANIC: %v", r)
+		}
+	}()
+
+	fmt.Println("=== INITIALIZING GO CORE (REWRITE) ===")
 	cfg := config.LoadConfig()
 
 	if cfg.BotToken == "" {
-		log.Fatal("BOT_TOKEN must be set")
+		log.Fatal("BOT_TOKEN is missing in environment!")
 	}
 
-	// Initialize Redis
+	fmt.Printf("Config Loaded. Redis: %s | Guild: %s\n", cfg.RedisURL, cfg.GuildID)
+
+	// Initialize Redis with retry
 	if cfg.RedisURL != "" {
+		fmt.Printf("Connecting to Redis: %s...\n", cfg.RedisURL)
 		redis_client.Init(cfg.RedisURL)
+		fmt.Println("✅ Redis Connected.")
+	} else {
+		fmt.Println("⚠️ Redis URL is empty. Skipping Redis-dependent services.")
 	}
 
+	// Initialize Services
+	fmt.Println("Initializing Subservices...")
+	if redis_client.Client == nil && cfg.RedisURL != "" {
+		log.Fatal("Redis client is nil but URL was provided. Cannot proceed.")
+	}
 
-	// Initialize Logger
 	logHandler := logging.NewLogger(cfg)
-
-	// Initialize Listeners
 	levelsListener := listeners.NewLevelsListener()
 	activityListener := listeners.NewActivityListener()
 	verifyService := verification.NewVerificationService(cfg)
 	automodService := automod.NewAutoModService(cfg)
 	notifyService := notifications.NewNotifyService(cfg)
 	challengeService := challenge.NewChallengeService(cfg)
-	calendarService := calendar.NewCalendarService(cfg)
+	
+	// Calendar service strictly needs Redis
+	var calendarService *calendar.CalendarService
+	if redis_client.Client != nil {
+		calendarService = calendar.NewCalendarService(cfg, redis_client.Client)
+		fmt.Println("✅ Calendar Service Initialized.")
+	} else {
+		fmt.Println("⚠️ Calendar Service Skipped (No Redis).")
+	}
+	
+	fmt.Println("✅ Basic Subservices Initialized.")
 
 	dg, err := discordgo.New("Bot " + cfg.BotToken)
 	if err != nil {
+		fmt.Printf("FATAL: Discord Creation Error: %v\n", err)
 		log.Fatalf("Error creating Discord session: %v", err)
 	}
 
@@ -345,8 +372,10 @@ func main() {
 			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("discordgo: %s", discordgo.VERSION))
 			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("PID: %d | Host: %s", os.Getpid(), host))
 			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("Registrované příkazy (%d):\n- %s", len(cmdList), cmdListStr))
-			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("Služby: Redis=%v, SQLite=%v, Keycloak=%v", cfg.RedisURL != "", true, cfg.KCInternalURL != ""))
+			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("Služby: Redis=%v, Keycloak=%v", cfg.RedisURL != "", cfg.KCInternalURL != ""))
 			sendConsoleLog(s, cfg.ConsoleChannelID, "Načtené moduly: internal/verification, internal/automod, internal/notifications, internal/challenge, internal/calendar, internal/stats, internal/logging, internal/commands")
+			sendConsoleLog(s, cfg.ConsoleChannelID, fmt.Sprintf("=== KONFIGURACE KANÁLŮ ===\n- Admin Console: %s\n- Verifikace (Mod): %s\n- Logy Verifikace: %s\n- Welcome: %s\n- Alerts: %s", 
+				cfg.ConsoleChannelID, cfg.VerificationChannel, cfg.VerifLogChannel, cfg.WelcomeChannel, cfg.AlertChannelID))
 		}
 	})
 
@@ -416,14 +445,19 @@ func main() {
 		if i.Type == discordgo.InteractionMessageComponent {
 			verifyService.HandleButtonClick(s, i)
 			automodService.HandleInteraction(s, i)
-			calendarService.HandleInteraction(s, i)
+			if calendarService != nil {
+				calendarService.HandleInteraction(s, i)
+			}
 		}
 	})
 
+	fmt.Println("Opening Discord connection...")
 	err = dg.Open()
 	if err != nil {
+		fmt.Printf("Fatalf: Error opening connection: %v\n", err)
 		log.Fatalf("Error opening connection: %v", err)
 	}
+	fmt.Println("Success: Discord connection opened.")
 
 	// Start background tasks
 	tasks.StartHeartbeat()

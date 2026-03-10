@@ -14,32 +14,6 @@ services:
         reservations:
           memory: 32M
 
-  discord-bot-primary:
-    build: .
-    container_name: discord-bot-primary
-    restart: always
-    depends_on:
-      - redis
-    environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - REDIS_URL=redis://redis:6379/0
-      - TZ=Europe/Prague
-      - PYTHONPATH=/app
-      - BOT_LITE_MODE=1
-    volumes:
-      - .:/app
-      - ./bot_std.log:/app/bot_std.log
-      - ./data:/app/data
-    networks:
-      - botnet
-      - sso-net
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 64M
-
   discord-bot-go:
     build:
       context: .
@@ -50,6 +24,13 @@ services:
       - redis
     environment:
       - TZ=Europe/Prague
+      - BOT_TOKEN=${BOT_TOKEN}
+      - REDIS_URL=redis://redis:6379/0
+      - CONSOLE_CHANNEL_ID=${CONSOLE_CHANNEL_ID}
+      - VERIFICATION_CHANNEL_ID=${VERIFICATION_CHANNEL_ID}
+      - VERIFICATION_LOG_CHANNEL_ID=${VERIFICATION_LOG_CHANNEL_ID}
+      - WELCOME_CHANNEL_ID=${WELCOME_CHANNEL_ID}
+      - VERIFIED_ROLE_ID=${VERIFIED_ROLE_ID}
     networks:
       - botnet
     deploy:
@@ -59,28 +40,28 @@ services:
         reservations:
           memory: 32M
 
-  discord-bot-dashboard:
-    build: .
-    container_name: discord-bot-dashboard
-    restart: always
-    depends_on:
-      - redis
-    environment:
-      - BOT_TOKEN=${DASHBOARD_TOKEN}
-      - BOT_LITE_MODE=1
-      - REDIS_URL=redis://redis:6379/0
-      - TZ=Europe/Prague
-      - PYTHONPATH=/app
-    volumes:
-      - .:/app
-    networks:
-      - botnet
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 64M
+#   discord-bot-dashboard:
+#     build: .
+#     container_name: discord-bot-dashboard
+#     restart: always
+#     depends_on:
+#       - redis
+#     environment:
+#       - BOT_TOKEN=${DASHBOARD_TOKEN}
+#       - BOT_LITE_MODE=1
+#       - REDIS_URL=redis://redis:6379/0
+#       - TZ=Europe/Prague
+#       - PYTHONPATH=/app
+#     volumes:
+#       - .:/app
+#     networks:
+#       - botnet
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 256M
+#         reservations:
+#           memory: 64M
 
   metricord-dashboard:
     build: .

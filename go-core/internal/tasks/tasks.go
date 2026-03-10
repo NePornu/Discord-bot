@@ -32,9 +32,10 @@ func StartMemberStats(s *discordgo.Session) {
 				continue
 			}
 
+			totalMembersAllGuilds := 0
+
 			for _, guild := range s.State.Guilds {
-				// discordgo's Guild structure has MemberCount
-				totalMembers := guild.MemberCount
+				totalMembersAllGuilds += int(guild.MemberCount)
 				
 				// For online count, it's more complex as we need Presences intent
 				onlineCount := 0
@@ -50,7 +51,7 @@ func StartMemberStats(s *discordgo.Session) {
 
 				pipe := redis_client.Client.Pipeline()
 				pipe.SetEx(redis_client.Ctx, "presence:online:"+guild.ID, strconv.Itoa(onlineCount), 60*time.Second)
-				pipe.SetEx(redis_client.Ctx, "presence:total:"+guild.ID, strconv.Itoa(int(totalMembers)), 60*time.Second)
+				pipe.SetEx(redis_client.Ctx, "presence:total:"+guild.ID, strconv.Itoa(int(guild.MemberCount)), 60*time.Second)
 				
 				// Minimal sync of other guild metadata
 				pipe.SAdd(redis_client.Ctx, "bot:guilds", guild.ID)
@@ -59,6 +60,21 @@ func StartMemberStats(s *discordgo.Session) {
 				if err != nil {
 					log.Printf("[ERROR] MemberStats sync failed for guild %s: %v", guild.ID, err)
 				}
+			}
+
+			// Update global presence
+			statusMsg := "Na serveru je: " + strconv.Itoa(totalMembersAllGuilds)
+			err := s.UpdateStatusComplex(discordgo.UpdateStatusData{
+				Activities: []*discordgo.Activity{
+					{
+						Name: statusMsg,
+						Type: discordgo.ActivityTypeWatching,
+					},
+				},
+				Status: "online",
+			})
+			if err != nil {
+				log.Printf("[ERROR] Failed to update presence: %v", err)
 			}
 		}
 	}()

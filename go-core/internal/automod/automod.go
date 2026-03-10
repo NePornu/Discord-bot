@@ -43,6 +43,9 @@ func NewAutoModService(cfg *config.Config) *AutoModService {
 }
 
 func (a *AutoModService) GetFilters(guildID string) ([]Filter, error) {
+	if redis_client.Client == nil {
+		return nil, nil
+	}
 	key := fmt.Sprintf("automod:filters:%s", guildID)
 	val, err := redis_client.Client.Get(redis_client.Ctx, key).Result()
 	if err != nil {
@@ -148,7 +151,9 @@ func (a *AutoModService) queueForApproval(s *discordgo.Session, m *discordgo.Mes
 	}
 	data, _ := json.Marshal(msgData)
 	key := fmt.Sprintf("automod:pending:%s", m.ID)
-	redis_client.Client.Set(redis_client.Ctx, key, data, 24*time.Hour)
+	if redis_client.Client != nil {
+		redis_client.Client.Set(redis_client.Ctx, key, data, 24*time.Hour)
+	}
 
 	// Send to approval channel
 	if a.ApprovalChannel == "" {
@@ -311,6 +316,9 @@ func (a *AutoModService) handleFilterRemove(s *discordgo.Session, i *discordgo.I
 }
 
 func (a *AutoModService) SaveFilters(guildID string, filters []Filter) {
+	if redis_client.Client == nil {
+		return
+	}
 	key := fmt.Sprintf("automod:filters:%s", guildID)
 	data, _ := json.Marshal(filters)
 	redis_client.Client.Set(redis_client.Ctx, key, data, 0)

@@ -132,55 +132,15 @@ async def load_commands():
     await send_console_log(f"Načítání cogů hotovo za {time.time()-start:.2f}s")
     return loaded_cogs
 
-
-@tasks.loop(seconds=10)
+# Background tasks logic migrated to Go Core. 
+# Empty loops kept as placeholders to avoid breaking refresh logic if referenced.
+@tasks.loop(seconds=60)
 async def member_stats_task():
-    """Periodically update the count of online members AND total members in Redis."""
-    
-    try:
-        r = await get_redis_client()
-        
-        sys.stderr.write(f"{ts()} [DEBUG] MemberStatsTask: Checking {len(bot.guilds)} guilds (Ready: {bot.is_ready()})\n")
-        
-        for guild in bot.guilds:
-            
-            online_count = sum(
-                1 for m in guild.members 
-                if m.status != discord.Status.offline
-            )
-            
-            
-            total_members = guild.member_count
-            
-            sys.stderr.write(f"{ts()} [DEBUG] Guild {guild.id}: {total_members} total, {online_count} online\n")
-            
-            
-            async with r.pipeline() as pipe:
-                await pipe.setex(f"presence:online:{guild.id}", 60, str(online_count))
-                await pipe.setex(f"presence:total:{guild.id}", 60, str(total_members))
-                
-                
-                await pipe.set(f"guild:verification_level:{guild.id}", str(guild.verification_level.value if hasattr(guild.verification_level, "value") else guild.verification_level))
-                await pipe.set(f"guild:mfa_level:{guild.id}", str(guild.mfa_level.value if hasattr(guild.mfa_level, "value") else guild.mfa_level))  
-                await pipe.set(f"guild:explicit_filter:{guild.id}", str(guild.explicit_content_filter.value if hasattr(guild.explicit_content_filter, "value") else guild.explicit_content_filter))
-                
-                
-                await pipe.sadd("bot:guilds", str(guild.id))
-                
-                
-                
-                
-                
-                
-                await pipe.execute()
-        
-        await r.close()
-    except Exception as e:
-        if "Error 113" in str(e):
-             # Suppress repetitive redis timeout errors
-             pass
-        else:
-             print(f"Error in member_stats_task: {e}")
+    pass
+
+@member_stats_task.before_loop
+async def before_member_stats_task():
+    pass
 
 async def acquire_instance_lock(r: redis.Redis, is_lite: bool) -> bool:
     """Attempts to acquire a unique lock for this bot instance type in Redis."""
@@ -210,7 +170,6 @@ async def refresh_instance_lock_task():
 
 @member_stats_task.before_loop
 async def before_member_stats_task():
-    # await bot.wait_until_ready()
     pass
 
 @tasks.loop(seconds=60)
@@ -225,8 +184,6 @@ async def heartbeat_task():
 
 @heartbeat_task.before_loop
 async def before_heartbeat_task():
-    # Don't wait for bot to be ready - send heartbeat during startup too
-    # This prevents false DOWN alerts when bot is loading extensions
     pass
 
 @bot.event
@@ -240,9 +197,7 @@ async def on_ready():
     loaded_cogs = await load_commands()
     await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
     
-    status_msg = "nepornu.cz"
-    activity = discord.Activity(type=discord.ActivityType.watching, name=status_msg)
-    await bot.change_presence(status=discord.Status.online, activity=activity)
+    # Status updated in Go Core
     
     guilds = list(bot.guilds)
     await send_console_log(f"Členem {len(guilds)} serverů: {[g.name for g in guilds]}")
@@ -321,15 +276,6 @@ async def on_guild_join(guild: discord.Guild):
         print(f"Redis add error: {e}")
 
     await send_console_log("✅ Start dokončen, bot připraven.")
-    
-    
-    if not member_stats_task.is_running():
-        member_stats_task.start()
-        print("✅ Background task: Member stats sync started")
-    
-    if not heartbeat_task.is_running():
-        heartbeat_task.start()
-        print("✅ Background task: Heartbeat started")
 
 @bot.event
 async def on_guild_remove(guild: discord.Guild):

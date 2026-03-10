@@ -66,24 +66,15 @@ func (l *Logger) OnMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdat
 }
 
 func (l *Logger) OnGuildMemberAdd(s *discordgo.Session, m *discordgo.GuildMemberAdd) {
-	embed := &discordgo.MessageEmbed{
-		Title: "👤 Člen se připojil",
-		Description: fmt.Sprintf("**Člen:** %s\n**ID:** %s\n**Věk účtu:** <t:%d:R>",
-			m.Member.User.Mention(), m.Member.User.ID, l.getCreationTime(m.Member.User.ID)),
-		Color:     0x00FF00,
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-	s.ChannelMessageSendEmbed(l.Config.VerifLogChannel, embed)
+	// Detailed join log is handled by verification service
 }
 
 func (l *Logger) OnGuildMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
-	embed := &discordgo.MessageEmbed{
-		Title:       "🚪 Člen opustil server",
-		Description: fmt.Sprintf("**Člen:** %s\n**ID:** %s", m.User.Mention(), m.User.ID),
-		Color:       0xFF0000,
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
-	s.ChannelMessageSendEmbed(l.Config.VerifLogChannel, embed)
+	msg := fmt.Sprintf("📤 **%s** (%s) opustil/a server.", m.User.Username, m.User.ID)
+	logChannel := l.Config.WaitLogChannelID
+
+	// Send to Log channel
+	s.ChannelMessageSend(logChannel, msg)
 }
 
 func (l *Logger) truncate(s string, max int) string {
