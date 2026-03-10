@@ -24,8 +24,8 @@ venv/
 .venv/
 
 # Go
-go-core/bot_go
-go-core/data/
+services/core/bot_go
+bot_go
 *.exe
 *.exe~
 *.dll
@@ -60,3 +60,4 @@ debug_status.html
 status_page_output.html
 Python-3.9.18/
 *.tgz
+services/core/bot_go
