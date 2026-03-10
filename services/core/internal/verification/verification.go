@@ -119,37 +119,38 @@ func (v *VerificationService) OnMemberJoin(s *discordgo.Session, m *discordgo.Gu
 		return
 	}
 
-	// 1. Initial setup - add waiting role
+	// 1. Setup Lock to prevent duplicate handling across multiple bot instances
+	lockKey := fmt.Sprintf("verify:dm_lock:%s", m.User.ID)
+	if redis_client.Client != nil {
+		locked, _ := redis_client.Client.SetNX(redis_client.Ctx, lockKey, "1", 30*time.Second).Result()
+		if !locked {
+			log.Printf("DEBUG: Another instance is already handling join for user %s", m.User.ID)
+			return
+		}
+	}
+
+	// 2. Initial setup - add waiting role
 	if v.Config.WaitingRoleID != "" {
 		s.GuildMemberRoleAdd(m.GuildID, m.User.ID, v.Config.WaitingRoleID)
 	}
 
-	// 2. Setup state in Redis & Prevent Duplicate DMs (lock for 10s)
+	// 3. Setup state in Redis
 	otp := v.GenerateOTP()
 	key := fmt.Sprintf("verify:state:%s", m.User.ID)
-	lockKey := fmt.Sprintf("verify:dm_lock:%s", m.User.ID)
 	
 	if redis_client.Client != nil {
-		// Try to acquire lock to send DM
-		locked, _ := redis_client.Client.SetNX(redis_client.Ctx, lockKey, "1", 10*time.Second).Result()
-		
 		redis_client.Client.HSet(redis_client.Ctx, key, map[string]interface{}{
 			"otp":        otp,
 			"status":     "PENDING",
 			"created_at": time.Now().Unix(),
 			"attempts":   0,
 		})
-
-		if locked {
-			// 3. Send DM only if we got the lock
-			v.sendDM(s, m.User.ID, otp)
-		}
-	} else {
-		// No Redis, just send DM (no deduplication possible)
-		v.sendDM(s, m.User.ID, otp)
 	}
 
-	// 4. Log join in mod channel (čakárna-log)
+	// 4. Send DM
+	v.sendDM(s, m.User.ID, otp)
+
+	// 5. Log join in mod channel (čakárna-log)
 	v.logJoin(s, m)
 }
 
