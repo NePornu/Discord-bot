@@ -1,0 +1,207 @@
+{% extends "landing_base.html" %}
+{% set simple_nav = true %}
+
+{% block title %}Ochrana dat | Metricord{% endblock %}
+
+{% block extra_css %}
+.legal-wrapper {
+max-width: 900px;
+margin: 0 auto;
+background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 100%);
+border: 1px solid var(--glass-border);
+border-radius: 32px;
+padding: 60px 80px;
+box-shadow: 0 0 50px rgba(0,0,0,0.3);
+}
+
+.legal-header {
+text-align: center;
+margin-bottom: 60px;
+border-bottom: 1px solid var(--glass-border);
+padding-bottom: 40px;
+}
+
+.legal-header h1 {
+font-size: 3rem;
+background: var(--primary-g);
+-webkit-background-clip: text;
+background-clip: text;
+-webkit-text-fill-color: transparent;
+margin-bottom: 16px;
+}
+
+.update-date {
+color: var(--text-muted);
+font-family: monospace;
+background: rgba(255,255,255,0.05);
+padding: 6px 16px;
+border-radius: 50px;
+font-size: 0.9rem;
+}
+
+.legal-content {
+font-size: 1.05rem;
+line-height: 1.8;
+color: var(--text-muted);
+text-align: justify;
+}
+
+.legal-content h2 {
+color: white;
+font-size: 1.5rem;
+margin-top: 50px;
+margin-bottom: 24px;
+display: flex;
+align-items: center;
+gap: 16px;
+border-bottom: 1px solid rgba(255,255,255,0.1);
+padding-bottom: 10px;
+}
+
+.legal-content h3 {
+color: var(--text-main);
+font-size: 1.2rem;
+margin-top: 30px;
+margin-bottom: 16px;
+}
+
+.legal-content p {
+margin-bottom: 16px;
+}
+
+.legal-content ul {
+margin-bottom: 24px;
+padding-left: 24px;
+}
+
+.legal-content li {
+margin-bottom: 8px;
+}
+
+.legal-content strong {
+color: white;
+}
+
+@media (max-width: 768px) {
+.legal-wrapper {
+padding: 40px 24px;
+}
+.legal-header h1 {
+font-size: 2.2rem;
+}
+}
+{% endblock %}
+
+{% block content %}
+<div class="legal-wrapper">
+    <div class="legal-header">
+        <h1>Zásady ochrany osobních údajů</h1>
+        <span class="update-date">Účinné od: 25. ledna 2026</span>
+    </div>
+
+    <div class="legal-content">
+        <p>Vítejte. Tyto Zásady ochrany osobních údajů (dále jen "Zásady") vysvětlují, jakým způsobem shromažďuje,
+            používá, uchovává a chrání osobní a jiná data provozovatel služby <strong>Ultimate Discord
+                Analytics</strong> (dále jen "Provozovatel", "my", "nás"). Respektujeme vaše soukromí a zavazujeme se
+            chránit vaše údaje v souladu s platnými právními předpisy, zejména Obecným nařízením o ochraně osobních
+            údajů (GDPR).</p>
+
+        <h2>1. Správce údajů</h2>
+        <p>Správcem vašich osobních údajů je nezávislý vývojář provozující službu Metricord. V případě
+            jakýchkoli dotazů nebo žádostí týkajících se vašich údajů nás můžete kontaktovat na e-mailové adrese uvedené
+            na konci tohoto dokumentu.</p>
+
+        <h2>2. Shromažďovaná data</h2>
+        <p>Při používání naší služby (Discord bot a webový dashboard) můžeme shromažďovat následující kategorie údajů:
+        </p>
+
+        <h3>2.1 Údaje z platformy Discord</h3>
+        <p>Na základě vašeho povolení a v souladu s podmínkami služby Discord API zpracováváme:</p>
+        <ul>
+            <li><strong>Identifikační údaje uživatele:</strong> Discord ID (Snowflake), uživatelské jméno (username),
+                diskriminátor a URL profilového obrázku (avatar).</li>
+            <li><strong>Identifikační údaje serveru (Guild):</strong> ID serveru, název, ikona, seznam rolí, seznam
+                kanálů a počty členů.</li>
+            <li><strong>Obsahová data:</strong> Za účelem poskytování analytických funkcí bot zpracovává metadata zpráv
+                (čas odeslání, délka, autor) a stavy hlasové aktivity (doba připojení, změny stavu). <strong>Obsah
+                    textových zpráv není trvale ukládán.</strong> Ukládáme pouze agregované statistiky.</li>
+        </ul>
+
+        <h3>2.2 Technická data a logy</h3>
+        <p>Pro zajištění bezpečnosti služby a diagnostiku chyb automaticky zaznamenáváme:</p>
+        <ul>
+            <li>IP adresa (v případě přístupu na webový dashboard).</li>
+            <li>Typ prohlížeče a operačního systému.</li>
+            <li>Logy interakcí s botem (použité příkazy, chyby při provádění).</li>
+        </ul>
+
+        <h2>3. Účel zpracování</h2>
+        <p>Vaše údaje zpracováváme výhradně pro následující účely:</p>
+        <ul>
+            <li><strong>Poskytování služby:</strong> Zobrazování statistik, generování grafů, správa přístupů k
+                dashboardu a vyhodnocování aktivity.</li>
+            <li><strong>Zlepšování služby:</strong> Analýza využívání funkcí pro optimalizaci výkonu a vývoj nových
+                nástrojů.</li>
+            <li><strong>Bezpečnost a obrana práv:</strong> Prevence zneužití služby, detekce botů/spamu a ochrana před
+                kybernetickými útoky.</li>
+            <li><strong>Komunikace:</strong> Zasílání důležitých oznámení týkajících se změn služby nebo technických
+                výpadků.</li>
+        </ul>
+
+        <h2>4. Právní základ zpracování</h2>
+        <p>Zpracování probíhá na základě:</p>
+        <ul>
+            <li><strong>Plnění smlouvy:</strong> Zpracování je nezbytné pro poskytování služby, kterou jste si vyžádali
+                (např. přidáním bota na server).</li>
+            <li><strong>Oprávněný zájem:</strong> Máme oprávněný zájem na zajištění bezpečnosti služby a jejím dalším
+                rozvoji.</li>
+            <li><strong>Souhlas:</strong> V případech, kdy je to vyžadováno (např. volitelné marketingové cookies),
+                zpracováváme údaje na základě vašeho souhlasu.</li>
+        </ul>
+
+        <h2>5. Sdílení a předávání dat</h2>
+        <p>Vaše osobní údaje <strong>neprodáváme</strong>, nepronajímáme ani nepůjčujeme třetím stranám. Přístup k datům
+            mohou mít pouze:</p>
+        <ul>
+            <li><strong>Poskytovatelé infrastruktury:</strong> Hostingové služby a databázová centra, která zajišťují
+                technický chod aplikace (zpracovatelé).</li>
+            <li><strong>Orgány veřejné moci:</strong> Pouze v případě, že nám to ukládá zákon nebo pravomocné rozhodnutí
+                soudu.</li>
+        </ul>
+
+        <h2>6. Uchovávání dat</h2>
+        <p>Údaje uchováváme pouze po dobu nezbytně nutnou:</p>
+        <ul>
+            <li>Analytická data serveru jsou uchovávána po celou dobu přítomnosti bota na serveru.</li>
+            <li>Pokud je bot ze serveru odebrán, mohou být data do 30 dnů smazána nebo anonymizována.</li>
+            <li>Technické logy jsou uchovávány po dobu maximálně 90 dnů.</li>
+        </ul>
+
+        <h2>7. Vaše práva</h2>
+        <p>V souladu s GDPR máte následují práva:</p>
+        <ul>
+            <li><strong>Právo na přístup:</strong> Máte právo vědět, jaká data o vás držíme.</li>
+            <li><strong>Právo na opravu:</strong> Pokud jsou údaje nepřesné, máte právo žádat jejich opravu.</li>
+            <li><strong>Právo na výmaz ("právo být zapomenut"):</strong> Můžete požádat o smazání všech vašich dat z
+                našich systémů.</li>
+            <li><strong>Právo vznést námitku:</strong> Máte právo namítat proti zpracování na základě oprávněného zájmu.
+            </li>
+        </ul>
+        <p>Pro uplatnění těchto práv nás kontaktujte na níže uvedeném e-mailu. Vaši žádost vyřídíme bez zbytečného
+            odkladu, nejpozději do 30 dnů.</p>
+
+        <h2>8. Změny zásad</h2>
+        <p>Vyhrazujeme si právo tyto Zásady kdykoli změnit. O podstatných změnách vás budeme informovat prostřednictvím
+            webových stránek nebo Discord serveru. Pokračováním v používání služby po účinnosti změn vyjadřujete souhlas
+            s novým zněním.</p>
+
+        <div
+            style="background: var(--glass); padding: 32px; border-radius: 16px; text-align: center; margin-top: 60px;">
+            <h3 style="margin-top:0; color:white;">Máte dotazy nebo žádosti?</h3>
+            <p style="margin-bottom: 20px;">Jsme tu pro vás. Kontaktujte nás pro uplatnění vašich práv nebo vysvětlení
+                nejasností.</p>
+            <a href="mailto:info@email.cz" class="nav-btn">Kontaktujte nás</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

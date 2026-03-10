@@ -1,0 +1,42 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Instalace{% endblock %}
+
+{% block docs_content %}
+<section id="setup">
+    <h1>Instalace a nastavení</h1>
+    <p>Přidání bota na váš server je jednoduchý proces, který nezabere více než pár minut.</p>
+
+    <h2>1. Pozvání bota</h2>
+    <p>Přejděte na domovskou stránku a klikněte na tlačítko <b>"Přidat na Discord"</b>. Budete přesměrováni na oficiální
+        Discord autorizaci.</p>
+
+    <div class="info-box">
+        <b>Požadovaná oprávnění</b>
+        <ul>
+            <li><code>View Channels</code> & <code>Read Messages</code> - Analýza aktivity v chatu</li>
+            <li><code>Read Message History</code> - Historická analýza a backfill dat</li>
+            <li><code>Connect</code> & <code>Speak</code> - Sledování účasti ve voice kanálech (bot se nepřipojuje, jen
+                sleduje eventy)</li>
+            <li><code>Manage Roles</code> (Volitelné) - Pro automatizaci rolí za aktivitu</li>
+        </ul>
+    </div>
+
+    <h2>2. Konfigurace Dashboardu</h2>
+    <p>Po přihlášení do dashboardu uvidíte seznam serverů, kde máte práva správce. Vyberte server, který chcete
+        spravovat.</p>
+
+    <h3>Nastavení vah aktivit</h3>
+    <p>V sekci <b>Nastavení</b> můžete definovat, jakou váhu má zpráva oproti minutě ve voice kanálu. To ovlivňuje
+        celkové XP uživatelů.</p>
+    <pre>
+Doporučené nastavení:
+- Zpráva: 1 bod
+- Minuta ve voice: 2 body (podporuje sociální interakci)
+    </pre>
+
+    <h3>Přístup pro moderátory</h3>
+    <p>Ve výchozím nastavení má přístup pouze majitel serveru. V sekci <b>Tým</b> můžete přidat role (např. @Moderator),
+        které budou mít přístup k prohlížení statistik.</p>
+</section>
+{% endblock %}

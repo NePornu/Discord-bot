@@ -1,0 +1,84 @@
+from __future__ import annotations
+import asyncio
+import os
+import time
+import platform
+import sys
+from datetime import datetime
+
+# Manual .env loading
+env_paths = [
+    os.path.join(os.getcwd(), ".env"),
+    "/app/.env",
+    "/root/discord-bot/.env"
+]
+for env_path in env_paths:
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ[key] = val.strip('"').strip("'")
+        break
+
+import discord
+from discord.ext import commands, tasks 
+from config import bot_token
+from config import config
+
+def ts() -> str:
+    return datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix=config.BOT_PREFIX, intents=intents)
+bot.remove_command("help")
+
+async def send_console_log(msg: str):
+    fullmsg = f"{ts()} {msg}"
+    try:
+        if not bot.is_ready():
+            return
+        channel = bot.get_channel(config.CONSOLE_CHANNEL_ID)
+        if channel:
+            await channel.send(f"\`\`\`{fullmsg[:1900]}\`\`\`")
+    except Exception as e:
+        print(f"Log Error: {e}")
+
+@bot.event
+async def on_ready():
+    print(f"Python Sidecar (Lite) is online as {bot.user}")
+    await send_console_log("Python Sidecar online (Lite Mode)")
+
+async def load_worker_cogs():
+    # Only load analysis cogs in Lite Mode
+    extensions = ["bot.commands.avatar_nsfw", "bot.commands.patterns"]
+    for ext in extensions:
+        try:
+            await bot.load_extension(ext)
+            print(f"Loaded {ext}")
+        except Exception as e:
+            print(f"Failed to load {ext}: {e}")
+
+async def main():
+    await load_worker_cogs()
+    async with bot:
+        await bot.start(os.environ.get("BOT_TOKEN"))
+
+if __name__ == "__main__":
+    if hasattr(bot, "run"):
+        # discord.py 1.7.3 does not support 'async with bot'
+        # It uses bot.run() which is blocking.
+        # But wait, 1.7.3 load_extension is NOT async.
+        
+        def load_worker_cogs_sync():
+            extensions = ["bot.commands.avatar_nsfw", "bot.commands.patterns"]
+            for ext in extensions:
+                try:
+                    bot.load_extension(ext)
+                    print(f"Loaded {ext}")
+                except Exception as e:
+                    print(f"Failed to load {ext}: {e}")
+        
+        load_worker_cogs_sync()
+        bot.run(os.environ.get("BOT_TOKEN"))

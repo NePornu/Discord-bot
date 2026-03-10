@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: center; min-height: 80vh;">
+    <div class="card" style="max-width: 550px; width: 100%;">
+        <div style="text-align: center; margin-bottom: 32px;">
+            <h1 class="title" style="font-size: 2rem;">🔐 Enter Code</h1>
+            <p style="color: var(--text-secondary);">We sent a 6-digit code to:</p>
+            <p style="color: var(--accent); font-weight: 600; margin-top: 8px;">{{ masked_email }}</p>
+        </div>
+
+        {% if error %}
+        <div style="
+            padding: 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            margin-bottom: 24px;
+            color: var(--danger);
+            text-align: center;
+        ">
+            ❌ {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/verify-otp" id="otpForm">
+            <input type="hidden" name="email" value="{{ email }}">
+
+            <div style="margin-bottom: 24px;">
+                <label style="
+                    display: block;
+                    margin-bottom: 12px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    text-align: center;
+                ">Enter 6-Digit Code</label>
+
+                
+                <div style="
+                    display: flex;
+                    gap: 12px;
+                    justify-content: center;
+                    margin-bottom: 16px;
+                ">
+                    {% for i in range(6) %}
+                    <input type="text" class="otp-digit" maxlength="1" pattern="[0-9]" required {% if i==0 %}autofocus{%
+                        endif %} style="
+                            width: 60px;
+                            height: 60px;
+                            text-align: center;
+                            font-size: 24px;
+                            font-weight: 700;
+                            background: var(--glass-bg);
+                            border: 2px solid var(--glass-border);
+                            border-radius: 12px;
+                            color: var(--text-primary);
+                            transition: all 0.2s ease;
+                        " />
+                    {% endfor %}
+                </div>
+
+                
+                <input type="hidden" name="otp" id="fullOtp">
+
+                <div style="text-align: center; margin-top: 16px;">
+                    <p style="color: var(--text-secondary); font-size: 0.875rem;">
+                        ⏱️ Code expires in: <span id="timer" style="color: var(--accent); font-weight: 600;">5:00</span>
+                    </p>
+                </div>
+            </div>
+
+            <button type="submit" id="verifyBtn" style="
+                width: 100%;
+                padding: 14px;
+                background: var(--primary-gradient);
+                border: none;
+                border-radius: 10px;
+                color: white;
+                font-weight: 600;
+                font-size: 1rem;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                margin-bottom: 16px;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(139,92,246,0.4)'"
+                onmouseout="this.style.transform='none'; this.style.boxShadow='none'">
+                ✅ Verify Code
+            </button>
+        </form>
+
+        <form method="POST" action="/resend-otp" style="text-align: center;">
+            <input type="hidden" name="email" value="{{ email }}">
+            <button type="submit" id="resendBtn" style="
+                background: none;
+                border: none;
+                color: var(--accent);
+                font-weight: 600;
+                cursor: pointer;
+                text-decoration: underline;
+                font-size: 0.875rem;
+            " onmouseover="this.style.color='var(--accent-hover)'" onmouseout="this.style.color='var(--accent)'">
+                🔄 Resend Code
+            </button>
+            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 8px;" id="resendCooldown"></p>
+        </form>
+
+        <div style="
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--glass-border);
+            text-align: center;
+        ">
+            <a href="/login" style="color: var(--text-secondary); font-size: 0.875rem; text-decoration: none;">
+                ← Use different email
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // OTP Auto-focus and Auto-submit
+    const otpInputs = document.querySelectorAll('.otp-digit');
+    const fullOtpInput = document.getElementById('fullOtp');
+    const otpForm = document.getElementById('otpForm');
+
+    otpInputs.forEach((input, index) => {
+        // Auto-focus next input
+        input.addEventListener('input', (e) => {
+            const value = e.target.value;
+
+            // Only allow digits
+            if (!/^[0-9]$/.test(value)) {
+                e.target.value = '';
+                return;
+            }
+
+            // Move to next input
+            if (value && index < otpInputs.length - 1) {
+                otpInputs[index + 1].focus();
+            }
+
+            // Auto-submit when all filled
+            updateFullOtp();
+        });
+
+        // Handle backspace
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                otpInputs[index - 1].focus();
+            }
+        });
+
+        // Handle paste
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+            pastedData.split('').forEach((char, i) => {
+                if (otpInputs[i]) {
+                    otpInputs[i].value = char;
+                }
+            });
+            if (pastedData.length === 6) {
+                updateFullOtp();
+                otpForm.submit();
+            }
+        });
+    });
+
+    function updateFullOtp() {
+        const otp = Array.from(otpInputs).map(input => input.value).join('');
+        fullOtpInput.value = otp;
+
+        // Auto-submit if all 6 digits entered
+        if (otp.length === 6) {
+            // Prevent multiple submissions
+            if (otpForm.dataset.submitting === "true") return;
+            otpForm.dataset.submitting = "true";
+
+            document.getElementById('verifyBtn').disabled = true;
+            document.getElementById('verifyBtn').innerHTML = '⏳ Verifying...';
+
+            setTimeout(() => otpForm.submit(), 100);
+        }
+    }
+
+    // Handle manual submit
+    otpForm.addEventListener('submit', (e) => {
+        if (otpForm.dataset.submitting === "true") {
+            e.preventDefault();
+            return;
+        }
+        otpForm.dataset.submitting = "true";
+        document.getElementById('verifyBtn').disabled = true;
+        document.getElementById('verifyBtn').innerHTML = '⏳ Verifying...';
+    });
+
+    // Countdown timer
+    let timeLeft = 300; // 5 minutes
+    const timerEl = document.getElementById('timer');
+
+    function updateTimer() {
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+        if (timeLeft <= 60) {
+            timerEl.style.color = 'var(--danger)';
+        }
+
+        if (timeLeft > 0) {
+            timeLeft--;
+            setTimeout(updateTimer, 1000);
+        } else {
+            timerEl.textContent = 'EXPIRED';
+            document.getElementById('verifyBtn').disabled = true;
+            document.getElementById('verifyBtn').style.opacity = '0.5';
+        }
+    }
+
+    updateTimer();
+
+    // Resend cooldown
+    let resendCooldown = 30;
+    const resendBtn = document.getElementById('resendBtn');
+    const resendCooldownEl = document.getElementById('resendCooldown');
+
+    function updateResendCooldown() {
+        if (resendCooldown > 0) {
+            resendBtn.disabled = true;
+            resendBtn.style.opacity = '0.5';
+            resendCooldownEl.textContent = `Wait ${resendCooldown}s before resending`;
+            resendCooldown--;
+            setTimeout(updateResendCooldown, 1000);
+        } else {
+            resendBtn.disabled = false;
+            resendBtn.style.opacity = '1';
+            resendCooldownEl.textContent = '';
+        }
+    }
+
+    updateResendCooldown();
+</script>
+{% endblock %}

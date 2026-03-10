@@ -1,0 +1,411 @@
+{% extends "landing_base.html" %}
+
+{% block title %}O nás | Metricord{% endblock %}
+
+{% block content %}
+<style>
+    /* Scoped CSS for About Page */
+    .about-hero {
+        text-align: center;
+        padding: 100px 0 80px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .about-hero::before {
+        content: '';
+        position: absolute;
+        width: 800px;
+        height: 600px;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 60%);
+        top: -100px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    .about-hero h1 {
+        font-size: 4rem;
+        font-weight: 800;
+        margin-bottom: 24px;
+        background: var(--primary-g);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .mission-statement {
+        font-size: 1.5rem;
+        line-height: 1.6;
+        color: white;
+        max-width: 900px;
+        margin: 20px auto 60px;
+        font-weight: 300;
+        position: relative;
+    }
+
+    .mission-statement span {
+        color: var(--accent);
+        font-weight: 600;
+        position: relative;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 32px;
+        margin: 60px 0 120px;
+        text-align: center;
+    }
+
+    .stat-item {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        padding: 40px 32px;
+        transition: 0.3s;
+    }
+
+    .stat-item:hover {
+        border-color: var(--primary);
+        transform: translateY(-5px);
+    }
+
+    .stat-item h3 {
+        font-size: 3.5rem;
+        margin: 0;
+        background: var(--primary-g);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800;
+    }
+
+    .stat-item p {
+        color: var(--text-muted);
+        font-size: 1.1rem;
+        margin-top: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /* Common Section Styles */
+    .section-header {
+        text-align: center;
+        margin-bottom: 60px;
+    }
+
+    .section-header h2 {
+        font-size: 2.5rem;
+        color: white;
+        margin-bottom: 16px;
+    }
+
+    .section-header p {
+        color: var(--text-muted);
+        font-size: 1.2rem;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    /* Core Values Grid */
+    .values-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 40px;
+        margin-bottom: 140px;
+    }
+
+    .value-card {
+        padding: 40px;
+        border-radius: 24px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+        border: 1px solid var(--glass-border);
+        transition: 0.3s;
+    }
+
+    .value-card:hover {
+        transform: translateY(-5px);
+        border-color: var(--primary);
+    }
+
+    .value-icon {
+        font-size: 2rem;
+        color: var(--primary);
+        background: rgba(139, 92, 246, 0.1);
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 16px;
+        margin-bottom: 24px;
+    }
+
+    .value-card h3 {
+        font-size: 1.5rem;
+        margin-bottom: 16px;
+        color: white;
+    }
+
+    .value-card p {
+        color: var(--text-muted);
+        line-height: 1.6;
+        font-size: 1.05rem;
+    }
+
+    /* Tech Stack Section (NEW) */
+    .tech-stack-section {
+        margin-bottom: 140px;
+        position: relative;
+    }
+
+    .tech-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .tech-item {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        padding: 30px;
+        border-radius: 16px;
+        text-align: center;
+        transition: 0.3s;
+    }
+
+    .tech-item:hover {
+        border-color: var(--accent);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tech-item i {
+        font-size: 2.5rem;
+        margin-bottom: 16px;
+        color: white;
+    }
+
+    .tech-item span {
+        display: block;
+        color: var(--text-muted);
+        font-weight: 500;
+    }
+
+    /* Roadmap Section (NEW) */
+    .roadmap-section {
+        margin-bottom: 140px;
+    }
+
+    .roadmap-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 30px;
+    }
+
+    .roadmap-card {
+        border: 1px dashed var(--glass-border);
+        border-radius: 20px;
+        padding: 30px;
+        position: relative;
+    }
+
+    .roadmap-tag {
+        position: absolute;
+        top: -12px;
+        left: 30px;
+        background: var(--bg-dark);
+        border: 1px solid var(--primary);
+        color: var(--primary);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .roadmap-card h3 {
+        margin-top: 10px;
+        margin-bottom: 10px;
+        font-size: 1.3rem;
+    }
+
+    /* FAQ Section (NEW) */
+
+    /* Author Section */
+    .author-wrapper {
+        background: linear-gradient(145deg, rgba(20, 20, 25, 0.8), rgba(10, 10, 12, 0.8));
+        border: 1px solid var(--glass-border);
+        border-radius: 32px;
+        padding: 60px;
+        display: flex;
+        align-items: center;
+        gap: 60px;
+        max-width: 900px;
+        margin: 0 auto 80px;
+    }
+
+    .author-image {
+        flex-shrink: 0;
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        background: var(--bg-secondary);
+        border: 4px solid var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 5rem;
+        color: var(--primary);
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.2);
+    }
+
+    .author-content h3 {
+        font-size: 2rem;
+        margin: 0 0 8px;
+    }
+
+    .author-role {
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        display: block;
+        margin-bottom: 24px;
+    }
+
+    .author-bio {
+        color: var(--text-muted);
+        font-size: 1.1rem;
+        line-height: 1.7;
+    }
+
+    @media (max-width: 900px) {
+        .about-hero h1 {
+            font-size: 3rem;
+        }
+
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+
+        .tech-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .author-wrapper {
+            flex-direction: column;
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .author-image {
+            width: 150px;
+            height: 150px;
+            font-size: 3rem;
+            margin: 0 auto;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="about-hero">
+    <h1 class="page-title">Data s duší</h1>
+    <div class="mission-statement">
+        "Tento projekt vznikl z jednoduché potřeby: <span>pochopit vlastní komunitu</span>.
+        Mým cílem je poskytnout nástroj, který je přehledný, férový a respektuje soukromí."
+    </div>
+</div>
+
+
+<div class="stats-grid">
+    <div class="stat-item">
+        <h3>{{ stats.servers|default('1') }}</h3>
+        <p>Aktivních serverů</p>
+    </div>
+    <div class="stat-item">
+        <h3>{{ stats.users|default('---') }}</h3>
+        <p>Sledovaných uživatelů</p>
+    </div>
+    <div class="stat-item">
+
+        <h3>{{ stats.messages|default('---') }}</h3>
+        <p>Analyzovaných zpráv</p>
+    </div>
+</div>
+
+<div class="section-header">
+    <h2>Filozofie Projektu</h2>
+    <p>Na čem stavím vývoj Metricord.</p>
+</div>
+
+<div class="values-grid">
+    <div class="value-card">
+        <div class="value-icon"><i class="fas fa-heart"></i></div>
+        <h3>Všeň k vývoji</h3>
+        <p>Projekt vyvíjím ve svém volném čase s důrazem na kvalitu kódu a moderní technologie. Žádný korporát, jen
+            čistá radost z tvorby nezávislého softwaru.</p>
+    </div>
+    <div class="value-card">
+        <div class="value-icon"><i class="fas fa-eye"></i></div>
+        <h3>Transparentnost</h3>
+        <p>Žádné skryté poplatky, žádný pochybný prodej dat. Všechna data slouží pouze vám pro analýzu vaší komunity a
+            nikomu jinému.</p>
+    </div>
+    <div class="value-card">
+        <div class="value-icon"><i class="fas fa-users"></i></div>
+        <h3>Komunita</h3>
+        <p>Nástroj tvořím přímo pro vás. Aktivně komunikuji na Discordu a nové funkce přidávám podle toho, co reálně
+            potřebujete vy, uživatelé.</p>
+    </div>
+</div>
+
+
+<div class="section-header">
+    <h2>Pod kapotou</h2>
+    <p>Moderní technologie, které pohánějí váš dashboard.</p>
+</div>
+<div class="tech-stack-section">
+    <div class="tech-grid">
+        <div class="tech-item">
+            <i class="fab fa-python" style="color: #3776ab;"></i>
+            <span>Python & FastAPI</span>
+        </div>
+        <div class="tech-item">
+            <i class="fas fa-database" style="color: #d84136;"></i>
+            <span>Redis Cache</span>
+        </div>
+        <div class="tech-item">
+            <i class="fas fa-robot" style="color: #5865F2;"></i>
+            <span>Discord.py</span>
+        </div>
+        <div class="tech-item">
+            <i class="fas fa-chart-pie" style="color: #8b5cf6;"></i>
+            <span>Analytics</span>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+<div style="text-align: center; margin-top: 100px;">
+    <h3>Chcete být součástí cesty?</h3>
+    <p style="color: var(--text-muted); margin-bottom: 30px;">Připojte se na náš Discord a sledujte vývoj z první řady.
+    </p>
+    <a href="https://discord.gg/35yeT32Knf" class="nav-btn" target="_blank">Připojit se na Discord</a>
+</div>
+
+{% endblock %}

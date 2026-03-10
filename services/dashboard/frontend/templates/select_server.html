@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Server - Community Analytics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f0f13;
+            --bg-card: #18191f;
+            --primary: #5865F2;
+            --primary-hover: #4752c4;
+            --text-main: #ffffff;
+            --text-muted: #a1a1aa;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 40px;
+        }
+
+        .server-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 20px;
+        }
+
+        .server-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-decoration: none;
+            color: white;
+            transition: all 0.2s;
+        }
+
+        .server-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary);
+            background: rgba(88, 101, 242, 0.1);
+        }
+
+        .server-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #2f3136;
+            margin-bottom: 16px;
+            object-fit: cover;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .server-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .server-status {
+            font-size: 0.8rem;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+        }
+
+        .status-configured {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+
+        .status-invite {
+            background: rgba(88, 101, 242, 0.2);
+            color: #818cf8;
+        }
+
+        .logout-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .logout-btn:hover {
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <a href="/logout" class="logout-btn">Logout</a>
+
+    <div class="container">
+        <h1>Select a Server</h1>
+
+        <div class="server-grid">
+            {% for guild in guilds %}
+            <a href="/select-server/{{ guild.id }}" class="server-card">
+                {% if guild.icon %}
+                <img src="https://cdn.discordapp.com/icons/{{ guild.id }}/{{ guild.icon }}.png" class="server-icon"
+                    alt="{{ guild.name }}">
+                {% else %}
+                <div class="server-icon">{{ guild.name[:2] }}</div>
+                {% endif %}
+
+                <span class="server-name">{{ guild.name }}</span>
+
+                {% if guild.bot_in_guild %}
+                <span class="server-status status-configured">Manage</span>
+                {% else %}
+                <span class="server-status status-invite">Setup</span>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+
+        {% if not guilds %}
+        <div style="text-align: center; color: #a1a1aa; margin-top: 40px;">
+            <p>No compatible servers found.</p>
+            <small style="display:block; margin-bottom:20px;">You need "Manage Server" or "Administrator"
+                permissions.</small>
+            <a href="/login" class="server-status status-invite"
+                style="text-decoration:none; padding: 10px 20px; font-size: 1rem;">🔄 Refresh Servers from Discord</a>
+        </div>
+        {% endif %}
+    </div>
+</body>
+
+</html>

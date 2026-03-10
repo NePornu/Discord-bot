@@ -1,0 +1,33 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Úvod{% endblock %}
+
+{% block docs_content %}
+<section id="intro">
+    <h1>Úvod do Metricord</h1>
+    <p>Vítejte v oficiální dokumentaci **Metricord**. Náš nástroj je navržen tak, aby vám poskytl ty
+        nejdetailnější informace o životě na vašem Discord serveru.</p>
+    <p>Od sledování aktivity jednotlivých členů, přes analýzu voice kanálů až po predikci budoucího růstu – vše máte pod
+        kontrolou v jednom přehledném dashboardu.</p>
+
+    <div class="info-box">
+        <b>💡 Tip pro komunity</b>
+        Pro dosažení nejlepších výsledků doporučujeme nechat bota běžet alespoň 7 dní, aby mohl nasbírat dostatek dat
+        pro přesné predikce a trendy.
+    </div>
+
+    <h2>Klíčové vlastnosti</h2>
+    <ul>
+        <li><b>Reálná data:</b> Sledujte aktivitu v momentě, kdy se děje.</li>
+        <li><b>Historická analýza:</b> Podívejte se zpět až 30 dní (nebo více s Premium).</li>
+        <li><b>Skóre bezpečnosti:</b> Unikátní algoritmus pro hodnocení zdraví serveru.</li>
+        <li><b>Export dat:</b> Stáhněte si svá data kdykoliv potřebujete.</li>
+    </ul>
+
+    <div style="margin-top: 40px; display: flex; gap: 16px;">
+        <a href="/docs/setup"
+            style="background: var(--primary); color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Začít
+            s instalací →</a>
+    </div>
+</section>
+{% endblock %}

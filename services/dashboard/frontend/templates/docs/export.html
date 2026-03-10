@@ -1,0 +1,43 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Centrum exportu{% endblock %}
+
+{% block docs_content %}
+<section id="export">
+    <h1>Centrum exportu</h1>
+    <p>Vaše data patří vám. Metricord umožňuje exportovat surová data pro další zpracování, například pro
+        reporty vedení, marketingové analýzy nebo tvorbu vlastních grafů.</p>
+
+    <h2>Kde najít export?</h2>
+    <p>Tlačítko pro export se nachází v pravém horním rohu sekce <b>Analytics</b> v hlavním dashboardu.</p>
+
+    <h2>Dostupné formáty</h2>
+
+    <h3>CSV (Comma Separated Values)</h3>
+    <p>Nejvhodnější pro import do tabulkových procesorů:</p>
+    <ul>
+        <li>Microsoft Excel</li>
+        <li>Google Sheets</li>
+        <li>LibreOffice Calc</li>
+    </ul>
+    <p>Struktura CSV obsahuje sloupce jako <code>date</code>, <code>messages</code>, <code>voice_minutes</code>,
+        <code>joins</code>, <code>leaves</code>.</p>
+
+    <h3>JSON (JavaScript Object Notation)</h3>
+    <p>Strukturovaný formát vhodný pro vývojáře.</p>
+    <pre>
+{
+  "date": "2023-10-25",
+  "stats": {
+    "messages": 1542,
+    "voice_users": 45,
+    "new_members": 12
+  }
+}
+    </pre>
+
+    <h2>Automatické reporty (Premium)</h2>
+    <p>S tarifem Premium si můžete nastavit automatické zasílání měsíčních reportů ve formátu PDF přímo do určeného
+        kanálu na vašem serveru.</p>
+</section>
+{% endblock %}

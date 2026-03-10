@@ -1,0 +1,849 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="title">⚙️ Nastavení</h1>
+</div>
+
+<div class="card" style="margin-bottom: 24px;">
+    <h2 style="margin-bottom: 16px;">Obecné Nastavení</h2>
+    <form method="POST" action="/settings/general">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <label for="show_deleted" style="font-weight: 600; display: block;">Zobrazit smazaná data</label>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                    zobrazit kanály a uživatele, kteří již neexistují (označeno jako "Deleted")
+                </div>
+            </div>
+            <div class="toggle-container">
+                <input type="checkbox" id="show_deleted" name="show_deleted" {% if show_deleted_data %}checked{% endif
+                    %} style="transform: scale(1.5);">
+            </div>
+        </div>
+
+        <div
+            style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--glass-border); display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div>
+                <label for="default_date_range" style="font-weight: 600; display: block; margin-bottom: 8px;">Výchozí
+                    období</label>
+                <select id="default_date_range" name="default_date_range"
+                    style="width: 100%; background: var(--bg-tertiary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 8px; border-radius: 6px;">
+                    <option value="last_7_days" {% if default_date_range=='last_7_days' %}selected{% endif %}>
+                        Posledních 7 dní</option>
+                    <option value="last_30_days" {% if default_date_range=='last_30_days' %}selected{% endif %}>
+                        Posledních 30 dní</option>
+                    <option value="this_month" {% if default_date_range=='this_month' %}selected{% endif %}>Tento
+                        měsíc</option>
+                    <option value="all_time" {% if default_date_range=='all_time' %}selected{% endif %}>Celá
+                        historie</option>
+                </select>
+            </div>
+            <div>
+                <label for="default_role_id" style="font-weight: 600; display: block; margin-bottom: 8px;">Výchozí
+                    role</label>
+                <select id="default_role_id" name="default_role_id"
+                    style="width: 100%; background: var(--bg-tertiary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 8px; border-radius: 6px;">
+                    <option value="all" {% if default_role_id=='all' %}selected{% endif %}>Všechny role</option>
+                    {% for rid, rname in roles %}
+                    <option value="{{ rid }}" {% if default_role_id==rid %}selected{% endif %}>{{ rname }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--glass-border);">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <label style="font-weight: 600; display: block;">Stáhnout historická data</label>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                        Spustí stahování kompletní historie zpráv ze serveru.
+                    </div>
+                </div>
+                <div>
+                    <button type="button" id="backfillBtn" onclick="triggerBackfill()"
+                        style="padding: 8px 16px; background: var(--bg-tertiary); border: 1px solid var(--glass-border); color: var(--text-primary); border-radius: 6px; cursor: pointer; transition: 0.2s;">
+                        📥 Spustit
+                    </button>
+                </div>
+            </div>
+            <div id="backfillStatus" class="backfill-status" style="display: none; margin-top: 20px;">
+                <div class="progress-container"
+                    style="background: rgba(255,255,255,0.05); border-radius: 12px; height: 12px; overflow: hidden; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1);">
+                    <div id="backfillProgressBar"
+                        style="width: 0%; height: 100%; background: linear-gradient(90deg, #5865F2, #838df2); transition: width 0.5s ease; position: relative;">
+                        <div
+                            style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); animation: shimmer 2s infinite;">
+                        </div>
+                    </div>
+                </div>
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: var(--text-muted);">
+                    <span id="backfillCurrentStatus" style="font-weight: 500; color: var(--text-primary);">Příprava
+                        procesoru...</span>
+                    <span id="backfillCount">0 zpráv</span>
+                </div>
+                <div id="backfillChannel"
+                    style="font-size: 12px; color: var(--accent-blue); margin-top: 4px; font-family: monospace;">
+                </div>
+            </div>
+
+            <style>
+                @keyframes shimmer {
+                    0% {
+                        transform: translateX(-100%);
+                    }
+
+                    100% {
+                        transform: translateX(100%);
+                    }
+                }
+
+                .backfill-status {
+                    background: rgba(88, 101, 242, 0.05);
+                    border: 1px solid rgba(88, 101, 242, 0.2);
+                    border-radius: 16px;
+                    padding: 20px;
+                    animation: fadeIn 0.3s ease;
+                }
+            </style>
+        </div>
+
+        <div style="margin-top: 24px; display: flex; justify-content: flex-end;">
+            <button type="submit" class="btn">Uložit nastavení</button>
+        </div>
+    </form>
+</div>
+
+
+<div class="card" style="margin-bottom: 24px; margin-top: 24px;">
+    <h3 style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+        📤 Export Centrum <span style="font-size: 12px; opacity: 0.7; font-weight: 400;">(Všechna data v
+            CSV/JSON)</span>
+    </h3>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
+        <div
+            style="grid-column: 1/-1; margin-top: 8px; font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
+            🏆 Žebříčky & Top Listy</div>
+
+        <button onclick="exportData('leaderboard', 'Top Uživatelé (Zprávy)')" class="btn export-btn">👥 Top
+            Zprávy</button>
+        <button onclick="exportData('voice_top', 'Top Uživatelé (Voice)')" class="btn export-btn">🎙️ Top
+            Voice</button>
+        <button onclick="exportData('commands_top', 'Nejpoužívanější Příkazy')" class="btn export-btn">🤖 Top
+            Příkazy</button>
+        <button onclick="exportData('emojis_top', 'Nejoblíbenější Emoji')" class="btn export-btn">😃 Top
+            Emoji</button>
+        <button onclick="exportData('channels_top', 'Nejaktivnější Kanály')" class="btn export-btn">📊 Top
+            Kanály</button>
+
+        <div
+            style="grid-column: 1/-1; margin-top: 16px; font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
+            ⏳ Časová Analýza</div>
+
+        <button onclick="exportData('activity', 'Denní Aktivita (DAU/Msg)')" class="btn export-btn">📈 Denní Trend
+            (DAU)</button>
+        <button onclick="exportData('hourly_heatmap', 'Hodinová Aktivita')" class="btn export-btn">🔥 Hodinový
+            Heatmap</button>
+        <button onclick="exportData('weekday_stats', 'Dny v týdnu')" class="btn export-btn">📅 Dny v týdnu</button>
+        <button onclick="exportData('traffic', 'Nábory a Odchody')" class="btn export-btn">🚦 Traffic
+            (Join/Leave)</button>
+        <button onclick="exportData('peak_log', 'Záznam Špiček')" class="btn export-btn">🏔️ Log Špiček
+            (Peak)</button>
+
+        <div
+            style="grid-column: 1/-1; margin-top: 16px; font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
+            📝 Obsah & Kvalita</div>
+
+        <button onclick="exportData('msg_lengths', 'Délka Zpráv')" class="btn export-btn">📏 Distribuce
+            Délky</button>
+        <button onclick="exportData('interaction_types', 'Typy Interakcí')" class="btn export-btn">🖱️ Interakce vs
+            Zprávy</button>
+        <button onclick="exportData('attach_stats', 'Přílohy a Média')" class="btn export-btn">🖼️ Media
+            Stats</button>
+        <button onclick="exportData('word_cloud', 'Klíčová Slova')" class="btn export-btn">☁️ Word Cloud
+            Data</button>
+
+        <div
+            style="grid-column: 1/-1; margin-top: 16px; font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
+            📂 Detailní Data</div>
+
+        <button onclick="exportData('users', 'Kompletní Seznam Uživatelů')" class="btn export-btn"
+            style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3);">👤 Full User
+            List</button>
+        <button onclick="exportData('channels_full', 'Seznam Kanálů')" class="btn export-btn">📺 Full Channel
+            List</button>
+        <button onclick="exportData('roles_dist', 'Distribuce Rolí')" class="btn export-btn">🎭 Distribuce
+            Rolí</button>
+        <button onclick="exportData('raw_logs', 'Poslední Logy')" class="btn export-btn">📜 Raw Server Logs</button>
+        <button onclick="exportData('bans_kicks', 'Moderace (Bans/Kicks)')" class="btn export-btn">🛡️ Moderační
+            Log</button>
+    </div>
+    <style>
+        .export-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
+            transition: all 0.2s;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            font-size: 13px;
+            padding: 12px;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
+        .export-btn:hover {
+            background: var(--bg-card);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+
+</div>
+
+<div class="card" style="margin-bottom: 24px; margin-top: 48px; border: 1px solid rgba(239, 68, 68, 0.3);">
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+        <div style="font-size: 24px;">⚠️</div>
+        <h2 style="color: var(--danger); margin: 0;">Nebezpečná zóna</h2>
+    </div>
+
+    <div
+        style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Smazat data serveru</h3>
+            <p style="color: var(--text-secondary); font-size: 13px;">Odstraní veškerá statistická data pro
+                tento
+                server z databáze. Tuto akci nelze vrátit.</p>
+        </div>
+        <button onclick="confirmAction('delete_data')" class="btn"
+            style="background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid var(--danger);">
+            🗑️ Smazat data
+        </button>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 24px;">
+        <div>
+            <h3 style="font-size: 16px; margin-bottom: 8px;">Odebrat bota ze serveru</h3>
+            <p style="color: var(--text-secondary); font-size: 13px;">Bot opustí tento Discord server. Pro
+                opětovné
+                přidání použijte pozvánkový odkaz.</p>
+        </div>
+        <button onclick="confirmAction('leave_server')" class="btn" style="background: var(--danger); color: white;">
+            🚪 Odebrat bota
+        </button>
+    </div>
+</div>
+
+
+
+
+
+<div id="customModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+    <div
+        style="background: var(--bg-secondary); padding: 24px; border-radius: 12px; border: 1px solid var(--glass-border); max-width: 400px; width: 90%; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+        <h3 id="modalTitle" style="margin-bottom: 12px;">Upozornění</h3>
+        <p id="modalMessage" style="color: var(--text-secondary); margin-bottom: 24px;">Zpráva...</p>
+        <div style="display: flex; justify-content: center; gap: 12px;">
+            <button id="modalConfirmBtn"
+                style="display: none; padding: 8px 16px; background: var(--primary-gradient); border: none; border-radius: 6px; color: white; cursor: pointer;">Potvrdit</button>
+            <button onclick="closeModal()"
+                style="padding: 8px 16px; background: var(--bg-tertiary); border: 1px solid var(--glass-border); color: var(--text-primary); border-radius: 6px; cursor: pointer;">Zavřít</button>
+        </div>
+    </div>
+</div>
+
+
+<div id="exportModal" class="modal"
+    style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="card" style="width: 100%; max-width: 450px; animation: modalSlideIn 0.3s ease-out;">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 24px;">
+            <div>
+                <h2 style="margin: 0; display: flex; align-items: center; gap: 12px;">📤 Export Data</h2>
+                <div id="exportModalTitle"
+                    style="color: var(--primary); font-size: 14px; font-weight: 600; margin-top: 4px;">--</div>
+            </div>
+            <button onclick="closeExportModal()" class="btn" style="background: transparent; padding: 8px;">✕</button>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; color: var(--text-secondary);">Časové
+                období</label>
+            <select id="exportRange" class="btn" style="width: 100%; justify-content: space-between;"
+                onchange="toggleCustomDate()">
+                <option value="7">Posledních 7 dní</option>
+                <option value="30" selected>Posledních 30 dní</option>
+                <option value="90">Posledních 90 dní</option>
+                <option value="all">Celá historie (All Time)</option>
+                <option value="custom">Vlastní rozsah...</option>
+            </select>
+            <div id="exportCustomDate" style="display: none; gap: 8px; margin-top: 8px;">
+                <input type="date" id="exportStart" class="btn" style="flex:1">
+                <input type="date" id="exportEnd" class="btn" style="flex:1">
+            </div>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+            <label style="display: block; margin-bottom: 8px; color: var(--text-secondary);">Formát</label>
+            <div style="display: flex; gap: 12px;">
+                <label class="radio-label"
+                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; flex: 1;">
+                    <input type="radio" name="exportFormat" value="csv" checked>
+                    <span style="font-weight: 600;">CSV (Excel)</span>
+                </label>
+                <label class="radio-label"
+                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; flex: 1;">
+                    <input type="radio" name="exportFormat" value="json">
+                    <span style="font-weight: 600;">JSON (Raw)</span>
+                </label>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+            <button onclick="closeExportModal()" class="btn"
+                style="background: var(--bg-tertiary); border: 1px solid var(--glass-border);">Zrušit</button>
+            <button onclick="confirmExport()" class="btn"
+                style="background: var(--primary-gradient); color: white;">Stáhnout Export</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentExportType = 'leaderboard';
+
+    function exportData(type, title) {
+        currentExportType = type || 'leaderboard';
+        document.getElementById('exportModal').style.display = 'flex';
+        document.getElementById('exportModalTitle').textContent = title || type;
+
+        // Pre-fill dates if custom
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('exportEnd').value = today;
+    }
+
+    function closeExportModal() {
+        document.getElementById('exportModal').style.display = 'none';
+    }
+
+    function toggleCustomDate() {
+        const val = document.getElementById('exportRange').value;
+        const customDiv = document.getElementById('exportCustomDate');
+        customDiv.style.display = val === 'custom' ? 'flex' : 'none';
+    }
+
+    function confirmExport() {
+        const range = document.getElementById('exportRange').value;
+        const format = document.querySelector('input[name="exportFormat"]:checked').value;
+
+        let start = '', end = '';
+
+        if (range === 'custom') {
+            start = document.getElementById('exportStart').value;
+            end = document.getElementById('exportEnd').value;
+        } else if (range !== 'all') {
+            const d = new Date();
+            end = d.toISOString().split('T')[0];
+            d.setDate(d.getDate() - parseInt(range));
+            start = d.toISOString().split('T')[0];
+        }
+
+        let url = `/api/export/${currentExportType}?format=${format}`;
+        if (start) url += `&start_date=${start}`;
+        if (end) url += `&end_date=${end}`;
+
+        if (format === 'json') {
+            window.open(url, '_blank');
+        } else {
+            window.location.href = url;
+        }
+
+        closeExportModal();
+    }
+</script>
+
+<script>
+    // Modal Logic
+    const modal = document.getElementById('customModal');
+    const mTitle = document.getElementById('modalTitle');
+    const mMsg = document.getElementById('modalMessage');
+    const mConfirm = document.getElementById('modalConfirmBtn');
+    let onConfirmAction = null;
+
+    function showModal(title, message, isConfirm = false, onConfirm = null) {
+        mTitle.innerText = title;
+        mMsg.innerHTML = message; // Allow HTML
+        modal.style.display = 'flex';
+
+        if (isConfirm && onConfirm) {
+            mConfirm.style.display = 'block';
+            onConfirmAction = onConfirm;
+        } else {
+            mConfirm.style.display = 'none';
+        }
+    }
+
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+
+    mConfirm.onclick = () => {
+        if (onConfirmAction) onConfirmAction();
+        closeModal();
+    };
+
+
+    async function triggerBackfill() {
+        showModal("Potvrzení", "Opravdu chcete spustit stahování historie? Toto může trvat dlouho.", true, async () => {
+            const btn = document.getElementById('backfillBtn');
+            const status = document.getElementById('backfillStatus');
+
+            btn.disabled = true;
+            btn.innerText = "Spouštím...";
+
+            try {
+                // Must send SOME data to satisfy multipart/form-data requirement of FastAPI
+                const formData = new FormData();
+                formData.append('action', 'trigger');
+
+                const resp = await fetch('/api/trigger-backfill', { method: 'POST', body: formData });
+
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (e) {
+                    throw new Error(`Server returned non-JSON response (${resp.status})`);
+                }
+
+                if (resp.status === 200 && data.status === 'ok') {
+                    status.style.display = 'block';
+                    btn.innerText = "⏳ Probíhá stahování...";
+                    startBackfillPolling();
+                } else {
+                    showModal("Chyba", data.message || "Neznámá chyba");
+                    btn.disabled = false;
+                    btn.innerText = "📥 Spustit Backfill";
+                }
+            } catch (e) {
+                showModal("Chyba Komunikace", "Nepodařilo se spojit se serverem: " + e);
+                console.error(e);
+                btn.disabled = false;
+                btn.innerText = "📥 Spustit Backfill";
+            }
+        });
+    }
+
+    let backfillTimer = null;
+    function startBackfillPolling() {
+        if (backfillTimer) clearInterval(backfillTimer);
+        backfillTimer = setInterval(pollBackfillStatus, 2000);
+    }
+
+    async function pollBackfillStatus() {
+        try {
+            const resp = await fetch('/api/backfill-status');
+            const data = await resp.json();
+
+            const progressBar = document.getElementById('backfillProgressBar');
+            const statusText = document.getElementById('backfillCurrentStatus');
+            const countText = document.getElementById('backfillCount');
+            const channelText = document.getElementById('backfillChannel');
+            const btn = document.getElementById('backfillBtn');
+
+            if (data.status === 'processing') {
+                // We don't have a total target messages count from Discord easily, 
+                // so we animate the bar or use a fast-growing width that caps at 95%
+                let currentWidth = parseFloat(progressBar.style.width) || 0;
+                if (currentWidth < 95) {
+                    progressBar.style.width = (currentWidth + 0.5) + '%';
+                }
+
+                statusText.innerText = "📊 Stahování historie...";
+                countText.innerText = data.total_messages.toLocaleString() + " zpráv";
+                channelText.innerText = "Skenuji channel: #" + data.current_channel;
+            } else if (data.status === 'completed') {
+                progressBar.style.width = '100%';
+                progressBar.style.background = '#43b581';
+                statusText.innerText = "✅ Hotovo!";
+                countText.innerText = "Celkem " + data.total_messages.toLocaleString() + " zpráv";
+                channelText.innerText = "Historie byla úspěšně stažena.";
+                btn.innerText = "✅ Dokončeno";
+                clearInterval(backfillTimer);
+                showModal("Hotovo", "Všechna historická data byla úspěšně načtena.");
+            } else if (data.status === 'error') {
+                statusText.innerText = "❌ Chyba";
+                channelText.innerText = data.message;
+                btn.disabled = false;
+                btn.innerText = "📥 Spustit znovu";
+                clearInterval(backfillTimer);
+            }
+        } catch (e) {
+            console.error("Polling error:", e);
+        }
+    }
+
+    // Danger Zone Functions
+    async function deleteServerData() {
+        showModal("Smazat data?", "Opravdu chcete smazat VŠECHNA data pro tento server? Tuto akci NELZE vrátit!", true, async () => {
+            const btn = document.getElementById('deleteDataBtn');
+            btn.disabled = true;
+            btn.innerText = "Mažu...";
+
+            try {
+                const resp = await fetch('/api/delete-server-data', { method: 'POST' });
+                const data = await resp.json();
+
+                if (resp.status === 200 && data.status === 'ok') {
+                    showModal("Hotovo", data.message);
+                    btn.innerText = "✅ Smazáno";
+                } else {
+                    showModal("Chyba", data.message || "Neznámá chyba");
+                    btn.disabled = false;
+                    btn.innerText = "🗑️ Smazat data";
+                }
+            } catch (e) {
+                showModal("Chyba", "Nepodařilo se spojit se serverem: " + e);
+                btn.disabled = false;
+                btn.innerText = "🗑️ Smazat data";
+            }
+        });
+    }
+
+    async function leaveServer() {
+        showModal("Odebrat bota?", "Opravdu chcete odebrat bota z tohoto serveru? Pro opětovné přidání budete muset použít pozvánkový odkaz.", true, async () => {
+            const btn = document.getElementById('leaveServerBtn');
+            btn.disabled = true;
+            btn.innerText = "Odcházím...";
+
+            try {
+                const resp = await fetch('/api/leave-server', { method: 'POST' });
+                const data = await resp.json();
+
+                if (resp.status === 200 && data.status === 'ok') {
+                    showModal("Hotovo", "Bot byl odebrán ze serveru. Budete přesměrováni...");
+                    setTimeout(() => {
+                        window.location.href = '/select-server';
+                    }, 2000);
+                } else {
+                    showModal("Chyba", data.message || "Neznámá chyba");
+                    btn.disabled = false;
+                    btn.innerText = "🚪 Odebrat bota";
+                }
+            } catch (e) {
+                showModal("Chyba", "Nepodařilo se spojit se serverem: " + e);
+                btn.disabled = false;
+                btn.innerText = "🚪 Odebrat bota";
+            }
+        });
+    }
+</script>
+
+<div class="card">
+    <h2 style="margin-bottom: 16px;">Váhy Akcí</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        Nastavte, kolik "času aktivity" (v sekundách) se přidělí za každou moderátorskou akci.
+        Změny se projeví okamžitě v nových výpočtech.
+    </p>
+
+    <form method="POST" action="/settings/weights">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+
+            
+            {% macro input_field(label, name, value, desc) %}
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">{{ label }}</label>
+                <div style="position: relative;">
+                    <input type="number" name="{{ name }}" value="{{ value }}" required min="0" step="1"
+                        style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 12px; border-radius: 8px; font-family: inherit;">
+                    <span
+                        style="position: absolute; right: 12px; top: 10px; color: var(--text-secondary); font-size: 12px;">sek</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">{{ desc }}</div>
+            </div>
+            {% endmacro %}
+
+            {{ input_field("Ban", "bans", weights['bans'], "Za jeden ban uživatele") }}
+            {{ input_field("Kick", "kicks", weights['kicks'], "Za jeden kick uživatele") }}
+            {{ input_field("Timeout", "timeouts", weights['timeouts'], "Za jeden timeout") }}
+            {{ input_field("Unban", "unbans", weights['unbans'], "Za jeden unban") }}
+            {{ input_field("Verifikace", "verifications", weights['verifications'], "Za jednu verifikaci") }}
+            {{ input_field("Smazání zprávy", "msg_deleted", weights['msg_deleted'], "Za jednu smazanou zprávu")
+            }}
+            {{ input_field("Změna role", "role_updates", weights['role_updates'], "Za jednu změnu role") }}
+
+            <div style="grid-column: 1 / -1; margin-top: 16px;">
+                <h3 style="font-size: 1.1rem; margin-bottom: 12px;">Chat & Sezení</h3>
+            </div>
+
+            {{ input_field("Zahájení sezení", "session_base", weights.get('session_base', 180), "Základ za start
+            aktivního bloku") }}
+            {{ input_field("Znak zprávy", "char_weight", weights.get('char_weight', 1), "Sekundy za 1 znak") }}
+            {{ input_field("Odpověď (Reply)", "reply_weight", weights.get('reply_weight', 60), "Bonus za použití
+            Odpovědět") }}
+            {{ input_field("Za zprávu", "msg_weight", weights.get('msg_weight', 0), "Základ za každou odeslanou
+            zprávu") }}
+
+            <div style="grid-column: 1 / -1; height: 1px; background: var(--glass-border); margin: 8px 0;">
+            </div>
+
+            {{ input_field("Násobitel času chatu", "chat_time", weights['chat_time'], "Globální násobitel
+            výsledného
+            času") }}
+            {{ input_field("Násobitel času hlasu", "voice_time", weights['voice_time'], "Globální násobitel času
+            hlasu") }}
+        </div>
+
+        <div style="margin-top: 32px; display: flex; justify-content: flex-end;">
+            <button type="submit"
+                style="padding: 10px 24px; background: var(--primary-gradient); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(88, 101, 242, 0.3);">
+                Uložit změny
+            </button>
+        </div>
+    </form>
+</div>
+
+</div>
+
+
+<div class="card" style="margin-top: 24px;">
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div style="font-size: 24px;">✨</div>
+        <h2 style="margin: 0;">XP Vzorec</h2>
+    </div>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        Nastavte křivku pro získávání úrovní. Vzorec: <code>XP = A * Level² + B * Level + C</code>
+    </p>
+
+    <form method="POST" action="/settings/xp-formula">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;">
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Koeficient A</label>
+                <input type="number" name="xp_a" value="{{ xp_formula.a|default(50) }}" required min="1" step="1"
+                    style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 12px; border-radius: 8px;">
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Kvadratický (strmost)</div>
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Koeficient B</label>
+                <input type="number" name="xp_b" value="{{ xp_formula.b|default(200) }}" required min="0" step="1"
+                    style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 12px; border-radius: 8px;">
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Lineární</div>
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Koeficient C</label>
+                <input type="number" name="xp_c" value="{{ xp_formula.c|default(100) }}" required min="0" step="1"
+                    style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 12px; border-radius: 8px;">
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Konstanta (Start)</div>
+            </div>
+
+            <div style="grid-column: 1 / -1; height: 1px; background: var(--glass-border); margin: 8px 0;"></div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Min XP za zprávu</label>
+                <input type="number" name="xp_min" value="{{ xp_formula.min|default(15) }}" required min="1" step="1"
+                    style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 12px; border-radius: 8px;">
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Max XP za zprávu</label>
+                <input type="number" name="xp_max" value="{{ xp_formula.max|default(25) }}" required min="1" step="1"
+                    style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 12px; border-radius: 8px;">
+            </div>
+
+            <div style="grid-column: 1 / -1; height: 1px; background: var(--glass-border); margin: 8px 0;"></div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Min XP za minutu (Voice)</label>
+                <input type="number" name="xp_voice_min" value="{{ xp_formula.voice_min|default(5) }}" required min="0"
+                    step="1"
+                    style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 12px; border-radius: 8px;">
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Max XP za minutu (Voice)</label>
+                <input type="number" name="xp_voice_max" value="{{ xp_formula.voice_max|default(10) }}" required min="0"
+                    step="1"
+                    style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 12px; border-radius: 8px;">
+            </div>
+        </div>
+
+        <div
+            style="margin-top: 16px; padding: 12px; background: rgba(88, 101, 242, 0.1); border-radius: 8px; font-size: 13px; color: var(--text-secondary);">
+            <strong>Příklad:</strong> Pro Level 20 při A=50, B=200, C=100:<br>
+            XP = 50*(20²) + 200*20 + 100 = 20,000 + 4,000 + 100 = <strong>24,100 XP</strong>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+            <button type="submit"
+                style="padding: 10px 24px; background: var(--primary-gradient); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">
+                💾 Uložit Vzorec
+            </button>
+        </div>
+    </form>
+</div>
+<div class="card" style="margin-top: 24px;">
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div style="font-size: 24px;">🛡️</div>
+        <h2 style="margin: 0;">Skóre bezpečnosti</h2>
+    </div>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        Nastavte váhy jednotlivých komponent a ideální hodnoty pro výpočet skóre bezpečnosti serveru.
+    </p>
+
+    <form method="POST" action="/settings/security-score">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+
+            
+            <div style="grid-column: 1 / -1;">
+                <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--text-primary);">Váhy komponent
+                    (celkem
+                    100%)</h3>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Poměr moderátorů</label>
+                <div style="position: relative;">
+                    <input type="number" name="weight_mod_ratio" value="{{ security_weights.mod_ratio|default(25) }}"
+                        min="0" max="100" step="5"
+                        style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 40px 10px 12px; border-radius: 8px;">
+                    <span style="position: absolute; right: 12px; top: 10px; color: var(--text-secondary);">%</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Hodnotí poměr
+                    uživatelů
+                    na moderátora</div>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Zabezpečení serveru</label>
+                <div style="position: relative;">
+                    <input type="number" name="weight_security" value="{{ security_weights.security|default(25) }}"
+                        min="0" max="100" step="5"
+                        style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 40px 10px 12px; border-radius: 8px;">
+                    <span style="position: absolute; right: 12px; top: 10px; color: var(--text-secondary);">%</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Verification level,
+                    MFA, content filter</div>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Zapojení uživatelů</label>
+                <div style="position: relative;">
+                    <input type="number" name="weight_engagement" value="{{ security_weights.engagement|default(25) }}"
+                        min="0" max="100" step="5"
+                        style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 40px 10px 12px; border-radius: 8px;">
+                    <span style="position: absolute; right: 12px; top: 10px; color: var(--text-secondary);">%</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">DAU, reply ratio,
+                    voice
+                    aktivita</div>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Zdraví moderace</label>
+                <div style="position: relative;">
+                    <input type="number" name="weight_moderation" value="{{ security_weights.moderation|default(25) }}"
+                        min="0" max="100" step="5"
+                        style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 40px 10px 12px; border-radius: 8px;">
+                    <span style="position: absolute; right: 12px; top: 10px; color: var(--text-secondary);">%</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Moderátorské akce
+                    za
+                    měsíc</div>
+            </div>
+
+            
+            <div
+                style="grid-column: 1 / -1; margin-top: 16px; padding-top: 24px; border-top: 1px solid var(--glass-border);">
+                <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--text-primary);">Ideální hodnoty
+                </h3>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Ideální poměr
+                    uživatel/mod</label>
+                <div style="display: flex; gap: 8px;">
+                    <div style="flex: 1; position: relative;">
+                        <input type="number" name="ideal_mod_ratio_min"
+                            value="{{ security_ideals.mod_ratio_min|default(50) }}" min="1" max="500"
+                            style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px; border-radius: 8px;">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Min</div>
+                    </div>
+                    <div style="display: flex; align-items: center; padding-bottom: 16px;">–</div>
+                    <div style="flex: 1; position: relative;">
+                        <input type="number" name="ideal_mod_ratio_max"
+                            value="{{ security_ideals.mod_ratio_max|default(100) }}" min="1" max="500"
+                            style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px; border-radius: 8px;">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Max</div>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Ideální DAU
+                    participation</label>
+                <div style="position: relative;">
+                    <input type="number" name="ideal_dau_percent" value="{{ security_ideals.dau_percent|default(10) }}"
+                        min="1" max="100" step="1"
+                        style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px 40px 10px 12px; border-radius: 8px;">
+                    <span style="position: absolute; right: 12px; top: 10px; color: var(--text-secondary);">%</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Denně aktivních z
+                    celkového počtu</div>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Ideální % moderačních
+                    akcí</label>
+                <div style="display: flex; gap: 8px;">
+                    <div style="flex: 1; position: relative;">
+                        <input type="number" name="ideal_mod_actions_min"
+                            value="{{ security_ideals.mod_actions_min|default(1) }}" min="0" max="50" step="0.5"
+                            style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px; border-radius: 8px;">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Min %</div>
+                    </div>
+                    <div style="display: flex; align-items: center; padding-bottom: 16px;">–</div>
+                    <div style="flex: 1; position: relative;">
+                        <input type="number" name="ideal_mod_actions_max"
+                            value="{{ security_ideals.mod_actions_max|default(5) }}" min="0" max="50" step="0.5"
+                            style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px; border-radius: 8px;">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Max %</div>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label style="display: block; font-weight: 600; margin-bottom: 8px;">Požadovaný verification
+                    level</label>
+                <select name="ideal_verification_level"
+                    style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 10px; border-radius: 8px;">
+                    <option value="0" {% if security_ideals.verification_level==0 %}selected{% endif %}>0 -
+                        Žádné
+                    </option>
+                    <option value="1" {% if security_ideals.verification_level==1 %}selected{% endif %}>1 -
+                        Nízké
+                    </option>
+                    <option value="2" {% if security_ideals.verification_level|default(2)==2 %}selected{% endif %}>2
+                        - Střední</option>
+                    <option value="3" {% if security_ideals.verification_level==3 %}selected{% endif %}>3 -
+                        Vysoké
+                    </option>
+                    <option value="4" {% if security_ideals.verification_level==4 %}selected{% endif %}>4 -
+                        Nejvyšší
+                    </option>
+                </select>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Minimální úroveň
+                    pro
+                    plné body</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 32px; display: flex; justify-content: flex-end;">
+            <button type="submit"
+                style="padding: 10px 24px; background: linear-gradient(135deg, #10B981, #059669); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+                🛡️ Uložit nastavení bezpečnosti
+            </button>
+        </div>
+    </form>
+</div>
+</div>
+{% endblock %}

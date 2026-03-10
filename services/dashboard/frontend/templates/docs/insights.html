@@ -1,0 +1,43 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Smart Insights{% endblock %}
+
+{% block docs_content %}
+<section id="insights">
+    <h1>Smart Insights Engine</h1>
+    <p>Váš osobní analytik, který nikdy nespí. Insights Engine každou hodinu vyhodnocuje více než 20 různých metrik a
+        hledá anomálie nebo příležitosti ke zlepšení.</p>
+
+    <h2>Typy detekcí</h2>
+
+    <h3>🚨 Bezpečnostní varování</h3>
+    <ul>
+        <li><b>Raid Detection:</b> Náhlý nárůst počtu nových členů (>10 za 5 min) doprovázený prudkým zvýšením počtu
+            zpráv (>500%). Indikuje probíhající útok.</li>
+        <li><b>Mass Mention Spam:</b> Detekce velkého počtu zmínek (@everyone / @here) v krátkém čase od uživatelů bez
+            admin práv.</li>
+    </ul>
+
+    <h3>📉 Trendy a Retence</h3>
+    <ul>
+        <li><b>Dead Server Warning:</b> Pokud hodnota DAU (Denní aktivní uživatelé) klesne o více než 30% oproti
+            30dennímu klouzavému průměru.</li>
+        <li><b>Churn Spike:</b> Náhlý nárůst počtu odchodů ze serveru. Může indikovat kontroverzní událost nebo toxicitu
+            v komunitě.</li>
+    </ul>
+
+    <h3>🛠️ Management Komunity</h3>
+    <ul>
+        <li><b>Moderation Gap:</b> Detekuje situaci, kdy je aktivita na serveru vysoká (hodně zpráv), ale počet
+            moderátorských akcí (logů) je nulový po delší dobu. Značí, že moderátoři nejsou aktivní.</li>
+        <li><b>Voice Channel Overload:</b> Upozornění, pokud jsou voice kanály často zaplněné na 100% kapacity. Signál
+            pro vytvoření nových místností.</li>
+    </ul>
+
+    <div class="info-box">
+        <b>Notifikace</b>
+        Tyto insighty se zobrazují nejen v dashboardu, ale můžete si nastavit i zasílání upozornění přímo do soukromého
+        kanálu pro moderátory.
+    </div>
+</section>
+{% endblock %}

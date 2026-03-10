@@ -1,0 +1,38 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Predikce{% endblock %}
+
+{% block docs_content %}
+<section id="ai">
+    <h1>Predikce a Machine Learning</h1>
+    <p>Náš prediktivní engine využívá kombinaci statistických modelů a strojového učení k odhadu budoucího vývoje vašeho
+        serveru.</p>
+
+    <h2>Jak to funguje?</h2>
+    <p>Model zpracovává historická data za posledních 30 až 90 dní (dle tarifu) a hledá v nich vzorce:</p>
+
+    <h3>Lineární regrese (Linear Regression)</h3>
+    <p>Používáme ji pro modelování dlouhodobých trendů růstu členů (Community Growth).</p>
+    <ul>
+        <li>Počítá průměrný denní přírůstek.</li>
+        <li>Očišťuje data o náhodné výkyvy (např. jednorázové eventy).</li>
+        <li>Zohledňuje "Churn Rate" (míru odchodů) pro realistický odhad čistého růstu.</li>
+    </ul>
+
+    <h3>Analýza časových řad (SARIMA)</h3>
+    <p>Pro predikci aktivity (Message Traffic) využíváme model SARIMA (Seasonal AutoRegressive Integrated Moving
+        Average).</p>
+    <ul>
+        <li><b>Sezónnost:</b> Bere v úvahu, že aktivita je jiná v pondělí ráno a jiná v pátek večer.</li>
+        <li><b>Cykličnost:</b> Detekuje týdenní cykly návštěvnosti.</li>
+        <li><b>Predikce špiček:</b> Dokáže varovat před očekávanou vysokou zátěží (např. vždy po vydání nového patche
+            hry).</li>
+    </ul>
+
+    <div class="info-box">
+        <b>Přesnost predikce</b>
+        Pro dosažení přesnosti >85% potřebuje model alespoň 14 dní historických dat. U serverů s méně než 7 dny dat se
+        zobrazuje zjednodušená lineární projekce.
+    </div>
+</section>
+{% endblock %}

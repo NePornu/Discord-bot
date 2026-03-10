@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="cs">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dokumentace{% endblock %} | Metricord</title>
+    <link rel="icon" href="/static/img/favicon.png">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #09090b;
+            --bg-secondary: #14141a;
+            --primary: #8b5cf6;
+            --primary-g: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+            --accent: #d946ef;
+            --text-main: #ffffff;
+            --text-muted: #9ca3af;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --sidebar-width: 280px;
+        }
+
+        * {
+            box-sizing: border-box;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* --- Header --- */
+        header {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: 0;
+            height: 70px;
+            background: rgba(9, 9, 11, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+            z-index: 1000;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 800;
+            text-decoration: none;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo span {
+            background: var(--primary-g);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-link-top {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+
+        .nav-link-top:hover {
+            color: white;
+        }
+
+        .nav-link-top.active {
+            color: white;
+            font-weight: 600;
+        }
+
+        header .nav-btn {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        header .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* --- Sidebar --- */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--glass-border);
+            position: fixed;
+            top: 70px;
+            bottom: 0;
+            left: 0;
+            overflow-y: auto;
+            padding: 40px 20px;
+            z-index: 900;
+        }
+
+        /* Custom Scrollbar */
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .sidebar-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            margin: 24px 0 12px 12px;
+            font-weight: 700;
+        }
+
+        .sidebar-link {
+            display: block;
+            padding: 10px 12px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.95rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+            margin-bottom: 4px;
+        }
+
+        .sidebar-link:hover {
+            background: var(--glass);
+            color: white;
+        }
+
+        .sidebar-link.active {
+            background: rgba(139, 92, 246, 0.1);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* --- Main Content --- */
+        main {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            margin-top: 70px;
+            padding: 60px 80px;
+            max-width: 1000px;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 24px;
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 48px 0 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin-top: 32px;
+            color: var(--primary);
+        }
+
+        p {
+            line-height: 1.7;
+            color: var(--text-muted);
+            font-size: 1.05rem;
+        }
+
+        code {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: var(--accent);
+        }
+
+        pre {
+            background: #0d0d12;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            overflow-x: auto;
+            margin: 24px 0;
+            color: #ddd;
+        }
+
+        .info-box {
+            background: rgba(139, 92, 246, 0.1);
+            border-left: 4px solid var(--primary);
+            padding: 20px;
+            border-radius: 4px 12px 12px 4px;
+            margin: 32px 0;
+        }
+
+        .info-box b {
+            color: var(--primary);
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        /* --- Commands Table --- */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 16px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        th {
+            color: white;
+            font-weight: 600;
+            background: var(--glass);
+        }
+
+        /* Mobile Toggle */
+        .mobile-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        /* Mobile */
+        @media (max-width: 900px) {
+            .mobile-toggle {
+                display: block;
+            }
+
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+                top: 70px;
+            }
+
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+
+            main {
+                margin-left: 0;
+                padding: 40px 20px;
+            }
+
+            header {
+                padding: 0 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <button class="mobile-toggle" onclick="document.querySelector('.sidebar').classList.toggle('mobile-open')">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <a href="/" class="logo">
+                <i class="fa-brands fa-discord" style="color: #5865F2;"></i>
+                Metricord
+            </a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 24px;">
+            <a href="/" class="nav-btn"><i class="fa-solid fa-arrow-left"></i> Zpět na web</a>
+        </div>
+    </header>
+
+    {% set current_page = page_name|default('index') %}
+
+    <aside class="sidebar">
+        <div class="sidebar-title">Začínáme</div>
+        <a href="/docs" class="sidebar-link {% if current_page == 'index' %}active{% endif %}">Úvod</a>
+        <a href="/docs/setup" class="sidebar-link {% if current_page == 'setup' %}active{% endif %}">Instalace</a>
+
+        <div class="sidebar-title">Funkce</div>
+        <a href="/docs/commands" class="sidebar-link {% if current_page == 'commands' %}active{% endif %}">Příkazy
+            (Slash Commands)</a>
+        <a href="/docs/security" class="sidebar-link {% if current_page == 'security' %}active{% endif %}">Skóre
+            bezpečnosti</a>
+        <a href="/docs/analytics" class="sidebar-link {% if current_page == 'analytics' %}active{% endif %}">Analytické
+            metriky</a>
+        <a href="/docs/export" class="sidebar-link {% if current_page == 'export' %}active{% endif %}">Centrum
+            exportu</a>
+
+        <div class="sidebar-title">Pokročilé funkce</div>
+        <a href="/docs/ai" class="sidebar-link {% if current_page == 'ai' %}active{% endif %}">Predikce</a>
+        <a href="/docs/backfill" class="sidebar-link {% if current_page == 'backfill' %}active{% endif %}">Backfill
+            Systém</a>
+        <a href="/docs/roles" class="sidebar-link {% if current_page == 'roles' %}active{% endif %}">Role a XP</a>
+        <a href="/docs/insights" class="sidebar-link {% if current_page == 'insights' %}active{% endif %}">Smart
+            Insights</a>
+
+        <div class="sidebar-title">Ostatní</div>
+        <a href="/docs/faq" class="sidebar-link {% if current_page == 'faq' %}active{% endif %}">Časté dotazy</a>
+        <a href="/docs/support" class="sidebar-link {% if current_page == 'support' %}active{% endif %}">Podpora</a>
+    </aside>
+
+    <main>
+        {% block docs_content %}{% endblock %}
+    </main>
+
+</body>
+
+</html>

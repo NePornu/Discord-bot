@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="padding: 40px; text-align: center;">
+    <div
+        style="max-width: 500px; margin: 0 auto; background: var(--glass-bg); border-radius: 16px; padding: 40px; border: 1px solid var(--glass-border);">
+        <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+        <h2 style="color: var(--text-primary); margin-bottom: 16px;">Omezený přístup</h2>
+        <p style="color: var(--text-secondary); line-height: 1.6;">
+            {{ message }}
+        </p>
+        <a href="/"
+            style="display: inline-block; margin-top: 24px; padding: 12px 24px; background: var(--primary-gradient); color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
+            Zpět na hlavní stránku
+        </a>
+    </div>
+</div>
+{% endblock %}

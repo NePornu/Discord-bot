@@ -37,6 +37,7 @@ go-core/data/
 .env.*
 !.env.example
 config/bot_token.py
+shared/python/config/bot_token.py
 
 # Logs & Data
 *.log

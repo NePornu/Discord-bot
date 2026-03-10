@@ -17,7 +17,7 @@ services:
   discord-bot-go:
     build:
       context: .
-      dockerfile: go-core/Dockerfile
+      dockerfile: services/core/Dockerfile
     container_name: discord-bot-go
     restart: always
     depends_on:
@@ -69,7 +69,7 @@ services:
     restart: always
     depends_on:
       - redis
-    command: [ "uvicorn", "web.backend.dashboard:app", "--host", "0.0.0.0", "--port", "8092" ]
+    command: [ "uvicorn", "services.dashboard.backend.dashboard:app", "--host", "0.0.0.0", "--port", "8092" ]
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DASHBOARD_SECRET_KEY=${DASHBOARD_SECRET_KEY}
@@ -84,7 +84,7 @@ services:
       - "8092:8092"
     volumes:
       - .:/app
-      - ./dashboard_std.log:/app/dashboard_std.log
+      - ./data/dashboard_std.log:/app/dashboard_std.log
     networks:
       - botnet
     deploy:

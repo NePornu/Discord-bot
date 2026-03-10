@@ -1,0 +1,70 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Příkazy{% endblock %}
+
+{% block docs_content %}
+<section id="commands">
+    <h1>Příkazy (Slash Commands)</h1>
+    <p>Náš bot používá moderní lomítkové příkazy (slash commands), které jsou integrovány přímo do Discord chatu.</p>
+
+    <h2>Analytické příkazy</h2>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 30%">Příkaz</th>
+                <th>Popis</th>
+                <th>Parametry</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>/stats [user]</code></td>
+                <td>Zobrazí detailní kartu uživatele s aktivitou, rankem a nejčastějšími kanály. Pokud neuvedete
+                    uživatele, zobrazí vaše statistiky.</td>
+                <td><code>user</code> (volitelné)</td>
+            </tr>
+            <tr>
+                <td><code>/leaderboard</code></td>
+                <td>Vygeneruje žebříček TOP 10 nejaktivnějších členů.</td>
+                <td><code>type</code>: chat / voice / mixed</td>
+            </tr>
+            <tr>
+                <td><code>/graph</code></td>
+                <td>Vykreslí graf aktivity serveru za poslední období přímo do chatu.</td>
+                <td><code>period</code>: 24h / 7d / 30d</td>
+            </tr>
+            <tr>
+                <td><code>/activity</code></td>
+                <td>Ukáže aktuální "Online" metriky - kolik lidí je ve voice, kolik zpráv za poslední hodinu.</td>
+                <td>-</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Administrátorské příkazy</h2>
+    <p>Tyto příkazy jsou dostupné pouze uživatelům s oprávněním <code>Administrator</code> nebo
+        <code>Manage Server</code>.</p>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 30%">Příkaz</th>
+                <th>Popis</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>/config</code></td>
+                <td>Rychlé nastavení základních parametrů bota přímo z Discordu.</td>
+            </tr>
+            <tr>
+                <td><code>/refresh-cache</code></td>
+                <td>Vynutí aktualizaci dat v dashboardu (může chvíli trvat).</td>
+            </tr>
+            <tr>
+                <td><code>/reset-user [user]</code></td>
+                <td>Resetuje statistiky konkrétního uživatele (nevratné!).</td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">Můj Profil</h1>
+
+        
+        <div class="card bg-secondary mb-4">
+            <div class="card-body d-flex align-items-center">
+                {% if user.avatar %}
+                <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="Avatar"
+                    class="rounded-circle me-3" width="80" height="80">
+                {% else %}
+                <div class="rounded-circle bg-dark me-3 d-flex align-items-center justify-content-center"
+                    style="width: 80px; height: 80px; font-size: 30px;">
+                    {{ user.username[0]|upper }}
+                </div>
+                {% endif %}
+
+                <div>
+                    <h3 class="mb-1">{{ user.username }}</h3>
+                    <p class="text-muted mb-1">ID: {{ user.id }}</p>
+                    <div>
+                        <span
+                            class="badge {% if role == 'admin' %}bg-danger{% elif role == 'mod' %}bg-success{% else %}bg-secondary{% endif %}">
+                            {{ role|upper }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <h3 class="mb-3">Spravované Servery</h3>
+        <p class="text-muted">Zde vidíte servery, kde máte moderátorská práva (Administrator / Manage Guild).</p>
+
+        {% if servers %}
+        <div class="server-grid">
+            {% for server in servers %}
+            <div class="server-card-square">
+                {% if server.icon %}
+                <img src="https://cdn.discordapp.com/icons/{{ server.id }}/{{ server.icon }}.png" class="server-icon"
+                    alt="{{ server.name }}">
+                {% else %}
+                <div class="server-icon">
+                    {{ server.name[0]|upper }}
+                </div>
+                {% endif %}
+
+                <h5 class="server-name" title="{{ server.name }}">{{ server.name }}</h5>
+
+                {% if server.active %}
+                <span class="server-status status-active">
+                    <i class="fas fa-check-circle"></i> Aktivní
+                </span>
+                <a href="/select-server/{{ server.id }}" class="btn-action btn-manage">
+                    <i class="fas fa-exchange-alt"></i> Spravovat
+                </a>
+                {% else %}
+                <span class="server-status status-inactive">
+                    <i class="fas fa-times-circle"></i> Nepřipojen
+                </span>
+                <a href="{{ server.invite_url }}&guild_id={{ server.id }}" target="_blank"
+                    class="btn-action btn-invite">
+                    <i class="fas fa-plus"></i> Přidat bota
+                </a>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i> Nemáte žádné servery, kde byste měli moderátorská práva.
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}

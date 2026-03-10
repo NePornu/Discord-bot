@@ -2,7 +2,7 @@
 
 # --- Configuration ---
 BOT_DIR="/root/discord-bot"
-GO_CORE_DIR="$BOT_DIR/go-core"
+GO_CORE_DIR="$BOT_DIR/services/core"
 
 # --- Dependency Detection ---
 PYTHON_CMD=$(which python3.9 || which python3 || which python)
@@ -12,7 +12,7 @@ echo "--- NePornu Hybrid Bot System ---"
 
 # --- Cleanup existing instances ---
 echo "Cleaning up existing bot processes..."
-pkill -f "bot/main.py" > /dev/null 2>&1
+pkill -f "services/worker/main.py" > /dev/null 2>&1
 pkill -f "bot_go" > /dev/null 2>&1
 sleep 1 # Wait for processes to exit
 
@@ -54,8 +54,9 @@ redis-cli -u "$REDIS_URL" del bot:lock:lite bot:lock:primary > /dev/null 2>&1
 echo "[3/3] Starting Python Sidecar (Lite Mode)..."
 cd "$BOT_DIR" || exit 1
 export BOT_LITE_MODE=1
-export PYTHONPATH="$BOT_DIR"
-"$PYTHON_CMD" -u bot/main.py > "$BOT_DIR/python_worker.log" 2>&1 &
+# Add both root and shared/python to PYTHONPATH
+export PYTHONPATH="$BOT_DIR:$BOT_DIR/shared/python:$BOT_DIR/services/worker"
+"$PYTHON_CMD" -u services/worker/main.py > "$BOT_DIR/python_worker.log" 2>&1 &
 PY_PID=$!
 echo "✅ Python Worker started with PID $PY_PID (Logs: python_worker.log)"
 

@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-title">
+        <h1 class="title">Správa Týmu</h1>
+        <p style="color: var(--text-secondary);">Spravujte přístup uživatelů k dashboardu tohoto serveru.</p>
+    </div>
+    <div class="page-header-actions">
+        <button onclick="openAddMemberModal()" class="btn btn-primary">
+            <i class="fa-solid fa-user-plus"></i> Přidat Člena
+        </button>
+    </div>
+</div>
+
+
+<div class="card">
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Uživatel</th>
+                    <th>Oprávnění</th>
+                    <th>Akce</th>
+                </tr>
+            </thead>
+            <tbody id="teamTableBody">
+                <tr>
+                    <td colspan="3" style="text-align:center; padding: 40px;">Načítání týmu...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<div id="memberModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Přidat člena</h2>
+            <span class="close" onclick="closeMemberModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Discord User ID</label>
+                <input type="text" id="memberId" placeholder="např. 123456789012345678">
+                <small style="color:var(--text-muted)">Uživatel musí být na serveru.</small>
+            </div>
+
+            <div class="form-group" id="usernameGroup" style="display:none;">
+                <label>Učivatelské jméno</label>
+                <input type="text" id="memberUsername" placeholder="Pepík">
+            </div>
+
+            <div class="form-group">
+                <label>Oprávnění</label>
+                <div class="permissions-grid">
+                    {% for p in permissions_list %}
+                    <div class="permission-item">
+                        <label class="checkbox-container">
+                            <input type="checkbox" name="perms" value="{{ p.id }}">
+                            <span class="checkmark"></span>
+                            <div style="margin-left: 10px;">
+                                <div style="font-weight:600;">{{ p.name }}</div>
+                                <div style="font-size:0.8rem; color:var(--text-muted);">{{ p.desc }}</div>
+                            </div>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeMemberModal()">Zrušit</button>
+            <button class="btn btn-primary" onclick="saveMember()">Uložit</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .permissions-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 16px;
+        border-radius: 8px;
+    }
+
+    .permission-item {
+        display: flex;
+        align-items: flex-start;
+    }
+
+    /* Custom Checkbox */
+    .checkbox-container {
+        display: flex;
+        position: relative;
+        cursor: pointer;
+        user-select: none;
+        align-items: center;
+    }
+
+    .checkbox-container input {
+        position: absolute;
+        opacity: 0;
+        cursor: pointer;
+        height: 0;
+        width: 0;
+    }
+
+    .checkmark {
+        height: 20px;
+        width: 20px;
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+
+    .checkbox-container:hover input~.checkmark {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .checkbox-container input:checked~.checkmark {
+        background-color: var(--primary);
+    }
+</style>
+
+<script>
+    let currentTeam = [];
+
+    document.addEventListener('DOMContentLoaded', loadTeam);
+
+    async function loadTeam() {
+        try {
+            const res = await fetch('/api/settings/team');
+            if (!res.ok) throw new Error('Failed to load team');
+            const team = await res.json();
+            currentTeam = team;
+            renderTeam(team);
+        } catch (e) {
+            document.getElementById('teamTableBody').innerHTML = `<tr><td colspan="3" style="color:red; text-align:center;">Chyba načítání: ${e.message}</td></tr>`;
+        }
+    }
+
+    function renderTeam(team) {
+        const tbody = document.getElementById('teamTableBody');
+        if (team.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Žádní členové týmu.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = team.map(u => `
+        <tr>
+            <td style="display:flex; align-items:center; gap:12px;">
+                <div class="avatar" style="width:32px; height:32px; border-radius:50%; background-image: url('${u.avatar ? (u.avatar.startsWith('http') ? u.avatar : 'https://cdn.discordapp.com/avatars/' + u.id + '/' + u.avatar + '.png') : 'https://cdn.discordapp.com/embed/avatars/0.png'}'); background-size:cover;"></div>
+                <div>
+                    <div style="font-weight:600;">${u.username}</div>
+                    <div style="font-size:0.8rem; color:var(--text-muted);">${u.id}</div>
+                </div>
+            </td>
+            <td>
+                ${u.permissions.map(p => `<span class="badge badge-primary" style="margin-right:4px;">${p}</span>`).join('')}
+            </td>
+            <td>
+                <button class="btn btn-sm btn-secondary" onclick="editMember('${u.id}')"><i class="fa-solid fa-pen"></i></button>
+                <button class="btn btn-sm btn-danger" onclick="removeMember('${u.id}')"><i class="fa-solid fa-trash"></i></button>
+            </td>
+        </tr>
+    `).join('');
+    }
+
+    function openAddMemberModal() {
+        document.getElementById('modalTitle').innerText = 'Přidat člena';
+        document.getElementById('memberId').value = '';
+        document.getElementById('memberId').disabled = false;
+        document.getElementById('memberUsername').value = '';
+        document.getElementById('usernameGroup').style.display = 'block';
+
+        // Clear checkboxes
+        document.querySelectorAll('input[name="perms"]').forEach(cb => cb.checked = false);
+
+        document.getElementById('memberModal').style.display = 'flex';
+    }
+
+    function editMember(userId) {
+        const user = currentTeam.find(u => u.id === userId);
+        if (!user) return;
+
+        document.getElementById('modalTitle').innerText = 'Upravit oprávnění';
+        document.getElementById('memberId').value = user.id;
+        document.getElementById('memberId').disabled = true;
+        document.getElementById('usernameGroup').style.display = 'none';
+
+        // Set checkboxes
+        document.querySelectorAll('input[name="perms"]').forEach(cb => {
+            cb.checked = user.permissions.includes(cb.value);
+        });
+
+        document.getElementById('memberModal').style.display = 'flex';
+    }
+
+    function closeMemberModal() {
+        document.getElementById('memberModal').style.display = 'none';
+    }
+
+    async function saveMember() {
+        const userId = document.getElementById('memberId').value;
+        const username = document.getElementById('memberUsername').value || "Uživatel";
+
+        const perms = Array.from(document.querySelectorAll('input[name="perms"]:checked')).map(cb => cb.value);
+
+        if (!userId) return alert('Zadejte ID uživatele');
+
+        try {
+            const res = await fetch('/api/settings/team', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: userId,
+                    username: username,
+                    permissions: perms
+                })
+            });
+
+            if (!res.ok) throw new Error('Failed to save');
+
+            closeMemberModal();
+            loadTeam();
+        } catch (e) {
+            alert('Chyba: ' + e.message);
+        }
+    }
+
+    async function removeMember(userId) {
+        if (!confirm('Opravdu odebrat tohoto uživatele?')) return;
+
+        try {
+            const res = await fetch(`/api/settings/team/${userId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed to delete');
+            loadTeam();
+        } catch (e) {
+            alert('Chyba: ' + e.message);
+        }
+    }
+</script>
+{% endblock %}

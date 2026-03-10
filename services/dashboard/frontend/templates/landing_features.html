@@ -1,0 +1,325 @@
+{% extends "landing_base.html" %}
+
+{% block title %}Funkce | Metricord{% endblock %}
+
+{% block content %}
+<style>
+    /* Scoped CSS for Features Page */
+    .features-hero {
+        text-align: center;
+        padding: 80px 20px 120px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .features-hero::before {
+        content: '';
+        position: absolute;
+        top: -100px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 600px;
+        height: 600px;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%);
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    .features-hero h1 {
+        font-size: 4rem;
+        font-weight: 800;
+        margin-bottom: 24px;
+        line-height: 1.1;
+    }
+
+    .features-hero h1 span {
+        background: var(--primary-g);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .features-hero p {
+        color: var(--text-muted);
+        font-size: 1.25rem;
+        max-width: 700px;
+        margin: 0 auto 40px;
+        line-height: 1.6;
+    }
+
+    /* Feature Stripes */
+    .feature-row {
+        padding: 100px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .feature-row:last-of-type {
+        border-bottom: none;
+    }
+
+    .feature-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 80px;
+        align-items: center;
+    }
+
+    .feature-content.reversed {
+        direction: rtl;
+    }
+
+    .feature-content.reversed .feature-text {
+        direction: ltr;
+        text-align: right;
+    }
+
+    .feature-content.reversed .feature-image {
+        direction: ltr;
+    }
+
+    .feature-content.reversed .feature-bullets {
+        justify-content: flex-end;
+    }
+
+    .feature-content.reversed .feature-bullets li {
+        flex-direction: row-reverse;
+        text-align: right;
+    }
+
+    /* Text Column */
+    .feature-text h2 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 24px;
+        color: white;
+    }
+
+    .feature-text p {
+        font-size: 1.15rem;
+        color: var(--text-muted);
+        line-height: 1.7;
+        margin-bottom: 32px;
+    }
+
+    .feature-bullets {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .feature-bullets li {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 1.1rem;
+        color: var(--text-main);
+    }
+
+    .icon-circle {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: rgba(139, 92, 246, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary);
+        flex-shrink: 0;
+    }
+
+    /* Image Column / Presentation Box */
+    .feature-image {
+        position: relative;
+        border-radius: 24px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: #121215;
+        aspect-ratio: 16/10;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.3s;
+    }
+
+    .feature-image:hover {
+        transform: scale(1.02);
+        border-color: var(--primary);
+    }
+
+    /* The Placeholder Styling */
+    .placeholder-content {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.3);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 20px;
+    }
+
+    .placeholder-content i {
+        font-size: 4rem;
+        margin-bottom: 10px;
+        background: linear-gradient(to bottom, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.1));
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .placeholder-label {
+        font-family: monospace;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        border: 1px dashed rgba(255, 255, 255, 0.3);
+    }
+
+    /* CTA Bottom */
+    .features-cta {
+        text-align: center;
+        padding: 100px 20px 40px;
+    }
+
+    @media (max-width: 900px) {
+
+        .feature-content,
+        .feature-content.reversed {
+            grid-template-columns: 1fr;
+            gap: 40px;
+            direction: ltr;
+            /* Reset direction */
+        }
+
+        .feature-content.reversed .feature-text {
+            text-align: left;
+            direction: ltr;
+        }
+
+        .feature-content.reversed .feature-bullets {
+            justify-content: flex-start;
+        }
+
+        .feature-content.reversed .feature-bullets li {
+            flex-direction: row;
+            text-align: left;
+        }
+
+        .features-hero h1 {
+            font-size: 2.5rem;
+        }
+    }
+</style>
+
+<div class="features-hero">
+    <h1>Vše co potřebujete<br><span>pro Váš server</span></h1>
+    <p>Od hloubkových statistik po predikce budoucnosti. Metricord vám dává nástroje, které nikde jinde
+        nenajdete.</p>
+    <div>
+        <a href="/login" class="nav-btn"
+            style="padding: 16px 40px; font-size: 1.1rem; margin-top:20px; display:inline-block;">
+            Vyzkoušet Dashboard
+        </a>
+    </div>
+</div>
+
+
+<div class="feature-row">
+    <div class="feature-content">
+        <div class="feature-text">
+            <h2>Komunitní data pod palcem</h2>
+            <p>Získejte absolutní přehled o aktivitě na vašem serveru. Naše grafy jsou interaktivní, přehledné a
+                aktualizované v reálném čase.</p>
+            <ul class="feature-bullets">
+                <li>
+                    <div class="icon-circle"><i class="fas fa-chart-line"></i></div>
+                    Sledování zpráv a aktivity
+                </li>
+                <li>
+                    <div class="icon-circle"><i class="fas fa-clock"></i></div>
+                    Heatmapy nejaktivnějších časů
+                </li>
+                <li>
+                    <div class="icon-circle"><i class="fas fa-calendar-alt"></i></div>
+                    Podrobné sledování růstu komunity
+                </li>
+            </ul>
+        </div>
+        <div class="feature-image">
+            <img src="/static/img/dashboard_2026_v1.png" alt="Dashboard Overview" style="width: 100%; height: auto;">
+        </div>
+    </div>
+</div>
+
+
+<div class="feature-row">
+    <div class="feature-content reversed">
+        <div class="feature-text">
+            <h2>Predikce</h2>
+            <p>Nehádejte, co se stane. Náš pokročilý model analyzuje historická data a předpoví vývoj vaší komunity
+                na dny dopředu.</p>
+            <ul class="feature-bullets">
+                <li>
+                    <div class="icon-circle"><i class="fas fa-magic"></i></div>
+                    Predikce růstu členů
+                </li>
+                <li>
+                    <div class="icon-circle"><i class="fas fa-chart-bar"></i></div>
+                    Odhad aktivity na příští týden
+                </li>
+                <li>
+                    <div class="icon-circle"><i class="fas fa-bell"></i></div>
+                    Varování při poklesu trendu
+                </li>
+            </ul>
+        </div>
+        <div class="feature-image">
+            <img src="/static/img/predictions_2026_v1.png" alt="Predictions Preview" style="width: 100%; height: auto;">
+        </div>
+    </div>
+</div>
+
+
+<div class="feature-row">
+    <div class="feature-content">
+        <div class="feature-text">
+            <h2>Skóre a postřehy komunity</h2>
+            <p>Náš systém automaticky vyhodnocuje zdraví a bezpečnost vašeho serveru. Získáte konkrétní vhledy
+                (Insights) a rady, jak aktivitu a zabezpečení posunout dále.</p>
+            <ul class="feature-bullets">
+                <li>
+                    <div class="icon-circle"><i class="fas fa-chart-pie"></i></div>
+                    Komplexní skóre komunity
+                </li>
+                <li>
+                    <div class="icon-circle"><i class="fas fa-lightbulb"></i></div>
+                    Chytré postřehy a doporučení
+                </li>
+                <li>
+                    <div class="icon-circle"><i class="fas fa-shield-alt"></i></div>
+                    Sledování bezpečnosti a 2FA
+                </li>
+            </ul>
+        </div>
+        <div class="feature-image">
+            <img src="/static/img/community_score_2026_v1.png" alt="Community Score Insights"
+                style="width: 100%; height: auto;">
+        </div>
+    </div>
+</div>
+
+<div class="features-cta">
+    <h2 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 24px;">Připraveni posunout server na novou úroveň?
+    </h2>
+    <p style="color: var(--text-muted); margin-bottom: 40px; font-size: 1.1rem;">Připojte se k tisícům serverů, které už
+        využívají Metricord.</p>
+    <a href="/login" class="nav-btn" style="padding: 16px 48px; font-size: 1.2rem;">
+        <i class="fa-brands fa-discord"></i> Začít zdarma
+    </a>
+</div>
+
+{% endblock %}

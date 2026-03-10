@@ -1,0 +1,168 @@
+{% extends "landing_base.html" %}
+{% set simple_nav = true %}
+
+{% block title %}Podmínky služby | Metricord{% endblock %}
+
+{% block extra_css %}
+.legal-wrapper {
+max-width: 900px;
+margin: 0 auto;
+background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 100%);
+border: 1px solid var(--glass-border);
+border-radius: 32px;
+padding: 60px 80px;
+box-shadow: 0 0 50px rgba(0,0,0,0.3);
+}
+
+.legal-header {
+text-align: center;
+margin-bottom: 60px;
+border-bottom: 1px solid var(--glass-border);
+padding-bottom: 40px;
+}
+
+.legal-header h1 {
+font-size: 3rem;
+background: var(--primary-g);
+-webkit-background-clip: text;
+background-clip: text;
+-webkit-text-fill-color: transparent;
+margin-bottom: 16px;
+}
+
+.update-date {
+color: var(--text-muted);
+font-family: monospace;
+background: rgba(255,255,255,0.05);
+padding: 6px 16px;
+border-radius: 50px;
+font-size: 0.9rem;
+}
+
+.legal-content {
+font-size: 1.05rem;
+line-height: 1.8;
+color: var(--text-muted);
+text-align: justify;
+}
+
+.legal-content h2 {
+color: white;
+font-size: 1.5rem;
+margin-top: 50px;
+margin-bottom: 24px;
+display: flex;
+align-items: center;
+gap: 16px;
+border-bottom: 1px solid rgba(255,255,255,0.1);
+padding-bottom: 10px;
+}
+
+.legal-content p {
+margin-bottom: 16px;
+}
+
+.legal-content ul {
+margin-bottom: 24px;
+padding-left: 24px;
+}
+
+.legal-content li {
+margin-bottom: 8px;
+}
+
+.legal-content strong {
+color: white;
+}
+
+@media (max-width: 768px) {
+.legal-wrapper {
+padding: 40px 24px;
+}
+.legal-header h1 {
+font-size: 2.2rem;
+}
+}
+{% endblock %}
+
+{% block content %}
+<div class="legal-wrapper">
+    <div class="legal-header">
+        <h1>Podmínky služby</h1>
+        <span class="update-date">Účinné od: 25. ledna 2026</span>
+    </div>
+
+    <div class="legal-content">
+        <p>Vítejte v Metricord. Prosíme, přečtěte si pečlivě tyto Podmínky služby (dále jen "Podmínky").
+            Používáním našeho Discord bota, webového dashboardu nebo souvisejících služeb (společně "Služba")
+            vyjadřujete svůj výslovný souhlas s těmito Podmínkami a zavazujete se jimi řídit. Pokud s jakoukoli částí
+            těchto Podmínek nesouhlasíte, nesmíte Službu používat.</p>
+
+        <h2>1. Licence a přístup</h2>
+        <p>Poskytujeme vám omezenou, nevýhradní, nepřenosnou a odvolatelnou licenci k používání Služby pro osobní,
+            nekomerční (pokud není sjednáno jinak) účely správy a analýzy vašich Discord serverů. Tato licence
+            nezahrnuje právo na:</p>
+        <ul>
+            <li>Prodej, přeprodej nebo komerční využití Služby nebo jejího obsahu.</li>
+            <li>Jakékoli stahování nebo kopírování informací o účtech ve prospěch jiné třetí strany.</li>
+            <li>Používání dataminingu, robotů nebo podobných nástrojů pro sběr a extrakci dat.</li>
+        </ul>
+
+        <h2>2. Povinnosti uživatele</h2>
+        <p>Při používání Služby se zavazujete, že:</p>
+        <ul>
+            <li>Budete dodržovat Podmínky služby platformy Discord (Discord Terms of Service) a Pokyny pro komunitu
+                (Community Guidelines).</li>
+            <li>Nebudete Službu využívat k šíření nezákonného obsahu, spamu, malwaru, nebo k obtěžování, poškozování či
+                vyhrožování jiným osobám.</li>
+            <li>Nepodniknete žádné kroky, které by mohly narušit, přetížit nebo poškodit infrastrukturu Služby (např.
+                DDoS útoky, pokusy o zneužití API).</li>
+            <li>Nebudete se pokoušet o reverzní inženýrství, dekompilaci nebo získání zdrojového kódu Služby.</li>
+        </ul>
+
+        <h2>3. Odpovědnost a záruky</h2>
+        <p><strong>Služba je poskytována "tak jak je" (as-is) a "jak je dostupná" (as-available).</strong></p>
+        <p>V maximálním rozsahu povoleném platným právem se zříkáme veškerých záruk, výslovných i předpokládaných,
+            včetně, ale nikoli výhradně, záruk prodejnosti, vhodnosti pro konkrétní účel a neporušování práv.</p>
+        <p>Nezaručujeme, že:</p>
+        <ul>
+            <li>Služba bude fungovat nepřetržitě, bezpečně nebo bezchybně.</li>
+            <li>Výsledky získané používáním Služby budou vždy přesné nebo spolehlivé.</li>
+            <li>Všechny chyby nebo nedostatky v softwaru budou opraveny.</li>
+        </ul>
+
+        <h2>4. Omezení odpovědnosti</h2>
+        <p>Provozovatel Služby nenese odpovědnost za žádné přímé, nepřímé, náhodné, zvláštní, následné nebo exemplární
+            škody, včetně, ale nikoli výhradně, škod za ztrátu zisku, goodwillu, užívání, dat nebo jiných nehmotných
+            ztrát (i když byl Provozovatel upozorněn na možnost takových škod), vyplývajících z:</p>
+        <ul>
+            <li>Používání nebo nemožnosti používat Službu.</li>
+            <li>Neoprávněného přístupu k vašim přenosům nebo datům či jejich změny.</li>
+            <li>Prohlášení nebo jednání jakékoli třetí strany v rámci Služby.</li>
+        </ul>
+
+        <h2>5. Změny a ukončení služby</h2>
+        <p>Vyhrazujeme si právo kdykoli a z jakéhokoli důvodu (nebo bez důvodu) upravit, pozastavit nebo ukončit Službu
+            nebo jakoukoli její část, a to s předchozím upozorněním nebo bez něj. Neneseme vůči vám ani žádné třetí
+            straně odpovědnost za jakoukoli úpravu, změnu ceny, pozastavení nebo ukončení Služby.</p>
+        <p>Můžeme také okamžitě ukončit nebo pozastavit váš přístup ke Službě, pokud porušíte tyto Podmínky.</p>
+
+        <h2>6. Rozhodné právo</h2>
+        <p>Tyto Podmínky se řídí a vykládají v souladu s právními předpisy České republiky, bez ohledu na kolizní
+            ustanovení. Jakékoli spory vzniklé v souvislosti s těmito Podmínkami budou podléhat výlučné jurisdikci soudů
+            v České republice.</p>
+
+        <h2>7. Změny podmínek</h2>
+        <p>Tyto Podmínky můžeme čas od času aktualizovat. O změnách vás budeme informovat (např. v dashboardu, na
+            Discordu). Vaše další používání Služby po provedení těchto změn znamená váš souhlas s revidovanými
+            Podmínkami.</p>
+
+        <h2>8. Kontakt</h2>
+        <div
+            style="background: var(--glass); padding: 32px; border-radius: 16px; text-align: center; margin-top: 60px;">
+            <p style="margin-bottom: 20px;">Máte dotazy k těmto podmínkám? Kontaktujte nás.</p>
+            <a href="mailto:info@email.cz" class="nav-btn">info@email.cz</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

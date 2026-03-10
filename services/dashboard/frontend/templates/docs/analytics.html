@@ -1,0 +1,83 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Analytické metriky{% endblock %}
+
+{% block docs_content %}
+<section id="analytics">
+    <h1>Analytické metriky a Grafy</h1>
+    <p>Data jsou srdcem Metricord. Abychom vám pomohli porozumět tomu, co se na vašem serveru děje, připravili
+        jsme detailní vysvětlení všech sledovaných metrik.</p>
+
+    <h2>Základní terminologie (KPIs)</h2>
+
+    <div class="info-box">
+        <b>Všechny časy jsou v UTC</b>
+        Dashboard zobrazuje data v koordinovaném světovém čase (UTC), aby byla zajištěna konzistence pro globální týmy.
+    </div>
+
+    <h3>DAU (Daily Active Users)</h3>
+    <p>Počet unikátních uživatelů, kteří provedli "aktivní akci" v průběhu 24 hodin.</p>
+    <ul>
+        <li><b>Aktivní akce:</b> Odeslání zprávy, připojení do voice kanálu, přidání reakce.</li>
+        <li><b>Pasivní uživatelé:</b> Uživatelé, kteří pouze čtou, se do DAU <b>nepočítají</b> (Discord API to
+            neumožňuje sledovat).</li>
+    </ul>
+
+    <h3>MAU (Monthly Active Users)</h3>
+    <p>Počet unikátních aktivních uživatelů za klouzavé období posledních 30 dní. Ukazuje skutečný dosah vaší komunity
+        nad rámec "skalních" fanoušků.</p>
+
+    <h2>Pokročilé metriky</h2>
+
+    <h3>Stickiness (Lepivost komunity)</h3>
+    <p>Klíčová metrika pro měření loajality. Říká nám, jak moc je vaše komunita "návyková".</p>
+    <div class="info-box" style="background: rgba(16, 185, 129, 0.1); border-left-color: #10b981;">
+        <b>Vzorec:</b> <code>(DAU / MAU) * 100</code>
+    </div>
+    <ul>
+        <li><b>Příklad:</b> Pokud máte 1000 měsíčních uživatelů a 200 z nich přijde každý den, Stickiness je 20%.</li>
+        <li><b>Benchmark:</b>
+            <ul>
+                <li>🎮 Herní servery: ~15-25%</li>
+                <li>📚 Vzdělávací servery: ~5-10%</li>
+                <li>💬 Obecný chat: ~10-15%</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h3>Churn Rate (Míra odchodů)</h3>
+    <p>Ukazuje, jak rychle ztrácíte uživatele.</p>
+    <ul>
+        <li><b>Výpočet:</b> <code>(Počet odchodů za období / Počet členů na začátku) * 100</code></li>
+        <li><b>Interpretace:</b> Vysoký Churn Rate (>5% měsíčně) signalizuje nespokojenost, toxicitu nebo špatný
+            onboarding nováčků.</li>
+    </ul>
+
+    <h2>Vysvětlení grafů</h2>
+
+    <h3>1. Heatmapa aktivity (Activity Heatmap)</h3>
+    <p>Mřížka 7x24 polí, která ukazuje intenzitu zpráv pro každou hodinu v týdnu.</p>
+    <ul>
+        <li><b>Osa X:</b> Hodina dne (00:00 - 23:00)</li>
+        <li><b>Osa Y:</b> Den v týdnu (Po - Ne)</li>
+        <li><b>Barva:</b> Od tmavé (0 zpráv) po jasnou (maximum zpráv).</li>
+        <li><b>Využití:</b> Ideální pro plánování eventů. Hledejte nejsvětlejší políčka - to je váš "Prime Time".</li>
+    </ul>
+
+    <h3>2. Délka zpráv (Message Length Distribution)</h3>
+    <p>Koláčový graf rozdělující zprávy podle kvality.</p>
+    <ul>
+        <li><b>Short (<10 znaků):</b> "lol", "ok", "ahoj". Vysoký podíl může značit spam.</li>
+        <li><b>Medium (10-50 znaků):</b> Běžná konverzace.</li>
+        <li><b>Long (>50 znaků):</b> Hlubší diskuze a argumentace. Zdravý server by měl mít alespoň 20% Long zpráv.</li>
+    </ul>
+
+    <h3>3. Community Growth (Růst komunity)</h3>
+    <p>Kombinovaný graf ukazující celkový počet členů (čára) a denní změny (sloupce).</p>
+    <ul>
+        <li><b>Zelené sloupce:</b> Noví členové (Joins).</li>
+        <li><b>Červené sloupce pod osou:</b> Odchody (Leaves).</li>
+        <li><b>Čistý přírůstek (Net Growth):</b> <code>Joins - Leaves</code>.</li>
+    </ul>
+</section>
+{% endblock %}

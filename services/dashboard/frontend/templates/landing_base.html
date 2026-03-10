@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="cs">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Metricord{% endblock %}</title>
+    <link rel="icon" href="/static/img/favicon.png">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #09090b;
+            --bg-secondary: #14141a;
+            --primary: #8b5cf6;
+            --primary-g: #8b5cf6;
+            --accent: #8b5cf6;
+            --text-main: #ffffff;
+            --text-muted: #9ca3af;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glow: 0 0 20px rgba(139, 92, 246, 0.3);
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 60px;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            box-sizing: border-box;
+            background: rgba(9, 9, 11, 0.7);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: white;
+            letter-spacing: -0.5px;
+        }
+
+        .logo span {
+            background: var(--primary-g);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .nav-item {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            transition: 0.2s;
+            font-size: 0.95rem;
+        }
+
+        .nav-item:hover {
+            color: white;
+        }
+
+        .nav-btn {
+            background: var(--primary-g);
+            color: white;
+            padding: 8px 24px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 120px 20px 80px;
+        }
+
+        footer {
+            padding: 80px 60px 40px;
+            border-top: 1px solid var(--glass-border);
+            background: var(--bg-secondary);
+            margin-top: auto;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1.5fr 2fr;
+            gap: 60px;
+            margin-bottom: 60px;
+        }
+
+        .footer-brand {
+            max-width: 350px;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .social-links a {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            transition: 0.3s;
+            border: 1px solid var(--glass-border);
+        }
+
+        .social-links a:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            transform: translateY(-3px);
+        }
+
+        /* Mobile Menu */
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 1001;
+        }
+
+        .mobile-nav-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: rgba(9, 9, 11, 0.95);
+            backdrop-filter: blur(20px);
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 32px;
+            opacity: 0;
+            pointer-events: none;
+            transition: 0.3s;
+        }
+
+        .mobile-nav-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .mobile-nav-link {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            text-decoration: none;
+        }
+
+        .footer-links {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+        }
+
+        .link-column h4 {
+            color: white;
+            margin: 0 0 24px;
+            font-size: 1.1rem;
+        }
+
+        .link-column a {
+            display: block;
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-bottom: 12px;
+            transition: 0.2s;
+        }
+
+        .link-column a:hover {
+            color: var(--primary);
+            transform: translateX(5px);
+        }
+
+        .footer-bottom {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding-top: 32px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 900px) {
+            .footer-content {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .footer-links {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .footer-links {
+                grid-template-columns: 1fr;
+            }
+
+            footer {
+                padding: 60px 20px 30px;
+            }
+        }
+
+        .page-title {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 24px;
+            text-align: center;
+            background: var(--primary-g);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        @media (max-width: 768px) {
+            .navbar {
+                padding: 15px 20px;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .page-title {
+                font-size: 2.5rem;
+            }
+
+            .mobile-menu-btn {
+                display: block;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/" class="logo">
+            <i class="fa-brands fa-discord" style="color: #5865F2;"></i>
+            Metricord
+        </a>
+
+        {% if simple_nav %}
+        <!-- Simple Nav for Docs/Support -->
+        <div class="nav-links" style="margin-left: auto;">
+            <a href="/" class="nav-btn">
+                <i class="fa-solid fa-arrow-left" style="margin-right:8px;"></i> Zpět na web
+            </a>
+        </div>
+        {% else %}
+        <!-- Full Nav -->
+        <div class="nav-links">
+            <a href="/about" class="nav-item">O nás</a>
+            <a href="/support#faq" class="nav-item">FAQ</a>
+            <a href="/features" class="nav-item">Funkce</a>
+            <a href="/docs" class="nav-item">Dokumentace</a>
+            <a href="/login" class="nav-btn">
+                <i class="fa-brands fa-discord" style="margin-right:8px;"></i> Přihlásit se
+            </a>
+        </div>
+        <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+        {% endif %}
+    </nav>
+
+    {% if not simple_nav %}
+    <div class="mobile-nav-overlay" id="mobileNav">
+        <a href="/about" class="mobile-nav-link">O nás</a>
+        <a href="/support#faq" class="mobile-nav-link">FAQ</a>
+        <a href="/features" class="mobile-nav-link">Funkce</a>
+        <a href="/docs" class="mobile-nav-link">Dokumentace</a>
+        <a href="/login" class="nav-btn" style="font-size: 1.2rem; padding: 12px 32px;">
+            <i class="fa-brands fa-discord" style="margin-right:8px;"></i> Přihlásit se
+        </a>
+    </div>
+    {% endif %}
+
+    <script>
+        function toggleMobileMenu() {
+            const nav = document.getElementById('mobileNav');
+            const btn = document.querySelector('.mobile-menu-btn i');
+            nav.classList.toggle('active');
+
+            if (nav.classList.contains('active')) {
+                btn.classList.remove('fa-bars');
+                btn.classList.add('fa-times');
+                document.body.style.overflow = 'hidden';
+            } else {
+                btn.classList.add('fa-bars');
+                btn.classList.remove('fa-times');
+                document.body.style.overflow = '';
+            }
+        }
+    </script>
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-brand">
+                <div class="logo" style="margin-bottom: 16px;">
+                    <i class="fa-brands fa-discord" style="color: #5865F2;"></i>
+                    Metricord
+                </div>
+                <p style="color: var(--text-muted); line-height: 1.6;">
+                    Kompletní analytické řešení pro váš Discord server. Získejte přehled, který vám chyběl.
+                </p>
+                <div class="social-links">
+                    <a href="https://discord.gg/35yeT32Knf" target="_blank"><i class="fa-brands fa-discord"></i></a>
+                    <a href="https://github.com/metricord" target="_blank"><i class="fa-brands fa-github"></i></a>
+                </div>
+            </div>
+
+            <div class="footer-links">
+                <div class="link-column">
+                    <h4>Produkt</h4>
+                    <a href="/features">Funkce</a>
+                    <a href="/changelog">Novinky</a>
+                    <a href="/docs">Dokumentace</a>
+                </div>
+                <div class="link-column">
+                    <h4>Společnost</h4>
+                    <a href="/about">O nás</a>
+                    <a href="/support">Podpora</a>
+                    <a href="/support#faq">FAQ</a>
+                </div>
+                <div class="link-column">
+                    <h4>Právní</h4>
+                    <a href="/privacy">Ochrana dat</a>
+                    <a href="/terms">Podmínky</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 Metricord. Všechna práva vyhrazena.</p>
+        </div>
+    </footer>
+</body>
+
+</html>

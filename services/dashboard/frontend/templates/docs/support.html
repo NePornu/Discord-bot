@@ -1,0 +1,258 @@
+{% extends "landing_base.html" %}
+{% set simple_nav = true %}
+
+{% block title %}Podpora | Metricord{% endblock %}
+
+{% block content %}
+<style>
+    /* Scoped CSS for Support Page */
+    .support-hero {
+        text-align: center;
+        padding: 80px 0;
+        position: relative;
+    }
+
+    .support-hero::before {
+        content: '';
+        position: absolute;
+        width: 600px;
+        height: 600px;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+        top: -150px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    .support-hero h1 {
+        font-size: 3.5rem;
+        font-weight: 800;
+        margin-bottom: 24px;
+        background: var(--primary-g);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .support-hero p {
+        color: var(--text-muted);
+        font-size: 1.2rem;
+        max-width: 600px;
+        margin: 0 auto;
+        line-height: 1.6;
+    }
+
+    .support-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 32px;
+        margin-bottom: 100px;
+        max-width: 1000px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .support-card {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        padding: 48px 32px;
+        text-align: center;
+        transition: all 0.3s;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .support-card:hover {
+        transform: translateY(-5px);
+        border-color: var(--primary);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .icon-wrapper {
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 32px;
+        font-size: 2.5rem;
+        color: var(--primary);
+        border: 1px solid var(--glass-border);
+    }
+
+    .support-card h3 {
+        font-size: 1.5rem;
+        margin-bottom: 16px;
+        color: white;
+    }
+
+    .support-card p {
+        color: var(--text-muted);
+        margin-bottom: 32px;
+        line-height: 1.6;
+    }
+
+    .btn-card {
+        display: inline-block;
+        padding: 12px 32px;
+        border-radius: 50px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: 0.3s;
+    }
+
+    .btn-primary-card {
+        background: var(--primary-g);
+        color: white;
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+    }
+
+    .btn-primary-card:hover {
+        box-shadow: 0 8px 25px rgba(139, 92, 246, 0.5);
+        transform: translateY(-2px);
+    }
+
+    .btn-secondary-card {
+        background: transparent;
+        border: 1px solid var(--glass-border);
+        color: white;
+    }
+
+    .btn-secondary-card:hover {
+        border-color: var(--primary);
+        background: rgba(139, 92, 246, 0.1);
+    }
+
+    /* FAQ Section Styles */
+    .faq-container {
+        max-width: 800px;
+        margin: 0 auto 100px;
+    }
+
+    .faq-list {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        padding: 20px 40px;
+    }
+
+    .faq-item {
+        border-bottom: 1px solid var(--glass-border);
+        padding: 30px 0;
+    }
+
+    .faq-item:last-child {
+        border-bottom: none;
+    }
+
+    .faq-question {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: white;
+        margin-bottom: 12px;
+    }
+
+    .faq-answer {
+        color: var(--text-muted);
+        font-size: 1.05rem;
+        line-height: 1.6;
+    }
+
+    @media (max-width: 768px) {
+        .support-hero::before {
+            width: 90vw;
+            height: 90vw;
+            top: -50px;
+        }
+
+        .support-hero h1 {
+            font-size: 2.5rem;
+        }
+
+        .support-hero {
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        .support-grid {
+            grid-template-columns: 1fr;
+            padding: 0 16px;
+        }
+
+        .faq-list {
+            padding: 20px;
+        }
+    }
+</style>
+
+<div class="support-hero">
+    <h1>Jak vám můžeme pomoci?</h1>
+    <p>Jsme tu pro vás 24/7. Vyberte si způsob, který vám nejvíce vyhovuje a my se postaráme o zbytek.</p>
+</div>
+
+<div class="support-grid">
+
+    <div class="support-card">
+        <div class="icon-wrapper">
+            <i class="fa-brands fa-discord"></i>
+        </div>
+        <h3>Komunitní Chat</h3>
+        <p>Nejrychlejší způsob, jak získat pomoc. Připojte se na náš oficiální server a zeptejte se komunity nebo
+            vývojářů přímo v chatu.</p>
+        <a href="#" class="btn-card btn-primary-card">Připojit se</a>
+    </div>
+
+
+    <div class="support-card">
+        <div class="icon-wrapper">
+            <i class="fas fa-envelope"></i>
+        </div>
+        <h3>Emailová Podpora</h3>
+        <p>Máte komplexní problém, našli jste bug nebo máte obchodní dotaz? Napište nám email a ozveme se vám do 24
+            hodin.</p>
+        <a href="mailto:support@metricord.app" class="btn-card btn-secondary-card">Napsat Email</a>
+    </div>
+
+
+    <div class="support-card">
+        <div class="icon-wrapper">
+            <i class="fas fa-book"></i>
+        </div>
+        <h3>Dokumentace</h3>
+        <p>Projděte si naše detailní návody, vysvětlení funkcí a často kladené dotazy. Řešení vašeho problému tam možná
+            už čeká.</p>
+        <a href="/docs" class="btn-card btn-secondary-card">Číst Návody</a>
+    </div>
+</div>
+
+<div class="faq-container" id="faq">
+    <h2 style="text-align: center; font-size: 2.5rem; margin-bottom: 40px; color: white;">Časté dotazy</h2>
+
+    <div class="faq-list">
+        <div class="faq-item">
+            <div class="faq-question">Je tento bot opravdu zdarma?</div>
+            <div class="faq-answer">Ano, základní verze bota i dashboardu je zdarma pro všechny. Projekt provozuji na
+                vlastních nákladech jako hobby.</div>
+        </div>
+        <div class="faq-item">
+            <div class="faq-question">Co se děje s mými daty?</div>
+            <div class="faq-answer">Vaše data jsou bezpečně uložena a používána pouze pro generování statistik pro váš
+                server. Nikdy je neposkytuji třetím stranám.</div>
+        </div>
+        <div class="faq-item">
+            <div class="faq-question">Mohu navrhnout novou funkci?</div>
+            <div class="faq-answer">Určitě! Připojte se na náš Discord server a napište do kanálu #návrhy. Většinu
+                funkcí implementuji právě na základě přání komunity.</div>
+        </div>
+        <div class="faq-item">
+            <div class="faq-question">Jak přidám bota na server?</div>
+            <div class="faq-answer">Stačí se přihlásit do dashboardu a kliknout na "Přidat bota". Budete přesměrováni na
+                oficiální Discord autorizaci.</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

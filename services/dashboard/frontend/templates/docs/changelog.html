@@ -1,0 +1,308 @@
+{% extends "landing_base.html" %}
+{% set simple_nav = true %}
+
+{% block title %}Novinky | Metricord{% endblock %}
+
+{% block content %}
+<style>
+    .changelog-hero {
+        text-align: center;
+        padding: 80px 0 60px;
+        position: relative;
+    }
+
+    .changelog-hero::before {
+        content: '';
+        position: absolute;
+        top: -150px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 600px;
+        height: 600px;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%);
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    .changelog-hero h1 {
+        font-size: 3.5rem;
+        font-weight: 800;
+        margin-bottom: 24px;
+        background: var(--primary-g);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .changelog-hero p {
+        color: var(--text-muted);
+        font-size: 1.2rem;
+    }
+
+    .timeline {
+        max-width: 800px;
+        margin: 40px auto 100px;
+        position: relative;
+        padding-left: 50px;
+    }
+
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 7px;
+        top: 0;
+        height: 100%;
+        width: 2px;
+        background: linear-gradient(to bottom, var(--primary) 0%, rgba(255, 255, 255, 0.1) 100%);
+    }
+
+    .timeline-item {
+        margin-bottom: 60px;
+        position: relative;
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        padding: 40px;
+        transition: 0.3s;
+    }
+
+    .timeline-item:hover {
+        transform: translateX(5px);
+        border-color: rgba(139, 92, 246, 0.4);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .timeline-marker {
+        position: absolute;
+        left: -53px;
+        top: 40px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--bg-dark);
+        border: 4px solid var(--primary);
+        box-shadow: 0 0 15px var(--primary);
+    }
+
+    .version-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .version-tag {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 50px;
+        background: var(--primary-g);
+        color: white;
+        font-weight: 700;
+        font-size: 0.95rem;
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    }
+
+    .update-date {
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        font-family: monospace;
+    }
+
+    .update-content h3 {
+        margin: 0 0 16px 0;
+        font-size: 1.5rem;
+        color: white;
+    }
+
+    .update-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .update-list li {
+        margin-bottom: 16px;
+        padding-left: 28px;
+        position: relative;
+        color: var(--text-muted);
+        font-size: 1.05rem;
+    }
+
+    .update-list li::before {
+        content: '';
+        position: absolute;
+        left: 8px;
+        top: 10px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--text-muted);
+    }
+
+    .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        margin-right: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        vertical-align: middle;
+    }
+
+    .tag-new {
+        color: #4ade80;
+        background: rgba(74, 222, 128, 0.1);
+        border: 1px solid rgba(74, 222, 128, 0.2);
+    }
+
+    .tag-fix {
+        color: #f87171;
+        background: rgba(248, 113, 113, 0.1);
+        border: 1px solid rgba(248, 113, 113, 0.2);
+    }
+
+    .tag-imp {
+        color: #facc15;
+        background: rgba(250, 204, 21, 0.1);
+        border: 1px solid rgba(250, 204, 21, 0.2);
+    }
+
+    /* New Image Placeholder Styles */
+    .update-image-box {
+        margin-top: 32px;
+        border-radius: 16px;
+        border: 1px dashed var(--glass-border);
+        background: rgba(0, 0, 0, 0.3);
+        padding: 40px;
+        text-align: center;
+        color: var(--text-muted);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        transition: 0.3s;
+    }
+
+    .update-image-box:hover {
+        border-color: var(--primary);
+        background: rgba(139, 92, 246, 0.05);
+    }
+
+    .update-image-box i {
+        font-size: 3rem;
+        opacity: 0.5;
+    }
+
+    .label-code {
+        font-family: monospace;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+    }
+
+    @media (max-width: 768px) {
+        .changelog-hero::before {
+            width: 90vw;
+            height: 90vw;
+            top: -50px;
+        }
+
+        .changelog-hero h1 {
+            font-size: 2.5rem;
+        }
+
+        .changelog-hero {
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        .timeline {
+            padding-left: 0;
+            margin: 40px 20px;
+        }
+
+        .timeline::before {
+            display: none;
+        }
+
+        .timeline-marker {
+            position: relative;
+            left: 0;
+            top: 0;
+            margin-bottom: 16px;
+            display: inline-block;
+        }
+
+        .version-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+        }
+    }
+</style>
+
+<div class="changelog-hero">
+    <h1>Co je nového</h1>
+    <p>Sledujte naši cestu k dokonalému analytickému nástroji.</p>
+</div>
+
+<div class="timeline">
+
+    <div class="timeline-item">
+        <div class="timeline-marker"></div>
+        <div class="version-header">
+            <span class="version-tag">v2.1.0</span>
+            <span class="update-date">25. ledna 2026</span>
+        </div>
+        <div class="update-content">
+            <h3>Nové Landing Pages & Redesign</h3>
+            <p style="margin-bottom: 24px; color: var(--text-main);">Kompletní přepracování veřejné části webu. Zaměřili
+                jsme se na srozumitelnost, rychlost a moderní "glassmorphism" vzhled.</p>
+            <ul class="update-list">
+                <li><span class="tag tag-new">Novinka</span> Spuštěny nové stránky Funkce a O nás.</li>
+                <li><span class="tag tag-new">Novinka</span> Přidána sekce Novinky (Changelog) s časovou osou.</li>
+                <li><span class="tag tag-imp">Vylepšení</span> Redesign patičky pro lepší orientaci.</li>
+                <li><span class="tag tag-fix">Odstraněno</span> Zrušena zastaralá stránka Ceník.</li>
+            </ul>
+
+
+            <div class="update-image-box">
+                <img src="/static/img/landing_hero_2026_v1.png" alt="Landing Page Preview"
+                    style="width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--glass-border);">
+            </div>
+        </div>
+    </div>
+
+
+    <div class="timeline-item">
+        <div class="timeline-marker"
+            style="border-color: var(--text-muted); background: var(--bg-secondary); box-shadow: none;"></div>
+        <div class="version-header">
+            <span class="version-tag" style="background: rgba(255,255,255,0.1); box-shadow: none;">v2.0.0</span>
+            <span class="update-date">10. ledna 2026</span>
+        </div>
+        <div class="update-content">
+            <h3>Predikce a Security Score</h3>
+            <p style="margin-bottom: 24px; color: var(--text-main);">Velká aktualizace "Intelligence". Představujeme
+                prediktivní modely poháněné naším vlastním enginem.</p>
+            <ul class="update-list">
+                <li><span class="tag tag-new">Major</span> Spuštěn modul pro predikci růstu členů na 7 dní dopředu.</li>
+                <li><span class="tag tag-new">Novinka</span> Kalkulace Security Score pro každého uživatele i celý
+                    server.</li>
+                <li><span class="tag tag-fix">Optimalizace</span> Přepis databázových dotazů - zrychlení načítání o 40%.
+                </li>
+            </ul>
+
+
+            <div class="update-image-box">
+                <img src="/static/img/predictions_2026_v1.png" alt="Predictions Preview"
+                    style="width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--glass-border);">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

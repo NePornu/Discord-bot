@@ -1,0 +1,45 @@
+{% extends "docs_base.html" %}
+
+{% block title %}Časté dotazy (FAQ){% endblock %}
+
+{% block docs_content %}
+<section id="faq">
+    <h1>Časté dotazy (FAQ)</h1>
+
+    <h3>❓ Je bot zdarma?</h3>
+    <p>
+        Základní verze Metricord je zcela zdarma pro všechny servery. Nabízíme také <b>Premium</b> verzi, která
+        odemyká delší historii dat (neomezeně vs 30 dní), PDF exporty a prioritní backfill.
+    </p>
+
+    <h3>❓ Jsou moje data v bezpečí?</h3>
+    <p>
+        Ano. Data ukládáme šifrovaně a používáme je výhradně pro generování statistik vašeho serveru. Nikdy neprodáváme
+        data třetím stranám. Více v našich <a href="#" style="color: var(--primary)">Zásadách ochrany osobních
+            údajů</a>.
+    </p>
+
+    <h3>❓ Proč nevidím data z Voice kanálů?</h3>
+    <p>
+        Ujistěte se, že má bot oprávnění <code>Connect</code>, <code>Speak</code> a <code>View Channel</code> pro dané
+        voice kanály. Bot se do hovoru fyzicky nepřipojuje (nenahrává zvuk), ale potřebuje tato práva, aby viděl
+        události připojení/odpojení uživatelů.
+    </p>
+
+    <h3>❓ Jak dlouho trvá Backfill?</h3>
+    <p>
+        Záleží na velikosti serveru a aktivitě.
+    <ul>
+        <li>Malé servery (< 1k zpráv): Pár minut.</li>
+        <li>Střední servery (10k-100k zpráv): 1-3 hodiny.</li>
+        <li>Obří servery (+1M zpráv): Může trvat až 24 hodin, ale data se doplňují postupně.</li>
+    </ul>
+    </p>
+
+    <h3>❓ Může bot spravovat více serverů najednou?</h3>
+    <p>
+        Ano! V dashboardu můžete jednoduše přepínat mezi všemi servery, kde máte administrátorská práva a kde je bot
+        přítomen.
+    </p>
+</section>
+{% endblock %}

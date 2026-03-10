@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    :root {
+        --glass-bg: rgba(17, 24, 39, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --accent-glow: 0 0 20px rgba(139, 92, 246, 0.15);
+        --text-muted: #9ca3af;
+        --card-radius: 16px;
+    }
+
+    .glass-card {
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--card-radius);
+        padding: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .glass-card:hover {
+        border-color: rgba(139, 92, 246, 0.3);
+        box-shadow: var(--accent-glow);
+    }
+
+    .stat-value {
+        font-size: 2.5rem;
+        font-weight: 800;
+        background: linear-gradient(to right, #fff, #c4b5fd);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.05em;
+    }
+
+    .stat-label {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .lb-cell {
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .lb-cell:first-child {
+        border-top-left-radius: 12px;
+        border-bottom-left-radius: 12px;
+    }
+
+    .lb-cell:last-child {
+        border-top-right-radius: 12px;
+        border-bottom-right-radius: 12px;
+    }
+
+    .rank-badge {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-weight: bold;
+        font-size: 0.9rem;
+    }
+
+    .rank-1 {
+        background: linear-gradient(135deg, #FFD700, #FDB931);
+        color: #000;
+        box-shadow: 0 0 10px rgba(255, 215, 0, 0.4);
+    }
+
+    .rank-2 {
+        background: linear-gradient(135deg, #E0E0E0, #BDBDBD);
+        color: #000;
+    }
+
+    .rank-3 {
+        background: linear-gradient(135deg, #CD7F32, #A0522D);
+        color: #000;
+    }
+
+    .rank-other {
+        color: var(--text-muted);
+        font-family: monospace;
+    }
+</style>
+
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+        <h1 class="title">Aktivita Týmu</h1>
+        <p style="color: var(--text-secondary);">Sledování akcí, času v hovoru a zapojení</p>
+    </div>
+</div>
+
+<div style="margin-bottom: 40px;">
+    <form method="GET" action="/activity"
+        style="display: flex; gap: 12px; align-items: center; background: var(--bg-card); padding: 8px 16px; border-radius: 12px; border: 1px solid var(--glass-border);">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Role</label>
+            <select name="role_id" style="min-width: 140px;">
+                <option value="all" {% if selected_role=='all' %}selected{% endif %}>Všechny role</option>
+                {% for rid, rname in roles %}
+                <option value="{{ rid }}" {% if selected_role==rid %}selected{% endif %}>{{ rname }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Od</label>
+            <input type="date" name="start_date" value="{{ start_date }}">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label
+                style="font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Do</label>
+            <input type="date" name="end_date" value="{{ end_date }}">
+        </div>
+        <button type="submit" class="btn"
+            style="height: 42px; margin-top: auto; display: flex; align-items: center; gap: 8px;">
+            Filtrovat
+        </button>
+    </form>
+</div>
+
+{% if warning %}
+<div
+    style="background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.3); color: #facc15; padding: 16px; border-radius: 12px; margin-bottom: 32px; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(4px);">
+    <span>⚠️ {{ warning }}</span>
+</div>
+{% endif %}
+
+
+<div
+    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 32px;">
+
+    <div class="glass-card">
+        <div class="stat-label">Aktivní Tým</div>
+        <div class="stat-value">{{ active_staff_count }}</div>
+        <div style="margin-top: 12px; display: flex; align-items: center; gap: 6px; color: #4ade80; font-size: 0.9rem;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M20 6L9 17l-5-5" />
+            </svg>
+            Aktivně přispívající
+        </div>
+    </div>
+
+
+    <div class="glass-card">
+        <div class="stat-label">Celkem Hodin (Výběr)</div>
+        <div class="stat-value">
+            {% if total_hours_30d < 1 and total_hours_30d> 0 %}
+                {{ (total_hours_30d * 60)|round|int }}m
+                {% else %}
+                {{ total_hours_30d }}h
+                {% endif %}
+        </div>
+        <div style="margin-top: 12px; color: var(--text-muted); font-size: 0.9rem;">
+            Kombinace Voice & Chat
+        </div>
+    </div>
+
+
+    <div class="glass-card">
+        <div class="stat-label">Top Metrika</div>
+        <div class="stat-value" style="font-size: 2rem;">{{ top_action }}</div>
+        <div style="margin-top: 12px; color: #a78bfa; font-size: 0.9rem;">
+            Nejčastější akce
+        </div>
+    </div>
+</div>
+
+
+<div class="glass-card" style="margin-bottom: 32px; padding: 32px;">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 24px;">
+        <h3 style="font-size: 1.25rem; font-weight: 700;">Trend Aktivity</h3>
+        <div style="display: flex; gap: 12px;">
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted);">
+                <span style="width: 8px; height: 8px; background: #8b5cf6; border-radius: 50%;"></span> Vážené Hodiny
+            </span>
+        </div>
+    </div>
+    <div class="chart-container" style="height: 350px; width: 100%;">
+        <canvas id="activityTrendChart"></canvas>
+    </div>
+</div>
+
+
+<div class="glass-card">
+    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 24px;">Top Přispěvatelé</h3>
+
+    {% if leaderboard %}
+    <table class="lb-table">
+        <tbody>
+            {% for user in leaderboard %}
+            <tr class="lb-row">
+                <td class="lb-cell" style="width: 60px;">
+                    <div class="rank-badge rank-{{ loop.index if loop.index <= 3 else 'other' }}">
+                        {{ loop.index }}
+                    </div>
+                </td>
+                <td class="lb-cell">
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <div
+                            style="width: 42px; height: 42px; border-radius: 50%; background: #2d3748; overflow: hidden; border: 2px solid rgba(255,255,255,0.1);">
+                            {% if user.avatar %}
+                            {% if user.avatar.startswith('http') %}
+                            <img src="{{ user.avatar }}" style="width: 100%; height: 100%; object-fit: cover;">
+                            {% else %}
+                            <img src="https://cdn.discordapp.com/avatars/{{ user.user_id }}/{{ user.avatar }}.png"
+                                style="width: 100%; height: 100%; object-fit: cover;">
+                            {% endif %}
+                            {% else %}
+                            <div
+                                style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #a0aec0; font-weight: bold;">
+                                {{ user.name[0] }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <div style="font-weight: 700; font-size: 1rem;">
+                                <a href="/activity/user/{{ user.user_id }}"
+                                    style="color: white; text-decoration: none; transition: 0.2s;"
+                                    onmouseover="this.style.color='var(--primary)'"
+                                    onmouseout="this.style.color='white'">
+                                    {{ user.name }}
+                                </a>
+                            </div>
+                            <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+                                {% for role in user.role_names %}
+                                <span
+                                    style="font-size: 0.7rem; padding: 2px 8px; background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border-radius: 4px;">{{
+                                    role }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td class="lb-cell" style="width: 200px;">
+                    <div style="margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 0.85rem;">
+                        <span style="color: var(--text-muted);">Aktivita (čas)</span>
+                        <span style="font-weight: bold; color: white;">
+                            {% if user.weighted_h < 1 and user.weighted_h> 0 %}
+                                {{ (user.weighted_h * 60)|round|int }}m
+                                {% else %}
+                                {{ user.weighted_h }}h
+                                {% endif %}
+                        </span>
+                    </div>
+
+                    {% set max_score = leaderboard[0].weighted_h | default(100) %}
+                    {% set pct = (user.weighted_h / max_score * 100) if max_score > 0 else 0 %}
+                    <div
+                        style="width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden;">
+                        <div
+                            style="width: {{ pct }}%; height: 100%; background: linear-gradient(90deg, #8b5cf6, #6d28d9); border-radius: 3px;">
+                        </div>
+                    </div>
+                </td>
+                <td class="lb-cell" style="width: 120px; text-align: right;">
+                    <div style="font-size: 0.9rem; color: var(--text-muted);">Akce</div>
+                    <div style="font-size: 1.1rem; font-weight: bold; color: #fff;">{{ user.action_count }}</div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="text-align: center; padding: 60px 0; color: var(--text-muted);">
+        <div style="font-size: 3rem; margin-bottom: 16px;">😴</div>
+        <h3>Žádná aktivita v tomto období.</h3>
+        <p>Zkuste upravit filtry nebo se vraťte později.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    const labels = {{ daily_labels | default ([]) | tojson | safe }};
+    const data = {{ daily_hours | default ([]) | tojson | safe }};
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const ctx = document.getElementById('activityTrendChart').getContext('2d');
+
+        // Gradient fill
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
+        gradient.addColorStop(1, 'rgba(139, 92, 246, 0)');
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Weighted Activity Hours',
+                    data: data,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: gradient,
+                    borderWidth: 3,
+                    tension: 0.4, // Smooths the line
+                    pointBackgroundColor: '#1f2937',
+                    pointBorderColor: '#a78bfa',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                        titleColor: '#fff',
+                        bodyColor: '#e5e7eb',
+                        borderColor: 'rgba(255,255,255,0.1)',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: false,
+                        callbacks: {
+                            label: function (context) {
+                                return context.parsed.y + ' hrs';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false, drawBorder: false },
+                        ticks: { color: '#6b7280', maxTicksLimit: 10 }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)', borderDash: [4, 4], drawBorder: false },
+                        ticks: { color: '#6b7280' },
+                        beginAtZero: true
+                    }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}
