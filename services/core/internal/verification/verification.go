@@ -167,8 +167,9 @@ func (v *VerificationService) sendDM(s *discordgo.Session, userID string, otp st
 
 func (v *VerificationService) logJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd) {
 	logChannel := v.Config.VerificationChannel
+	verifLogChannel := v.Config.VerifLogChannel
 	if logChannel == "" {
-		return // Don't log to random IDs if not configured
+		return
 	}
 
 	creationTime := v.getCreationTime(m.User.ID)
@@ -188,6 +189,11 @@ func (v *VerificationService) logJoin(s *discordgo.Session, m *discordgo.GuildMe
 	if err != nil {
 		log.Printf("Error sending join log to channel %s: %v", logChannel, err)
 		return
+	}
+
+	// Also send to Verification Log channel if configured
+	if verifLogChannel != "" && verifLogChannel != logChannel {
+		s.ChannelMessageSend(verifLogChannel, msgContent)
 	}
 
 	key := fmt.Sprintf("verify:state:%s", m.User.ID)
@@ -357,10 +363,7 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 		ageStr = fmt.Sprintf("%.1f letech", accountAge.Hours()/(24*365))
 	}
 
-	joinTime := time.Unix(v.parseInt(state["created_at"]), 0)
-	codeTime := time.Unix(v.parseInt(state["code_entered_at"]), 0)
-
-	logContent := fmt.Sprintf("**Uživatel ověřen:**\n\n"+
+	logContent := fmt.Sprintf("✅ **Uživatel ověřen:**\n\n"+
 		"**Uživatel:** <@%s> (%s)\n"+
 		"**ID:** %s\n"+
 		"**Účet vytvořen:** <t:%d:F> (<t:%d:R>)\n"+
@@ -368,14 +371,14 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 		"**Avatar:** %s\n\n"+
 		"Automaticky mu byla přidělena ověřovací role.\n\n"+
 		"**Časový průběh:**\n"+
-		"• Připojení: %s\n"+
-		"• Zadání kódu: %s\n"+
-		"• Schválení: %s\n\n"+
+		"• Připojení: <t:%d:F>\n"+
+		"• Zadání kódu: <t:%d:F>\n"+
+		"• Schválení: <t:%d:F>\n\n"+
 		"**Moderátor:** Schválil <@%s>",
 		userID, username, userID, creationTime, creationTime, ageStr, avatar,
-		joinTime.Format("2006-01-02 15:04:05"),
-		codeTime.Format("2006-01-02 15:04:05"),
-		now.Format("2006-01-02 15:04:05"),
+		v.parseInt(state["created_at"]),
+		v.parseInt(state["code_entered_at"]),
+		now.Unix(),
 		i.Member.User.ID)
 
 	s.ChannelMessageSend(v.Config.VerifLogChannel, logContent)
