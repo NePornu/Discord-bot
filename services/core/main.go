@@ -323,25 +323,62 @@ func main() {
 					{
 						Type:        discordgo.ApplicationCommandOptionSubCommand,
 						Name:        "setup",
-						Description: "Nastavit výzvu",
+						Description: "Vytvořit nebo upravit výzvu",
 						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "id",
+								Description: "Unikátní ID výzvy (např. nelednacek)",
+								Required:    true,
+							},
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "pattern",
+								Description: "Vzor zprávy (např. Quest —)",
+								Required:    false,
+							},
+							{
+								Type:        discordgo.ApplicationCommandOptionChannel,
+								Name:        "channel",
+								Description: "Kanál pro výzvu",
+								Required:    false,
+							},
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "start",
+								Description: "Datum zahájení (YYYYMMDD)",
+								Required:    false,
+							},
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "end",
+								Description: "Datum ukončení (YYYYMMDD)",
+								Required:    false,
+							},
+						},
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "milestone",
+						Description: "Přidat milník k výzvě",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "id",
+								Description: "ID výzvy",
+								Required:    true,
+							},
+							{
+								Type:        discordgo.ApplicationCommandOptionInteger,
+								Name:        "days",
+								Description: "Počet dní",
+								Required:    true,
+							},
 							{
 								Type:        discordgo.ApplicationCommandOptionRole,
 								Name:        "role",
 								Description: "Role k udělení",
 								Required:    true,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "emojis",
-								Description: "Seznam emoji",
-								Required:    true,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionChannel,
-								Name:        "channel",
-								Description: "Kanál",
-								Required:    false,
 							},
 						},
 					},
@@ -349,6 +386,14 @@ func main() {
 						Type:        discordgo.ApplicationCommandOptionSubCommand,
 						Name:        "info",
 						Description: "Informace o výzvě",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionString,
+								Name:        "id",
+								Description: "ID výzvy (volitelné)",
+								Required:    false,
+							},
+						},
 					},
 					{
 						Type:        discordgo.ApplicationCommandOptionSubCommand,

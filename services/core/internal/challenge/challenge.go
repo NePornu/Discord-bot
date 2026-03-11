@@ -287,6 +287,8 @@ func (s *ChallengeService) HandleChallengeCommand(dg *discordgo.Session, i *disc
 	switch subcommand {
 	case "setup":
 		s.handleSetup(dg, i)
+	case "milestone":
+		s.handleMilestone(dg, i)
 	case "info":
 		s.handleInfo(dg, i)
 	case "stats":
@@ -299,56 +301,123 @@ func (s *ChallengeService) HandleChallengeCommand(dg *discordgo.Session, i *disc
 func (s *ChallengeService) handleSetup(dg *discordgo.Session, i *discordgo.InteractionCreate) {
 	opts := i.ApplicationCommandData().Options[0].Options
 	
-	roleID := ""
+	id := ""
 	channelID := i.ChannelID
-	emojisStr := ""
+	pattern := ""
+	start := ""
+	end := ""
 
 	for _, opt := range opts {
 		switch opt.Name {
-		case "role": roleID = opt.RoleValue(dg, i.GuildID).ID
+		case "id": id = opt.StringValue()
+		case "pattern": pattern = opt.StringValue()
 		case "channel": channelID = opt.ChannelValue(dg).ID
-		case "emojis": emojisStr = opt.StringValue()
+		case "start": start = opt.StringValue()
+		case "end": end = opt.StringValue()
 		}
 	}
 
-	cfg := s.Configs[channelID]
+	cfg := s.Configs[id]
 	if cfg == nil {
 		cfg = &ChallengeConfig{
+			ID: id,
 			GuildID: s.toInt64(i.GuildID),
-			ChannelIDs: []string{channelID},
 			Enabled: true,
-			QuestPattern: "Quest —",
-			SuccessMessages: []string{"Vítej ve výzvě! ✅", "Hotovo — jsi zapsán/a. 💪"},
+			Milestones: make(map[int]string),
 		}
 	}
-	cfg.RoleID = roleID
-	cfg.Emojis = strings.Fields(strings.ReplaceAll(emojisStr, ",", " "))
-	s.Configs[channelID] = cfg
+
+	if pattern != "" { cfg.QuestPattern = pattern }
+	if start != "" { cfg.StartDate = start }
+	if end != "" { cfg.EndDate = end }
+	
+	// Add channel if not already there
+	found := false
+	for _, ch := range cfg.ChannelIDs {
+		if ch == channelID { found = true; break }
+	}
+	if !found {
+		cfg.ChannelIDs = append(cfg.ChannelIDs, channelID)
+	}
+
+	s.Configs[id] = cfg
+	s.SaveConfigs()
+	s.LoadConfigs() // Refresh cache
+
+	content := fmt.Sprintf("✅ Výzva **%s** byla nastavena/upravena!", id)
+	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
+	})
+}
+
+func (s *ChallengeService) handleMilestone(dg *discordgo.Session, i *discordgo.InteractionCreate) {
+	opts := i.ApplicationCommandData().Options[0].Options
+	
+	id := ""
+	days := 0
+	roleID := ""
+
+	for _, opt := range opts {
+		switch opt.Name {
+		case "id": id = opt.StringValue()
+		case "days": days = int(opt.IntValue())
+		case "role": roleID = opt.RoleValue(dg, i.GuildID).ID
+		}
+	}
+
+	cfg := s.Configs[id]
+	if cfg == nil {
+		content := fmt.Sprintf("❌ Výzva **%s** neexistuje. Nejdříve ji vytvoř příkazem `/challenge setup`.", id)
+		dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+		return
+	}
+
+	if cfg.Milestones == nil {
+		cfg.Milestones = make(map[int]string)
+	}
+	cfg.Milestones[days] = roleID
+
+	s.Configs[id] = cfg
 	s.SaveConfigs()
 
-	content := fmt.Sprintf("✅ Výzva nastavena pro <#%s>!", channelID)
+	content := fmt.Sprintf("✅ Milník **%d dní** s rolí <@&%s> byl přidán k výzvě **%s**!", days, roleID, id)
 	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: &content,
 	})
 }
 
 func (s *ChallengeService) handleInfo(dg *discordgo.Session, i *discordgo.InteractionCreate) {
-	cfg, exists := s.Configs[i.ChannelID]
-	if !exists {
-		content := "❌ Žádná výzva v tomto kanále."
+	var cfg *ChallengeConfig
+	
+	opts := i.ApplicationCommandData().Options[0].Options
+	if len(opts) > 0 && opts[0].Name == "id" {
+		cfg = s.Configs[opts[0].StringValue()]
+	} else {
+		cfg = s.ChannelToConfig[i.ChannelID]
+	}
+
+	if cfg == nil {
+		content := "❌ Žádná výzva nenalezena."
 		dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: &content,
 		})
 		return
 	}
 
+	mList := []string{}
+	for d, r := range cfg.Milestones {
+		mList = append(mList, fmt.Sprintf("- **%d dní**: <@&%s>", d, r))
+	}
+	if len(mList) == 0 { mList = append(mList, "_Žádné milníky_") }
+
 	embed := &discordgo.MessageEmbed{
-		Title: "📋 Výzva - konfigurace",
+		Title: fmt.Sprintf("📋 Výzva: %s", cfg.ID),
 		Color: 0x3498db,
 		Fields: []*discordgo.MessageEmbedField{
-			{Name: "Role", Value: fmt.Sprintf("<@&%s>", cfg.RoleID), Inline: true},
-			{Name: "Emojis", Value: strings.Join(cfg.Emojis, " "), Inline: true},
-			{Name: "Pattern", Value: fmt.Sprintf("`%s`", cfg.QuestPattern), Inline: true},
+			{Name: "Vzor", Value: fmt.Sprintf("`%s`", cfg.QuestPattern), Inline: true},
+			{Name: "Kanály", Value: strings.Join(cfg.ChannelIDs, ", "), Inline: true},
+			{Name: "Období", Value: fmt.Sprintf("%s - %s", cfg.StartDate, cfg.EndDate), Inline: true},
+			{Name: "Milníky", Value: strings.Join(mList, "\n"), Inline: false},
 		},
 	}
 
