@@ -350,6 +350,16 @@ func main() {
 						Name:        "info",
 						Description: "Informace o výzvě",
 					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "stats",
+						Description: "Tvůj pokrok ve výzvě",
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "backfill",
+						Description: "Doplnit historii výzvy (Admin)",
+					},
 				},
 			},
 		}

@@ -15,9 +15,10 @@ import (
 )
 
 type ChallengeConfig struct {
+	ID               string          `json:"id"`
 	GuildID          int64           `json:"guild_id"`
 	RoleID           string          `json:"role_id"`
-	ChannelID        string          `json:"channel_id"`
+	ChannelIDs       []string        `json:"channel_ids"`
 	Emojis           []string        `json:"emojis"`
 	ReactOK          bool            `json:"react_ok"`
 	ReplyOnSuccess   bool            `json:"reply_on_success"`
@@ -26,8 +27,10 @@ type ChallengeConfig struct {
 	RequireAll       bool            `json:"require_all"`
 	QuestPattern     string          `json:"quest_pattern"`
 	Enabled          bool            `json:"enabled"`
-	Milestones       map[int]string `json:"milestones"`
+	Milestones       map[int]string  `json:"milestones"`
 	SendDM           bool            `json:"send_dm"`
+	StartDate        string          `json:"start_date"` // YYYYMMDD
+	EndDate          string          `json:"end_date"`   // YYYYMMDD
 }
 
 type UserStreak struct {
@@ -37,69 +40,52 @@ type UserStreak struct {
 }
 
 type ChallengeService struct {
-	Config  *config.Config
-	Configs map[string]*ChallengeConfig
+	Config          *config.Config
+	Configs         map[string]*ChallengeConfig // Map: ChallengeID -> Config
+	ChannelToConfig map[string]*ChallengeConfig // Map: ChannelID -> Config (cached)
 }
 
 func NewChallengeService(cfg *config.Config) *ChallengeService {
 	s := &ChallengeService{
-		Config:  cfg,
-		Configs: make(map[string]*ChallengeConfig),
+		Config:          cfg,
+		Configs:         make(map[string]*ChallengeConfig),
+		ChannelToConfig: make(map[string]*ChallengeConfig),
 	}
 	s.LoadConfigs()
 	return s
 }
 
 func (s *ChallengeService) LoadConfigs() {
-	path := "data/challenge_config.json"
+	path := "data/challenges.json"
+	
+	// Ensure data directory exists
 	if _, err := os.Stat("data"); os.IsNotExist(err) {
 		os.Mkdir("data", 0755)
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
+		log.Printf("Challenge config file %s not found. Using empty config.", path)
 		return
 	}
 
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		log.Printf("Error unmarshaling challenge config: %v", err)
+	if err := json.Unmarshal(data, &s.Configs); err != nil {
+		log.Printf("Error unmarshaling challenges.json: %v", err)
 		return
 	}
 
-	for k, v := range raw {
-		vMap, ok := v.(map[string]interface{})
-		if !ok {
-			continue
+	// Build the channel lookup cache
+	s.ChannelToConfig = make(map[string]*ChallengeConfig)
+	for id, cfg := range s.Configs {
+		cfg.ID = id
+		for _, chID := range cfg.ChannelIDs {
+			s.ChannelToConfig[chID] = cfg
 		}
-
-		cfg := &ChallengeConfig{}
-		cfg.GuildID = s.toInt64(vMap["guild_id"])
-		cfg.RoleID = s.toString(vMap["role_id"])
-		cfg.ChannelID = s.toString(vMap["channel_id"])
-		cfg.Emojis = s.toStringSlice(vMap["emojis"])
-		cfg.ReactOK = s.toBool(vMap["react_ok"], true)
-		cfg.ReplyOnSuccess = s.toBool(vMap["reply_on_success"], true)
-		cfg.SuccessMessages = s.toStringSlice(vMap["success_messages"])
-		cfg.QuestPattern = s.toString(vMap["quest_pattern"])
-		cfg.Enabled = s.toBool(vMap["enabled"], true)
-		cfg.SendDM = s.toBool(vMap["send_dm"], false)
-
-		// Harder: Milestones map[int]string
-		msRaw, _ := vMap["milestones"].(map[string]interface{})
-		cfg.Milestones = make(map[int]string)
-		for mk, mv := range msRaw {
-			var mInt int
-			fmt.Sscanf(mk, "%d", &mInt)
-			cfg.Milestones[mInt] = s.toString(mv)
-		}
-
-		s.Configs[k] = cfg
 	}
 }
 
 func (s *ChallengeService) SaveConfigs() {
-	path := "data/challenge_config.json"
+	path := "data/challenges.json"
 	data, _ := json.MarshalIndent(s.Configs, "", "  ")
 	os.WriteFile(path, data, 0644)
 }
@@ -141,7 +127,7 @@ func (s *ChallengeService) OnMessage(dg *discordgo.Session, m *discordgo.Message
 		return
 	}
 
-	cfg, exists := s.Configs[m.ChannelID]
+	cfg, exists := s.ChannelToConfig[m.ChannelID]
 	if !exists || !cfg.Enabled {
 		return
 	}
@@ -167,7 +153,7 @@ func (s *ChallengeService) OnMessage(dg *discordgo.Session, m *discordgo.Message
 	}
 
 	if s.matchesTextPattern(m.Content, pattern) {
-		s.handleQuestSubmission(dg, m.GuildID, m.Author, cfg)
+		s.handleQuestSubmission(dg, m.GuildID, m.Author, cfg, m.Message)
 	}
 }
 
@@ -208,8 +194,18 @@ func (s *ChallengeService) assignRoleImmediate(dg *discordgo.Session, guildID, u
 	}
 }
 
-func (s *ChallengeService) handleQuestSubmission(dg *discordgo.Session, guildID string, user *discordgo.User, cfg *ChallengeConfig) {
-	key := fmt.Sprintf("challenge:%s:default:streak:%s", guildID, user.ID)
+func (s *ChallengeService) handleQuestSubmission(dg *discordgo.Session, guildID string, user *discordgo.User, cfg *ChallengeConfig, m *discordgo.Message) {
+	today := time.Now().Format("20060102")
+	
+	// Date range check
+	if cfg.StartDate != "" && today < cfg.StartDate {
+		return
+	}
+	if cfg.EndDate != "" && today > cfg.EndDate {
+		return
+	}
+
+	key := fmt.Sprintf("challenge:streak:%s:%s:%s", guildID, cfg.ID, user.ID)
 	
 	var streak UserStreak
 	val, err := redis_client.Client.Get(redis_client.Ctx, key).Result()
@@ -217,17 +213,18 @@ func (s *ChallengeService) handleQuestSubmission(dg *discordgo.Session, guildID 
 		json.Unmarshal([]byte(val), &streak)
 	}
 
-	today := time.Now().Format("2006-01-02")
+	// Double entry check for today
 	for _, d := range streak.CompletedDates {
-		if d == today { return } // Already done
+		if d == today {
+			return
+		}
 	}
 
-	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("20060102")
 	if streak.LastUpdate == yesterday || streak.LastUpdate == "" {
 		streak.Days++
 	} else {
 		streak.Days = 1
-		streak.CompletedDates = []string{}
 	}
 
 	streak.LastUpdate = today
@@ -236,13 +233,21 @@ func (s *ChallengeService) handleQuestSubmission(dg *discordgo.Session, guildID 
 	data, _ := json.Marshal(streak)
 	redis_client.Client.Set(redis_client.Ctx, key, data, 0)
 
+	// Feedback reaction
+	dg.MessageReactionAdd(m.ChannelID, m.ID, "✅")
+
 	// Milestones
 	if roleID, ok := cfg.Milestones[streak.Days]; ok {
 		dg.GuildMemberRoleAdd(guildID, user.ID, roleID)
+		
+		// Universal success message with mention
+		successMsg := fmt.Sprintf("🔥 Gratulace <@%s>! Dosáhl/a jsi **%d dní** a získáváš novou roli! 👑", user.ID, streak.Days)
+		dg.ChannelMessageSend(m.ChannelID, successMsg)
+
 		if cfg.SendDM {
 			ch, err := dg.UserChannelCreate(user.ID)
 			if err == nil {
-				dg.ChannelMessageSend(ch.ID, fmt.Sprintf("🎉 Gratuluji! Dosáhl/a jsi **%d dní** ve výzvě!", streak.Days))
+				dg.ChannelMessageSend(ch.ID, fmt.Sprintf("🎉 Gratuluji! Dosáhl/a jsi **%d dní** ve výzvě %s!", streak.Days, cfg.ID))
 			}
 		}
 	}
@@ -261,9 +266,9 @@ func (s *ChallengeService) OnReactionAdd(dg *discordgo.Session, r *discordgo.Mes
 
 	expected := strings.TrimLeft(pattern, ".: ")
 	if r.Emoji.Name == expected || r.Emoji.APIName() == expected {
-		user, _ := dg.User(r.UserID)
-		if user != nil {
-			s.handleQuestSubmission(dg, r.GuildID, user, cfg)
+		msg, _ := dg.ChannelMessage(r.ChannelID, r.MessageID)
+		if msg != nil {
+			s.handleQuestSubmission(dg, r.GuildID, msg.Author, cfg, msg)
 		}
 	}
 }
@@ -284,6 +289,10 @@ func (s *ChallengeService) HandleChallengeCommand(dg *discordgo.Session, i *disc
 		s.handleSetup(dg, i)
 	case "info":
 		s.handleInfo(dg, i)
+	case "stats":
+		s.handleStats(dg, i)
+	case "backfill":
+		s.handleBackfill(dg, i)
 	}
 }
 
@@ -306,7 +315,7 @@ func (s *ChallengeService) handleSetup(dg *discordgo.Session, i *discordgo.Inter
 	if cfg == nil {
 		cfg = &ChallengeConfig{
 			GuildID: s.toInt64(i.GuildID),
-			ChannelID: channelID,
+			ChannelIDs: []string{channelID},
 			Enabled: true,
 			QuestPattern: "Quest —",
 			SuccessMessages: []string{"Vítej ve výzvě! ✅", "Hotovo — jsi zapsán/a. 💪"},
@@ -346,4 +355,150 @@ func (s *ChallengeService) handleInfo(dg *discordgo.Session, i *discordgo.Intera
 	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
+}
+
+func (s *ChallengeService) handleStats(dg *discordgo.Session, i *discordgo.InteractionCreate) {
+	user := i.Member.User
+	if user == nil && i.User != nil {
+		user = i.User
+	}
+
+	cfg, exists := s.ChannelToConfig[i.ChannelID]
+	if !exists {
+		content := "❌ V tomto kanále neběží žádná výzva."
+		dg.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{Content: content, Flags: 64},
+		})
+		return
+	}
+
+	key := fmt.Sprintf("challenge:streak:%s:%s:%s", i.GuildID, cfg.ID, user.ID)
+	var streak UserStreak
+	val, err := redis_client.Client.Get(redis_client.Ctx, key).Result()
+	if err == nil {
+		json.Unmarshal([]byte(val), &streak)
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title: fmt.Sprintf("📊 Výzva: %s — %s", cfg.ID, user.Username),
+		Color: 0x3498db,
+		Fields: []*discordgo.MessageEmbedField{
+			{Name: "Dnů splněno", Value: fmt.Sprintf("🔥 **%d**", streak.Days), Inline: true},
+			{Name: "Poslední záznam", Value: streak.LastUpdate, Inline: true},
+		},
+	}
+
+	// Calculate next milestone
+	var milestones []int
+	for m := range cfg.Milestones {
+		milestones = append(milestones, m)
+	}
+	// Sort milestones (naively)
+	for i := 0; i < len(milestones); i++ {
+		for j := i + 1; j < len(milestones); j++ {
+			if milestones[i] > milestones[j] {
+				milestones[i], milestones[j] = milestones[j], milestones[i]
+			}
+		}
+	}
+
+	nextM := 0
+	for _, m := range milestones {
+		if m > streak.Days {
+			nextM = m
+			break
+		}
+	}
+
+	if nextM > 0 {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name: "Další milník", Value: fmt.Sprintf("%d dní (zbývá %d)", nextM, nextM-streak.Days), Inline: false,
+		})
+	} else if len(milestones) > 0 {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name: "Status", Value: "👑 Všechny milníky splněny!", Inline: false,
+		})
+	}
+
+	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
+	})
+}
+
+func (s *ChallengeService) handleBackfill(dg *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Only accessible if subcommand "backfill" exists in slash command definition
+	cfg, exists := s.ChannelToConfig[i.ChannelID]
+	if !exists {
+		content := "❌ V tomto kanále neběží žádná výzva."
+		dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+		return
+	}
+
+	content := fmt.Sprintf("⏳ Spouštím backfill pro výzvu **%s** v <#%s>...", cfg.ID, i.ChannelID)
+	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+
+	count := 0
+	beforeID := ""
+	limit := 100 // Process batches
+
+	for {
+		msgs, err := dg.ChannelMessages(i.ChannelID, limit, beforeID, "", "")
+		if err != nil || len(msgs) == 0 {
+			break
+		}
+
+		for _, msg := range msgs {
+			beforeID = msg.ID
+			if msg.Author.Bot {
+				continue
+			}
+
+			if s.matchesTextPattern(msg.Content, cfg.QuestPattern) {
+				day := msg.Timestamp.Format("20060102")
+				
+				// Date check
+				if (cfg.StartDate != "" && day < cfg.StartDate) || (cfg.EndDate != "" && day > cfg.EndDate) {
+					continue
+				}
+
+				// Logic similar to handleQuestSubmission but without immediate rewards (to avoid duplicate role pings)
+				key := fmt.Sprintf("challenge:streak:%s:%s:%s", i.GuildID, cfg.ID, msg.Author.ID)
+				var streak UserStreak
+				val, _ := redis_client.Client.Get(redis_client.Ctx, key).Result()
+				json.Unmarshal([]byte(val), &streak)
+
+				alreadyExists := false
+				for _, d := range streak.CompletedDates {
+					if d == day {
+						alreadyExists = true
+						break
+					}
+				}
+
+				if !alreadyExists {
+					streak.CompletedDates = append(streak.CompletedDates, day)
+					// Recalculate streak days based on unique dates
+					streak.Days = len(streak.CompletedDates)
+					
+					// Update LastUpdate if this is the newest
+					if day > streak.LastUpdate {
+						streak.LastUpdate = day
+					}
+
+					data, _ := json.Marshal(streak)
+					redis_client.Client.Set(redis_client.Ctx, key, data, 0)
+					count++
+				}
+			}
+		}
+
+		if len(msgs) < limit {
+			break
+		}
+		time.Sleep(500 * time.Millisecond) // Rate limit safety
+	}
+
+	finalContent := fmt.Sprintf("✅ Backfill dokončen! Zpracováno **%d** nových questů pro výzvu **%s**.", count, cfg.ID)
+	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &finalContent})
 }

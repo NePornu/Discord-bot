@@ -43,5 +43,7 @@ COMMANDS_CONFIG = {
     "notify": {"enabled": True, "admin_only": True},
     "emojirole": {"enabled": True, "admin_only": True},
     "help": {"enabled": True, "admin_only": True},
-    "nsfwsync": {"enabled": True, "admin_only": True}
+    "nsfwsync": {"enabled": True, "admin_only": True},
+    "quest_stats": {"enabled": True, "admin_only": False},
+    "quest_backfill": {"enabled": True, "admin_only": True}
 }
