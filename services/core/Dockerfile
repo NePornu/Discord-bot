@@ -29,6 +29,7 @@ WORKDIR /root/
 # Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/bot_go .
 COPY .env .
+COPY data ./data
 
 # Command to run the executable
 CMD ["./bot_go"]

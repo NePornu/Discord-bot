@@ -509,7 +509,14 @@ func (s *ChallengeService) handleBackfill(dg *discordgo.Session, i *discordgo.In
 
 	count := 0
 	beforeID := ""
-	limit := 100 // Process batches
+	limit := 100 
+	
+	// Track roles given during this session
+	type userReport struct {
+		Username string
+		Roles    []string
+	}
+	report := make(map[string]*userReport)
 
 	for {
 		msgs, err := dg.ChannelMessages(i.ChannelID, limit, beforeID, "", "")
@@ -547,10 +554,8 @@ func (s *ChallengeService) handleBackfill(dg *discordgo.Session, i *discordgo.In
 
 				if !alreadyExists {
 					streak.CompletedDates = append(streak.CompletedDates, day)
-					// Recalculate streak days based on unique dates
 					streak.Days = len(streak.CompletedDates)
 					
-					// Update LastUpdate if this is the newest
 					if day > streak.LastUpdate {
 						streak.LastUpdate = day
 					}
@@ -558,6 +563,36 @@ func (s *ChallengeService) handleBackfill(dg *discordgo.Session, i *discordgo.In
 					data, _ := json.Marshal(streak)
 					redis_client.Client.Set(redis_client.Ctx, key, data, 0)
 					count++
+				}
+
+				// Always check milestones during backfill to sync roles
+				for mDays, roleID := range cfg.Milestones {
+					if streak.Days >= mDays {
+						// Check if they already have the role to avoid redundant API calls
+						hasRole := false
+						member, err := dg.GuildMember(i.GuildID, msg.Author.ID)
+						if err == nil {
+							for _, rID := range member.Roles {
+								if rID == roleID { hasRole = true; break }
+							}
+						}
+
+						if !hasRole {
+							dg.GuildMemberRoleAdd(i.GuildID, msg.Author.ID, roleID)
+							if report[msg.Author.ID] == nil {
+								report[msg.Author.ID] = &userReport{Username: msg.Author.Username}
+							}
+							
+							// Avoid duplicates in report
+							alreadyReported := false
+							for _, r := range report[msg.Author.ID].Roles {
+								if r == roleID { alreadyReported = true; break }
+							}
+							if !alreadyReported {
+								report[msg.Author.ID].Roles = append(report[msg.Author.ID].Roles, roleID)
+							}
+						}
+					}
 				}
 			}
 		}
@@ -568,6 +603,23 @@ func (s *ChallengeService) handleBackfill(dg *discordgo.Session, i *discordgo.In
 		time.Sleep(500 * time.Millisecond) // Rate limit safety
 	}
 
-	finalContent := fmt.Sprintf("✅ Backfill dokončen! Zpracováno **%d** nových questů pro výzvu **%s**.", count, cfg.ID)
+	finalContent := fmt.Sprintf("✅ Backfill dokončen! Zpracováno **%d** nových questů pro výzvu **%s**.\n\n", count, cfg.ID)
+	
+	if len(report) > 0 {
+		finalContent += "**Předané role:**\n"
+		for userID, r := range report {
+			roleMentions := []string{}
+			for _, rID := range r.Roles {
+				roleMentions = append(roleMentions, fmt.Sprintf("<@&%s>", rID))
+			}
+			finalContent += fmt.Sprintf("- **%s**: %s\n", r.Username, strings.Join(roleMentions, ", "))
+			
+			// Optional: Congratulate in channel
+			dg.ChannelMessageSend(i.ChannelID, fmt.Sprintf("🔥 **Zpětné vyhodnocení:** <@%s> získává role: %s! Gratulujeme! 👑", userID, strings.Join(roleMentions, ", ")))
+		}
+	} else {
+		finalContent += "_Žádné nové role nebyly přiděleny (všichni již mají správné role)._"
+	}
+
 	dg.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &finalContent})
 }
