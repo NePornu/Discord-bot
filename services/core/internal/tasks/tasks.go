@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"log"
+	"os"
 	"strconv"
 	"time"
 
@@ -75,6 +76,62 @@ func StartMemberStats(s *discordgo.Session) {
 			})
 			if err != nil {
 				log.Printf("[ERROR] Failed to update presence: %v", err)
+			}
+		}
+	}()
+}
+
+func AcquireInstanceLock() bool {
+	if redis_client.Client == nil {
+		return true // If Redis is disabled, we can't lock, but we shouldn't block start unless strictly required
+	}
+
+	lockKey := "bot:lock:primary"
+	myID := strconv.Itoa(os.Getpid())
+
+	// Try to set the lock with a 60-second TTL
+	success, err := redis_client.Client.SetNX(redis_client.Ctx, lockKey, myID, 60*time.Second).Result()
+	if err != nil {
+		log.Printf("[ERROR] Failed to check instance lock: %v", err)
+		return false
+	}
+
+	if !success {
+		// Check if we already own it (e.g. from a quick restart)
+		val, _ := redis_client.Client.Get(redis_client.Ctx, lockKey).Result()
+		if val == myID {
+			log.Printf("[INFO] Re-acquired lock held by same PID (%s)", myID)
+			redis_client.Client.Expire(redis_client.Ctx, lockKey, 60*time.Second)
+			return true
+		}
+	}
+
+	return success
+}
+
+func StartLockRefresh() {
+	ticker := time.NewTicker(10 * time.Second)
+	go func() {
+		lockKey := "bot:lock:primary"
+		myID := strconv.Itoa(os.Getpid())
+
+		for range ticker.C {
+			if redis_client.Client == nil {
+				continue
+			}
+
+			val, err := redis_client.Client.Get(redis_client.Ctx, lockKey).Result()
+			if err != nil {
+				log.Printf("[ERROR] Lock refresh failed (get): %v", err)
+				continue
+			}
+
+			if val == myID {
+				// We own the lock, refresh it for 60 more seconds
+				redis_client.Client.Expire(redis_client.Ctx, lockKey, 60*time.Second)
+			} else {
+				log.Printf("[CRITICAL] Instance lock stolen by PID %s! Shutting down to prevent duplicate handling.", val)
+				os.Exit(1)
 			}
 		}
 	}()

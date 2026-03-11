@@ -24,6 +24,7 @@ func NewVerificationService(cfg *config.Config) *VerificationService {
 
 func (v *VerificationService) HandleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
+	log.Printf("DEBUG: HandleButtonClick triggered, customID: %s", customID)
 
 	if strings.HasPrefix(customID, "verif_approve:") {
 		userID := strings.TrimPrefix(customID, "verif_approve:")
@@ -326,6 +327,7 @@ func (v *VerificationService) notifyMods(s *discordgo.Session, userID string) {
 }
 
 func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, userID string) {
+	log.Printf("DEBUG: HandleApprove triggered for user %s", userID)
 	// 1. Manage roles - Remove waiting role only (as clarified: "verified není jen se odebere role")
 	if v.Config.WaitingRoleID != "" {
 		s.GuildMemberRoleRemove(i.GuildID, userID, v.Config.WaitingRoleID)

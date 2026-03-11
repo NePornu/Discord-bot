@@ -58,6 +58,12 @@ func main() {
 		fmt.Printf("Connecting to Redis: %s...\n", cfg.RedisURL)
 		redis_client.Init(cfg.RedisURL)
 		fmt.Println("✅ Redis Connected.")
+
+		if !tasks.AcquireInstanceLock() {
+			log.Fatal("❌ [ERROR] Instance lock is already taken by another process!")
+		}
+		tasks.StartLockRefresh()
+		fmt.Println("✅ Instance lock acquired.")
 	} else {
 		fmt.Println("⚠️ Redis URL is empty. Skipping Redis-dependent services.")
 	}
