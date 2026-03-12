@@ -2,7 +2,8 @@ package redis_client
 
 import (
 	"context"
-	"log"
+	"log/slog"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -13,10 +14,17 @@ var (
 	Ctx    = context.Background()
 )
 
+// Timeout returns a context with a 5-second timeout for Redis operations.
+// Use this for operations that shouldn't hang indefinitely.
+func Timeout() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(Ctx, 5*time.Second)
+}
+
 func Init(redisURL string) {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
-		log.Fatalf("Error parsing Redis URL: %v", err)
+		slog.Error("Error parsing Redis URL", "error", err)
+		os.Exit(1)
 	}
 
 	Client = redis.NewClient(opts)
@@ -25,12 +33,13 @@ func Init(redisURL string) {
 	for i := 0; i < 5; i++ {
 		_, err = Client.Ping(Ctx).Result()
 		if err == nil {
-			log.Println("Connected to Redis successfully")
+			slog.Info("Connected to Redis successfully")
 			return
 		}
-		log.Printf("Attempt %d: Error connecting to Redis: %v. Retrying in 2s...", i+1, err)
+		slog.Warn("Error connecting to Redis", "attempt", i+1, "error", err)
 		time.Sleep(2 * time.Second)
 	}
 	
-	log.Fatalf("Error connecting to Redis after 5 attempts: %v", err)
+	slog.Error("Error connecting to Redis after 5 attempts", "error", err)
+	os.Exit(1)
 }

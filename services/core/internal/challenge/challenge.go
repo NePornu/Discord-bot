@@ -3,7 +3,7 @@ package challenge
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"os"
 	"strings"
@@ -65,12 +65,12 @@ func (s *ChallengeService) LoadConfigs() {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		log.Printf("Challenge config file %s not found. Using empty config.", path)
+		slog.Warn("Challenge config file not found, using empty config", "path", path)
 		return
 	}
 
 	if err := json.Unmarshal(data, &s.Configs); err != nil {
-		log.Printf("Error unmarshaling challenges.json: %v", err)
+		slog.Error("Error unmarshaling challenges.json", "error", err)
 		return
 	}
 

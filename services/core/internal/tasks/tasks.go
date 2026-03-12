@@ -1,7 +1,7 @@
 package tasks
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
@@ -19,7 +19,7 @@ func StartHeartbeat() {
 			}
 			err := redis_client.Client.SetEx(redis_client.Ctx, "bot:heartbeat", strconv.FormatInt(time.Now().Unix(), 10), 120*time.Second).Err()
 			if err != nil {
-				log.Printf("[ERROR] Heartbeat failed: %v", err)
+				slog.Error("Heartbeat failed", "error", err)
 			}
 		}
 	}()
@@ -59,7 +59,7 @@ func StartMemberStats(s *discordgo.Session) {
 				
 				_, err := pipe.Exec(redis_client.Ctx)
 				if err != nil {
-					log.Printf("[ERROR] MemberStats sync failed for guild %s: %v", guild.ID, err)
+					slog.Error("MemberStats sync failed", "guild", guild.ID, "error", err)
 				}
 			}
 
@@ -75,7 +75,7 @@ func StartMemberStats(s *discordgo.Session) {
 				Status: "online",
 			})
 			if err != nil {
-				log.Printf("[ERROR] Failed to update presence: %v", err)
+				slog.Error("Failed to update presence", "error", err)
 			}
 		}
 	}()
@@ -92,7 +92,7 @@ func AcquireInstanceLock() bool {
 	// Try to set the lock with a 60-second TTL
 	success, err := redis_client.Client.SetNX(redis_client.Ctx, lockKey, myID, 60*time.Second).Result()
 	if err != nil {
-		log.Printf("[ERROR] Failed to check instance lock: %v", err)
+		slog.Error("Failed to check instance lock", "error", err)
 		return false
 	}
 
@@ -100,7 +100,7 @@ func AcquireInstanceLock() bool {
 		// Check if we already own it (e.g. from a quick restart)
 		val, _ := redis_client.Client.Get(redis_client.Ctx, lockKey).Result()
 		if val == myID {
-			log.Printf("[INFO] Re-acquired lock held by same PID (%s)", myID)
+			slog.Info("Re-acquired lock held by same PID", "pid", myID)
 			redis_client.Client.Expire(redis_client.Ctx, lockKey, 60*time.Second)
 			return true
 		}
@@ -122,7 +122,7 @@ func StartLockRefresh() {
 
 			val, err := redis_client.Client.Get(redis_client.Ctx, lockKey).Result()
 			if err != nil {
-				log.Printf("[ERROR] Lock refresh failed (get): %v", err)
+				slog.Error("Lock refresh failed (get)", "error", err)
 				continue
 			}
 
@@ -130,7 +130,7 @@ func StartLockRefresh() {
 				// We own the lock, refresh it for 60 more seconds
 				redis_client.Client.Expire(redis_client.Ctx, lockKey, 60*time.Second)
 			} else {
-				log.Printf("[CRITICAL] Instance lock stolen by PID %s! Shutting down to prevent duplicate handling.", val)
+				slog.Error("Instance lock stolen! Shutting down to prevent duplicate handling", "stolen_by", val)
 				os.Exit(1)
 			}
 		}

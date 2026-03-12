@@ -54,8 +54,7 @@ func HandleActivityLeaderboard(s *discordgo.Session, i *discordgo.InteractionCre
 	})
 
 	gid := i.GuildID
-	pattern := fmt.Sprintf("events:msg:%s:*", gid)
-	keys, _ := redis_client.Client.Keys(redis_client.Ctx, pattern).Result()
+	prefix := fmt.Sprintf("events:msg:%s:", gid)
 
 	type userScore struct {
 		ID    string
@@ -63,13 +62,22 @@ func HandleActivityLeaderboard(s *discordgo.Session, i *discordgo.InteractionCre
 	}
 	var scores []userScore
 
-	// pattern is "events:msg:Gid:Uid"
-	prefix := fmt.Sprintf("events:msg:%s:", gid)
-
-	for _, k := range keys {
-		uid := k[len(prefix):]
-		count, _ := redis_client.Client.ZCard(redis_client.Ctx, k).Result()
-		scores = append(scores, userScore{ID: uid, Count: count})
+	// Use SCAN instead of KEYS to avoid blocking Redis
+	var cursor uint64
+	for {
+		keys, nextCursor, err := redis_client.Client.Scan(redis_client.Ctx, cursor, prefix+"*", 100).Result()
+		if err != nil {
+			break
+		}
+		for _, k := range keys {
+			uid := k[len(prefix):]
+			count, _ := redis_client.Client.ZCard(redis_client.Ctx, k).Result()
+			scores = append(scores, userScore{ID: uid, Count: count})
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
 	}
 
 	sort.Slice(scores, func(i, j int) bool {

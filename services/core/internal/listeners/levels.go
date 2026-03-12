@@ -2,27 +2,23 @@ package listeners
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/nepornucz/discord-bot-core/internal/leveling"
 	"github.com/nepornucz/discord-bot-core/internal/redis_client"
 )
 
 type LevelsListener struct {
-	A       float64
-	B       float64
-	CBase   float64
-	MinXP   int
-	MaxXP   int
+	cfg   leveling.LevelConfig
+	MinXP int
+	MaxXP int
 }
 
 func NewLevelsListener() *LevelsListener {
 	return &LevelsListener{
-		A:     50,
-		B:     200,
-		CBase: 100,
+		cfg:   leveling.DefaultConfig(),
 		MinXP: 15,
 		MaxXP: 25,
 	}
@@ -52,24 +48,11 @@ func (l *LevelsListener) OnMessage(s *discordgo.Session, m *discordgo.MessageCre
 
 	redis_client.Client.SetEx(redis_client.Ctx, cooldownKey, "1", 60*time.Second)
 
-	currentLevel := l.calculateLevel(int(newXP))
+	currentLevel := leveling.CalculateLevel(l.cfg, int(newXP))
 	prevXP := int(newXP) - xpGain
-	prevLevel := l.calculateLevel(prevXP)
+	prevLevel := leveling.CalculateLevel(l.cfg, prevXP)
 
 	if currentLevel > prevLevel {
 		fmt.Printf("User %s leveled up to %d\n", uid, currentLevel)
 	}
-}
-
-func (l *LevelsListener) calculateLevel(xp int) int {
-	if float64(xp) < l.CBase {
-		return 0
-	}
-	c := l.CBase - float64(xp)
-	d := (l.B * l.B) - (4 * l.A * c)
-	if d < 0 {
-		return 0
-	}
-	level := (-l.B + math.Sqrt(d)) / (2 * l.A)
-	return int(level)
 }

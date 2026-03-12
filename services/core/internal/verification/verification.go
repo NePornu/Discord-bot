@@ -3,7 +3,7 @@ package verification
 import (
 	crypto_rand "crypto/rand"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/big"
 	"strings"
 	"time"
@@ -23,7 +23,24 @@ func NewVerificationService(cfg *config.Config) *VerificationService {
 
 func (v *VerificationService) HandleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
-	log.Printf("DEBUG: HandleButtonClick triggered, customID: %s", customID)
+	slog.Debug("HandleButtonClick triggered", "customID", customID)
+
+	// Rate limiting: 1 button click per 2 seconds per moderator
+	modID := i.Member.User.ID
+	rateLimitKey := fmt.Sprintf("verify:ratelimit:%s", modID)
+	if redis_client.Client != nil {
+		locked, _ := redis_client.Client.SetNX(redis_client.Ctx, rateLimitKey, "1", 2*time.Second).Result()
+		if !locked {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "⚠️ Prosím zpomalte (rate limit).",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+	}
 
 	if strings.HasPrefix(customID, "verif_approve:") {
 		userID := strings.TrimPrefix(customID, "verif_approve:")
@@ -120,7 +137,7 @@ func (v *VerificationService) GenerateOTP() string {
 }
 
 func (v *VerificationService) OnMemberJoin(s *discordgo.Session, m *discordgo.GuildMemberAdd) {
-	log.Printf("DEBUG: OnMemberJoin triggered for user %s (%s)", m.User.Username, m.User.ID)
+	slog.Debug("OnMemberJoin triggered", "user", m.User.Username, "id", m.User.ID)
 	if m.User.Bot {
 		return
 	}
@@ -130,7 +147,7 @@ func (v *VerificationService) OnMemberJoin(s *discordgo.Session, m *discordgo.Gu
 	if redis_client.Client != nil {
 		locked, _ := redis_client.Client.SetNX(redis_client.Ctx, lockKey, "1", 30*time.Second).Result()
 		if !locked {
-			log.Printf("DEBUG: Another instance is already handling join for user %s", m.User.ID)
+			slog.Debug("Another instance is already handling join", "userID", m.User.ID)
 			return
 		}
 	}
@@ -163,7 +180,7 @@ func (v *VerificationService) OnMemberJoin(s *discordgo.Session, m *discordgo.Gu
 func (v *VerificationService) sendDM(s *discordgo.Session, userID string, otp string) {
 	channel, err := s.UserChannelCreate(userID)
 	if err != nil {
-		log.Printf("Error creating DM channel for %s: %v", userID, err)
+		slog.Error("Error creating DM channel", "userID", userID, "error", err)
 		return
 	}
 
@@ -190,10 +207,10 @@ func (v *VerificationService) logJoin(s *discordgo.Session, m *discordgo.GuildMe
 		"⏳ **Status:** Čeká na zadání kódu...",
 		m.User.Mention(), m.User.Username, m.User.ID, creationTime, creationTime, m.User.AvatarURL("1024"))
 
-	log.Printf("DEBUG: Sending join log to channel %s", logChannel)
+	slog.Debug("Sending join log", "channel", logChannel)
 	msg, err := s.ChannelMessageSend(logChannel, msgContent)
 	if err != nil {
-		log.Printf("Error sending join log to channel %s: %v", logChannel, err)
+		slog.Error("Error sending join log", "channel", logChannel, "error", err)
 		return
 	}
 
@@ -275,7 +292,7 @@ func (v *VerificationService) notifyMods(s *discordgo.Session, userID string) {
 	}
 
 	if msgID != "" {
-		log.Printf("DEBUG: Notifying mods for user %s, editing message %s", userID, msgID)
+		slog.Debug("Notifying mods", "userID", userID, "msgID", msgID)
 		btnApprove := discordgo.Button{
 			Label:    "Schválit (Approve)",
 			Style:    discordgo.SuccessButton,
@@ -304,7 +321,7 @@ func (v *VerificationService) notifyMods(s *discordgo.Session, userID string) {
 		// Update the status in the text message
 		msg, err := s.ChannelMessage(logChannel, msgID)
 		if err != nil {
-			log.Printf("ERROR: Failed to fetch join log message %s: %v", msgID, err)
+			slog.Error("Failed to fetch join log message", "msgID", msgID, "error", err)
 			return
 		}
 
@@ -322,17 +339,17 @@ func (v *VerificationService) notifyMods(s *discordgo.Session, userID string) {
 			Components: &comps,
 		})
 		if err != nil {
-			log.Printf("ERROR: Failed to edit join log message %s: %v", msgID, err)
+			slog.Error("Failed to edit join log message", "msgID", msgID, "error", err)
 		} else {
-			log.Printf("DEBUG: Successfully updated moderator buttons for user %s", userID)
+			slog.Debug("Successfully updated moderator buttons", "userID", userID)
 		}
 	} else {
-		log.Printf("WARN: No join log message ID found in Redis for user %s", userID)
+		slog.Warn("No join log message ID found in Redis", "userID", userID)
 	}
 }
 
 func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, userID string) {
-	log.Printf("DEBUG: HandleApprove triggered for user %s", userID)
+	slog.Debug("HandleApprove triggered", "userID", userID)
 	// 1. Manage roles - Remove waiting role only (as clarified: "verified není jen se odebere role")
 	if v.Config.WaitingRoleID != "" {
 		s.GuildMemberRoleRemove(i.GuildID, userID, v.Config.WaitingRoleID)
@@ -351,7 +368,7 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 		// 1. Acquire lock to prevent concurrent approvals
 		locked, _ := redis_client.Client.SetNX(redis_client.Ctx, lockKey, "1", 10*time.Second).Result()
 		if !locked {
-			log.Printf("DEBUG: HandleApprove already in progress for user %s", userID)
+			slog.Debug("HandleApprove already in progress", "userID", userID)
 			if i.Type == discordgo.InteractionMessageComponent {
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -368,7 +385,7 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 		// 2. Check if already approved
 		status, _ := redis_client.Client.HGet(redis_client.Ctx, key, "status").Result()
 		if status == "APPROVED" {
-			log.Printf("DEBUG: User %s already approved", userID)
+			slog.Debug("User already approved", "userID", userID)
 			if i.Type == discordgo.InteractionMessageComponent {
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseUpdateMessage,
@@ -438,7 +455,7 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 		// Delete the moderator message as requested
 		err := s.ChannelMessageDelete(i.ChannelID, i.Message.ID)
 		if err != nil {
-			log.Printf("ERROR: Failed to delete moderator message %s: %v", i.Message.ID, err)
+			slog.Error("Failed to delete moderator message", "msgID", i.Message.ID, "error", err)
 			// Fallback to update if delete fails
 			content := fmt.Sprintf("✅ **Uživatel <@%s> byl schválen.**", userID)
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

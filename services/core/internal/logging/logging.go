@@ -2,6 +2,7 @@ package logging
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -10,16 +11,21 @@ import (
 
 type Logger struct {
 	Config *config.Config
+	sl     *slog.Logger
 }
 
 func NewLogger(cfg *config.Config) *Logger {
-	return &Logger{Config: cfg}
+	return &Logger{
+		Config: cfg,
+		sl:     slog.Default(),
+	}
 }
 
 func (l *Logger) OnMessageDelete(s *discordgo.Session, m *discordgo.MessageDelete) {
 	// For Delete, we MUST check State
 	oldMsg, err := s.State.Message(m.ChannelID, m.ID)
 	if err != nil || oldMsg == nil || oldMsg.Author == nil {
+		slog.Debug("Message delete log skipped: original not in state", "channel", m.ChannelID, "id", m.ID)
 		return
 	}
 

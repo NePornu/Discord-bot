@@ -2,7 +2,7 @@ package commands
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
@@ -45,7 +45,7 @@ func HandleSSOStatus(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// 2. Fetch groups from Keycloak
 	groups, err := KcClient.GetUserGroups(kcUserID)
 	if err != nil {
-		log.Printf("Error fetching groups for %s: %v", userID, err)
+		slog.Error("Error fetching groups", "userID", userID, "error", err)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: Pointer("❌ **Chyba při komunikaci s Keycloak.** Zkuste to prosím později."),
 		})

@@ -2,7 +2,7 @@ package commands
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -51,7 +51,7 @@ func HandlePurge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	err = s.ChannelMessagesBulkDelete(i.ChannelID, msgIDs)
 	if err != nil {
-		log.Printf("Error bulk deleting: %v", err)
+		slog.Error("Error bulk deleting", "error", err)
 		content := "❌ Nepodařilo se smazat zprávy (zprávy starší 14 dnů nelze hromadně mazat)."
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: &content,

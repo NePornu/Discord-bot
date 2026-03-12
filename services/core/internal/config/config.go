@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -30,7 +30,7 @@ func LoadConfig() *Config {
 	envPaths := []string{".env", "../.env", "/app/.env"}
 	for _, path := range envPaths {
 		if err := godotenv.Load(path); err == nil {
-			log.Printf("Loaded config from %s", path)
+			slog.Info("Loaded config", "path", path)
 			break
 		}
 	}

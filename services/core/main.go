@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -30,49 +31,55 @@ func sendConsoleLog(s *discordgo.Session, channelID string, msg string) {
 		return
 	}
 	ts := time.Now().Format("2006-01-02 15:04:05")
-	fullMsg := fmt.Sprintf("```[%s] %s```", ts, msg)
+	fullMsg := "```[" + ts + "] " + msg + "```"
 	_, err := s.ChannelMessageSend(channelID, fullMsg)
 	if err != nil {
-		log.Printf("Failed to send console log: %v", err)
+		slog.Error("Failed to send console log", "error", err)
 	}
 }
 
 func main() {
+	// Initialize structured logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("CRITICAL PANIC RECOVERED: %v\n", r)
-			log.Printf("CRITICAL PANIC: %v", r)
+			slog.Error("CRITICAL PANIC RECOVERED", "error", r)
 		}
 	}()
 
-	fmt.Println("=== INITIALIZING GO CORE (REWRITE) ===")
+	slog.Info("Initializing Go Core (REWRITE)")
 	cfg := config.LoadConfig()
 
 	if cfg.BotToken == "" {
-		log.Fatal("BOT_TOKEN is missing in environment!")
+		slog.Error("BOT_TOKEN is missing in environment!")
+		os.Exit(1)
 	}
 
-	fmt.Printf("Config Loaded. Redis: %s | Guild: %s\n", cfg.RedisURL, cfg.GuildID)
+	slog.Info("Config Loaded", "redis", cfg.RedisURL != "", "guild", cfg.GuildID)
 
 	// Initialize Redis with retry
 	if cfg.RedisURL != "" {
-		fmt.Printf("Connecting to Redis: %s...\n", cfg.RedisURL)
+		slog.Info("Connecting to Redis", "url", cfg.RedisURL)
 		redis_client.Init(cfg.RedisURL)
-		fmt.Println("✅ Redis Connected.")
+		slog.Info("Redis Connected")
 
 		if !tasks.AcquireInstanceLock() {
-			log.Fatal("❌ [ERROR] Instance lock is already taken by another process!")
+			slog.Error("Instance lock is already taken by another process!")
+			os.Exit(1)
 		}
 		tasks.StartLockRefresh()
-		fmt.Println("✅ Instance lock acquired.")
+		slog.Info("Instance lock acquired")
 	} else {
-		fmt.Println("⚠️ Redis URL is empty. Skipping Redis-dependent services.")
+		slog.Warn("Redis URL is empty. Skipping Redis-dependent services.")
 	}
 
 	// Initialize Services
-	fmt.Println("Initializing Subservices...")
+	slog.Info("Initializing Subservices")
 	if redis_client.Client == nil && cfg.RedisURL != "" {
-		log.Fatal("Redis client is nil but URL was provided. Cannot proceed.")
+		slog.Error("Redis client is nil but URL was provided. Cannot proceed.")
+		os.Exit(1)
 	}
 
 	logHandler := logging.NewLogger(cfg)
@@ -89,381 +96,396 @@ func main() {
 	var calendarService *calendar.CalendarService
 	if redis_client.Client != nil {
 		calendarService = calendar.NewCalendarService(cfg, redis_client.Client)
-		fmt.Println("✅ Calendar Service Initialized.")
+		slog.Info("Calendar Service Initialized")
 	} else {
-		fmt.Println("⚠️ Calendar Service Skipped (No Redis).")
+		slog.Warn("Calendar Service Skipped (No Redis)")
 	}
 	
-	fmt.Println("✅ Basic Subservices Initialized.")
+	slog.Info("Basic Subservices Initialized")
 
 	dg, err := discordgo.New("Bot " + cfg.BotToken)
 	if err != nil {
-		fmt.Printf("FATAL: Discord Creation Error: %v\n", err)
-		log.Fatalf("Error creating Discord session: %v", err)
+		slog.Error("Error creating Discord session", "error", err)
+		os.Exit(1)
 	}
 
 	// Enable intents
 	dg.Identify.Intents = discordgo.IntentsAll
 	dg.StateEnabled = true
 
+	// Register slash commands
+	cmdList := []*discordgo.ApplicationCommand{
+		{
+			Name:        "ping",
+			Description: "Replies with Pong!",
+		},
+		{
+			Name:        "help",
+			Description: "Zobrazí nápovědu k botovi",
+		},
+		{
+			Name:        "echo",
+			Description: "Repeats your message",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "zprava",
+					Description: "Zpráva k opakování",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        "purge",
+			Description: "Smaže určitý počet zpráv",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "pocet",
+					Description: "Počet zpráv ke smazání (max 100)",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        "stats",
+			Description: "Statistiky serveru a bota",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "server",
+					Description: "Zobrazí aktuální statistiky serveru",
+				},
+			},
+		},
+		{
+			Name:        "report",
+			Description: "Nahlásit uživatele moderátorům",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "uzivatel",
+					Description: "Uživatel k nahlášení",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "duvod",
+					Description: "Důvod nahlášení",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        "gdpr",
+			Description: "Zobrazit informace o vašich datech",
+		},
+		{
+			Name:        "rank",
+			Description: "Zobrazí tvůj aktuální level a XP",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "uzivatel",
+					Description: "Uživatel k zobrazení",
+					Required:    false,
+				},
+			},
+		},
+		{
+			Name:        "activity",
+			Description: "Zobrazí tvou aktivitu na serveru",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "uzivatel",
+					Description: "Uživatel k zobrazení",
+					Required:    false,
+				},
+			},
+		},
+		{
+			Name:        "rank-leaderboard",
+			Description: "TOP 10 uživatelů podle XP",
+		},
+		{
+			Name:        "activity-leaderboard",
+			Description: "TOP 10 nejaktivnějších (podle zpráv)",
+		},
+		{
+			Name:        "status",
+			Description: "Odešle embed s aktuálním stavem služby",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "stav",
+					Description: "Kód (1-11) nebo název stavu",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "sluzba",
+					Description: "Název služby",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "podrobnosti",
+					Description: "Dodatečné informace",
+					Required:    false,
+				},
+			},
+		},
+		{
+			Name:        "verify",
+			Description: "Příkazy pro ověření uživatelů",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "bypass",
+					Description: "Manuálně schválí uživatele",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionUser,
+							Name:        "uzivatel",
+							Description: "Uživatel k schválení",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "set_bypass",
+					Description: "Nastaví tajné bypass heslo",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "heslo",
+							Description: "Nové heslo",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "ping",
+					Description: "Pošle ti testovací DM s OTP",
+				},
+			},
+		},
+		{
+			Name:        "automod",
+			Description: "Správa automatické moderace",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "filter-add",
+					Description: "Přidat regex filtr",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "pattern",
+							Description: "Regex vzor",
+							Required:    true,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "action",
+							Description: "Akce (approve/auto_reject)",
+							Choices: []*discordgo.ApplicationCommandOptionChoice{
+								{Name: "Schválení", Value: "approve"},
+								{Name: "Auto-Reject", Value: "auto_reject"},
+							},
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "filter-list",
+					Description: "Seznam filtrů",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "filter-remove",
+					Description: "Odstranit filtr",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionInteger,
+							Name:        "index",
+							Description: "Číslo filtru k odstranění",
+							Required:    true,
+						},
+					},
+				},
+			},
+		},
+		{
+			Name:        "notify",
+			Description: "Poslat hromadné DM oznámení (Admin only)",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "zprava",
+					Description: "Text oznámení",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "cil",
+					Description: "Cíl (ALL nebo název role)",
+					Required:    false,
+				},
+			},
+		},
+		{
+			Name:        "challenge",
+			Description: "Správa výzev",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "setup",
+					Description: "Vytvořit nebo upravit výzvu",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "id",
+							Description: "Unikátní ID výzvy (např. nelednacek)",
+							Required:    true,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "pattern",
+							Description: "Vzor zprávy (např. Quest —)",
+							Required:    false,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionChannel,
+							Name:        "channel",
+							Description: "Kanál pro výzvu",
+							Required:    false,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "start",
+							Description: "Datum zahájení (YYYYMMDD)",
+							Required:    false,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "end",
+							Description: "Datum ukončení (YYYYMMDD)",
+							Required:    false,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "milestone",
+					Description: "Přidat milník k výzvě",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "id",
+							Description: "ID výzvy",
+							Required:    true,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionInteger,
+							Name:        "days",
+							Description: "Počet dní",
+							Required:    true,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionRole,
+							Name:        "role",
+							Description: "Role k udělení",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "info",
+					Description: "Informace o výzvě",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "id",
+							Description: "ID výzvy (volitelné)",
+							Required:    false,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "stats",
+					Description: "Tvůj pokrok ve výzvě",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "backfill",
+					Description: "Doplnit historii výzvy (Admin)",
+				},
+			},
+		},
+		{
+			Name:        "rep",
+			Description: "Systém reputace a hodnocení členů",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "give",
+					Description: "Udělí bod reputace uživateli",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionUser,
+							Name:        "uzivatel",
+							Description: "Uživatel, kterému chceš dát bod",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "stats",
+					Description: "Zobrazí počet bodů reputace",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionUser,
+							Name:        "uzivatel",
+							Description: "Uživatel (volitelné)",
+							Required:    false,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "top",
+					Description: "Zobrazí žebříček nejvíce nápomocných členů",
+				},
+			},
+		},
+	}
+
+	// Set permissions
+	adminPerm := int64(discordgo.PermissionAdministrator)
+	modPerm := int64(discordgo.PermissionKickMembers)
+	for _, cmd := range cmdList {
+		switch cmd.Name {
+		case "purge", "echo", "status", "notify", "stats":
+			cmd.DefaultMemberPermissions = &adminPerm
+		case "verify", "automod":
+			cmd.DefaultMemberPermissions = &modPerm
+		}
+	}
+
 	// Register handlers
 	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		log.Printf("Bot is online: %s#%s", s.State.User.Username, s.State.User.Discriminator)
+		slog.Info("Bot is online", "user", s.State.User.Username+"#"+s.State.User.Discriminator)
 		
-		// Register slash commands
-		cmdList := []*discordgo.ApplicationCommand{
-			{
-				Name:        "ping",
-				Description: "Replies with Pong!",
-			},
-			{
-				Name:        "echo",
-				Description: "Repeats your message",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "zprava",
-						Description: "Zpráva k opakování",
-						Required:    true,
-					},
-				},
-			},
-			{
-				Name:        "purge",
-				Description: "Smaže určitý počet zpráv",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionInteger,
-						Name:        "pocet",
-						Description: "Počet zpráv ke smazání (max 100)",
-						Required:    true,
-					},
-				},
-			},
-			{
-				Name:        "report",
-				Description: "Nahlásit uživatele moderátorům",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionUser,
-						Name:        "uzivatel",
-						Description: "Uživatel k nahlášení",
-						Required:    true,
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "duvod",
-						Description: "Důvod nahlášení",
-						Required:    true,
-					},
-				},
-			},
-			{
-				Name:        "gdpr",
-				Description: "Zobrazit informace o vašich datech",
-			},
-			{
-				Name:        "rank",
-				Description: "Zobrazí tvůj aktuální level a XP",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionUser,
-						Name:        "uzivatel",
-						Description: "Uživatel k zobrazení",
-						Required:    false,
-					},
-				},
-			},
-			{
-				Name:        "activity",
-				Description: "Zobrazí tvou aktivitu na serveru",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionUser,
-						Name:        "uzivatel",
-						Description: "Uživatel k zobrazení",
-						Required:    false,
-					},
-				},
-			},
-			{
-				Name:        "rank-leaderboard",
-				Description: "TOP 10 uživatelů podle XP",
-			},
-			{
-				Name:        "activity-leaderboard",
-				Description: "TOP 10 nejaktivnějších (podle zpráv)",
-			},
-			{
-				Name:        "status",
-				Description: "Odešle embed s aktuálním stavem služby",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "stav",
-						Description: "Kód (1-11) nebo název stavu",
-						Required:    true,
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "sluzba",
-						Description: "Název služby",
-						Required:    true,
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "podrobnosti",
-						Description: "Dodatečné informace",
-						Required:    false,
-					},
-				},
-			},
-			{
-				Name:        "verify",
-				Description: "Příkazy pro ověření uživatelů",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "bypass",
-						Description: "Manuálně schválí uživatele",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionUser,
-								Name:        "uzivatel",
-								Description: "Uživatel k schválení",
-								Required:    true,
-							},
-						},
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "set_bypass",
-						Description: "Nastaví tajné bypass heslo",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "heslo",
-								Description: "Nové heslo",
-								Required:    true,
-							},
-						},
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "ping",
-						Description: "Pošle ti testovací DM s OTP",
-					},
-				},
-			},
-			{
-				Name:        "automod",
-				Description: "Správa automatické moderace",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "filter-add",
-						Description: "Přidat regex filtr",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "pattern",
-								Description: "Regex vzor",
-								Required:    true,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "action",
-								Description: "Akce (approve/auto_reject)",
-								Choices: []*discordgo.ApplicationCommandOptionChoice{
-									{Name: "Schválení", Value: "approve"},
-									{Name: "Auto-Reject", Value: "auto_reject"},
-								},
-							},
-						},
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "filter-list",
-						Description: "Seznam filtrů",
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "filter-remove",
-						Description: "Odstranit filtr",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionInteger,
-								Name:        "index",
-								Description: "Číslo filtru k odstranění",
-								Required:    true,
-							},
-						},
-					},
-				},
-			},
-			{
-				Name:        "notify",
-				Description: "Poslat hromadné DM oznámení (Admin only)",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "zprava",
-						Description: "Text oznámení",
-						Required:    true,
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "cil",
-						Description: "Cíl (ALL nebo název role)",
-						Required:    false,
-					},
-				},
-			},
-			{
-				Name:        "challenge",
-				Description: "Správa výzev",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "setup",
-						Description: "Vytvořit nebo upravit výzvu",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "id",
-								Description: "Unikátní ID výzvy (např. nelednacek)",
-								Required:    true,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "pattern",
-								Description: "Vzor zprávy (např. Quest —)",
-								Required:    false,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionChannel,
-								Name:        "channel",
-								Description: "Kanál pro výzvu",
-								Required:    false,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "start",
-								Description: "Datum zahájení (YYYYMMDD)",
-								Required:    false,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "end",
-								Description: "Datum ukončení (YYYYMMDD)",
-								Required:    false,
-							},
-						},
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "milestone",
-						Description: "Přidat milník k výzvě",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "id",
-								Description: "ID výzvy",
-								Required:    true,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionInteger,
-								Name:        "days",
-								Description: "Počet dní",
-								Required:    true,
-							},
-							{
-								Type:        discordgo.ApplicationCommandOptionRole,
-								Name:        "role",
-								Description: "Role k udělení",
-								Required:    true,
-							},
-						},
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "info",
-						Description: "Informace o výzvě",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionString,
-								Name:        "id",
-								Description: "ID výzvy (volitelné)",
-								Required:    false,
-							},
-						},
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "stats",
-						Description: "Tvůj pokrok ve výzvě",
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "backfill",
-						Description: "Doplnit historii výzvy (Admin)",
-					},
-				},
-			},
-			{
-				Name:        "rep",
-				Description: "Systém reputace a hodnocení členů",
-				Options: []*discordgo.ApplicationCommandOption{
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "give",
-						Description: "Udělí bod reputace uživateli",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionUser,
-								Name:        "uzivatel",
-								Description: "Uživatel, kterému chceš dát bod",
-								Required:    true,
-							},
-						},
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "stats",
-						Description: "Zobrazí počet bodů reputace",
-						Options: []*discordgo.ApplicationCommandOption{
-							{
-								Type:        discordgo.ApplicationCommandOptionUser,
-								Name:        "uzivatel",
-								Description: "Uživatel (volitelné)",
-								Required:    false,
-							},
-						},
-					},
-					{
-						Type:        discordgo.ApplicationCommandOptionSubCommand,
-						Name:        "top",
-						Description: "Zobrazí žebříček nejvíce nápomocných členů",
-					},
-				},
-			},
-		}
-
-		adminPerm := int64(discordgo.PermissionAdministrator)
-		modPerm := int64(discordgo.PermissionKickMembers)
-
-		for _, cmd := range cmdList {
-			switch cmd.Name {
-			case "purge", "echo", "status", "notify":
-				cmd.DefaultMemberPermissions = &adminPerm
-			case "verify", "automod":
-				cmd.DefaultMemberPermissions = &modPerm
-			}
-		}
-
-		_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", cmdList)
+		_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, cfg.GuildID, cmdList)
 		if err != nil {
-			log.Printf("Cannot bulk register commands: %v", err)
+			slog.Error("Cannot bulk register commands", "error", err)
 		}
 
 		if cfg.ConsoleChannelID != "" {
@@ -503,6 +525,10 @@ func main() {
 					Content: "Pong from Go! 🏓",
 				},
 			})
+		case "help":
+			commands.HandleHelp(s, i, cmdList)
+		case "stats":
+			commands.HandleServerStats(s, i)
 		case "echo":
 			commands.HandleEcho(s, i)
 		case "purge":
@@ -562,29 +588,41 @@ func main() {
 		}
 	})
 
-	fmt.Println("Opening Discord connection...")
+	slog.Info("Opening Discord connection")
 	err = dg.Open()
 	if err != nil {
-		fmt.Printf("Fatalf: Error opening connection: %v\n", err)
-		log.Fatalf("Error opening connection: %v", err)
+		slog.Error("Error opening connection", "error", err)
+		os.Exit(1)
 	}
-	fmt.Println("Success: Discord connection opened.")
+	slog.Info("Discord connection opened successfully")
 
 	// Start background tasks
 	tasks.StartHeartbeat()
 	tasks.StartMemberStats(dg)
 
-	log.Println("Bot is now running. Press CTRL-C to exit.")
+	// Start Health Check HTTP server
+	go func() {
+		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		slog.Info("Health check server starting", "port", 8080)
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			slog.Error("Health check server failed", "error", err)
+		}
+	}()
+
+	slog.Info("Bot is now running. Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
 	// Graceful shutdown: release instance lock
-	log.Println("Shutting down...")
+	slog.Info("Shutting down...")
 	if redis_client.Client != nil {
 		lockKey := "bot:lock:primary"
 		redis_client.Client.Del(redis_client.Ctx, lockKey)
-		log.Println("Instance lock released.")
+		slog.Info("Instance lock released")
 	}
 
 	dg.Close()

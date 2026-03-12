@@ -2,24 +2,20 @@ package commands
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/nepornucz/discord-bot-core/internal/leveling"
 	"github.com/nepornucz/discord-bot-core/internal/redis_client"
 )
 
 type LevelsHandler struct {
-	A       float64
-	B       float64
-	CBase   float64
+	cfg leveling.LevelConfig
 }
 
 func NewLevelsHandler() *LevelsHandler {
 	return &LevelsHandler{
-		A:     50,
-		B:     200,
-		CBase: 100,
+		cfg: leveling.DefaultConfig(),
 	}
 }
 
@@ -41,12 +37,12 @@ func (h *LevelsHandler) HandleRank(s *discordgo.Session, i *discordgo.Interactio
 
 	score, _ := redis_client.Client.ZScore(redis_client.Ctx, xpKey, uid).Result()
 	totalXP := int(score)
-	level := h.calculateLevel(totalXP)
+	level := leveling.CalculateLevel(h.cfg, totalXP)
 
 	rank, _ := redis_client.Client.ZRevRank(redis_client.Ctx, xpKey, uid).Result()
 	rankDisplay := strconv.FormatInt(rank+1, 10)
 
-	nextLevelXP := h.xpForLevel(level + 1)
+	nextLevelXP := leveling.XPForLevel(h.cfg, level+1)
 	xpNeeded := nextLevelXP - totalXP
 
 	embed := &discordgo.MessageEmbed{
@@ -91,7 +87,7 @@ func (h *LevelsHandler) HandleLeaderboard(s *discordgo.Session, i *discordgo.Int
 	var desc string
 	for idx, member := range topUsers {
 		xp := int(member.Score)
-		level := h.calculateLevel(xp)
+		level := leveling.CalculateLevel(h.cfg, xp)
 		desc += fmt.Sprintf("**%d.** <@%s> — **Lvl %d** (%d XP)\n", idx+1, member.Member.(string), level, xp)
 	}
 
@@ -104,21 +100,4 @@ func (h *LevelsHandler) HandleLeaderboard(s *discordgo.Session, i *discordgo.Int
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
-}
-
-func (h *LevelsHandler) calculateLevel(xp int) int {
-	if float64(xp) < h.CBase {
-		return 0
-	}
-	c := h.CBase - float64(xp)
-	d := (h.B * h.B) - (4 * h.A * c)
-	if d < 0 {
-		return 0
-	}
-	level := (-h.B + math.Sqrt(d)) / (2 * h.A)
-	return int(level)
-}
-
-func (h *LevelsHandler) xpForLevel(level int) int {
-	return int(h.A*float64(level*level) + h.B*float64(level) + h.CBase)
 }
