@@ -2,7 +2,6 @@ package logging
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -82,9 +81,4 @@ func (l *Logger) truncate(s string, max int) string {
 		return s
 	}
 	return s[:max-3] + "..."
-}
-
-func (l *Logger) getCreationTime(idStr string) int64 {
-	id, _ := strconv.ParseInt(idStr, 10, 64)
-	return (id >> 22) / 1000 + 1420070400
 }

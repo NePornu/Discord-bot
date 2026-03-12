@@ -115,10 +115,10 @@ func (a *AutoModService) isExempt(s *discordgo.Session, m *discordgo.Message, f 
 		}
 	}
 
-	// 3. Simple containment check for whitelist (can be refined)
+	// 3. Whitelist: if message contains a whitelisted term, exempt it
 	for _, w := range f.Whitelist {
 		if strings.Contains(strings.ToLower(m.Content), strings.ToLower(w)) {
-			// Simple check for now
+			return true
 		}
 	}
 

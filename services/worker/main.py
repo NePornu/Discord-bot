@@ -1,5 +1,4 @@
 
-
 from __future__ import annotations
 
 import asyncio
@@ -8,9 +7,7 @@ import time
 import platform
 import sys
 from datetime import datetime
-import os
 
-# Manual .env loading
 # Manual .env loading (trying multiple paths for local vs container)
 env_paths = [
     os.path.join(os.getcwd(), ".env"),
@@ -30,10 +27,9 @@ for env_path in env_paths:
         break
 
 import discord
-
-from discord.ext import commands, tasks 
+from discord.ext import commands, tasks
 from shared.python.config import config
-import redis.asyncio as redis 
+import redis.asyncio as redis
 from shared.python.redis_client import get_redis_client
 
 
@@ -42,7 +38,6 @@ def ts() -> str:
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=config.BOT_PREFIX, intents=intents)
-
 
 bot.remove_command("help")
 
@@ -57,7 +52,7 @@ async def send_console_log(msg: str):
             print(f"[PENDING] {fullmsg}")
             return
         channel = bot.get_channel(config.CONSOLE_CHANNEL_ID)
-        print(f"[lOG] {fullmsg}")
+        print(f"[LOG] {fullmsg}")
         if channel:
             for i in range(0, len(fullmsg), 1900):
                 await channel.send(f"```{fullmsg[i:i+1900]}```")
@@ -104,7 +99,7 @@ async def sync_tree(ctx: commands.Context, scope: str = "guild"):
 async def load_commands():
     start = time.time()
     await send_console_log("START: načítání cogů (Python Worker)…")
-    
+
     commands_dir = os.path.join(os.path.dirname(__file__), "commands")
     if not os.path.exists(commands_dir):
         await send_console_log(f"[FATAL] složka '{commands_dir}' neexistuje")
@@ -131,7 +126,7 @@ async def load_commands():
     await send_console_log(f"Načítání cogů hotovo za {time.time()-start:.2f}s")
     return loaded_cogs
 
-# Background tasks logic migrated to Go Core. 
+# Background tasks logic migrated to Go Core.
 # Empty loops kept as placeholders to avoid breaking refresh logic if referenced.
 @tasks.loop(seconds=60)
 async def member_stats_task():
@@ -158,7 +153,7 @@ async def refresh_instance_lock_task():
     try:
         r = await get_redis_client()
         val = await r.get(lock_key)
-        
+
         if val == my_pid:
             # We own it, refresh with 2 minute TTL for safety
             await r.expire(lock_key, 120)
@@ -180,10 +175,6 @@ async def refresh_instance_lock_task():
             await r.aclose()
 
 
-@member_stats_task.before_loop
-async def before_member_stats_task():
-    pass
-
 @tasks.loop(seconds=60)
 async def heartbeat_task():
     """Updates a heartbeat key in Redis to show the bot is alive."""
@@ -203,17 +194,15 @@ async def before_heartbeat_task():
 
 @bot.event
 async def on_ready():
-    import platform
-    import sys
     await send_console_log("=== PYTHON WORKER SPUŠTĚN ===")
     await send_console_log(f"Platforma: {platform.platform()} | Python: {sys.version.split(' ')[0]}")
     await send_console_log(f"PID: {os.getpid()} | CWD: {os.getcwd()}")
-    
+
     loaded_cogs = await load_commands()
     await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
-    
+
     # Status updated in Go Core
-    
+
     guilds = list(bot.guilds)
     await send_console_log(f"Členem {len(guilds)} serverů: {[g.name for g in guilds]}")
 
@@ -236,20 +225,12 @@ async def on_ready():
     global pending_console_msgs
     errors = [m for m in pending_console_msgs if "FATAL" in m or "ERROR" in m or "Chyba" in m]
     pending_console_msgs.clear()
-    
+
     for err in errors:
         await send_console_log(err)
 
-
-    # await send_console_log("Načítám cogy…")
-    # await send_console_log("Načítám cogy…")
-    # await load_commands()
-
-    
-    
     # Automatic global sync removed to prevent conflicts with Go-core commands.
     # Use !sync command manually if needed.
-    pass
 
 
 @bot.tree.error
@@ -257,7 +238,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
     try:
         import discord.app_commands as app_errors
         if isinstance(error, app_errors.errors.CommandNotFound):
-            return # Be silent, might be handled by Go-core
+            return  # Be silent, might be handled by Go-core
         # log other app command errors
         await send_console_log(f"⚠️ App command error: {error}")
     except Exception as e:
@@ -266,15 +247,11 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
 @bot.event
 async def on_guild_join(guild: discord.Guild):
     await send_console_log(f"🆕 PŘIPOJEN NA GUIDLU: {guild.name} ({guild.id})")
-    
-    
+
     token = config.BOT_TOKEN
     if token:
         import subprocess
-        import sys
         try:
-            import os
-            
             script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts", "backfill_stats.py"))
             cmd = [sys.executable, script_path, "--guild_id", str(guild.id), "--token", token]
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -286,7 +263,7 @@ async def on_guild_join(guild: discord.Guild):
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
         idx_key = "bot:guilds:worker"
-        
+
         await r.sadd(idx_key, str(guild.id))
         await r.sadd("bot:guilds", str(guild.id))
     except Exception as e:
@@ -300,17 +277,14 @@ async def on_guild_join(guild: discord.Guild):
 @bot.event
 async def on_guild_remove(guild: discord.Guild):
     await send_console_log(f"👋 ODPOJEN ZE SERVERU: {guild.name} ({guild.id})")
-    
+
     r = None
     try:
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
         idx_key = "bot:guilds:worker"
-        
+
         await r.srem(idx_key, str(guild.id))
-        
-        
-        await r.srem("bot:guilds", str(guild.id)) 
-        
+        await r.srem("bot:guilds", str(guild.id))
     except Exception as e:
         print(f"Redis remove error: {e}")
     finally:
@@ -318,64 +292,8 @@ async def on_guild_remove(guild: discord.Guild):
             await r.aclose()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-
-    
-
-
-
-
-
-
-
-
-
-    
-
-
-
-    
-
-
-
-
-
-
-
-
-
 @bot.check
 async def globally_block_commands(ctx: commands.Context):
-    
     if ctx.command is None:
         return True
     command_name = ctx.command.name
@@ -392,18 +310,16 @@ async def globally_block_commands(ctx: commands.Context):
 async def main():
     await log_start_info()
     await send_console_log("Inicializace…")
-    
-    import os
+
     token = config.BOT_TOKEN
     if not token or len(token) < 30:
         await send_console_log("[FATAL] Chybí validní bot token")
         print(ts(), "[FATAL] Chybí validní bot token")
         return
     await send_console_log("Token OK, startuji…")
-    
-    import os
+
     is_lite = os.getenv("BOT_LITE_MODE", "0") == "1"
-    
+
     # Instance Locking
     r_lock = await get_redis_client()
     if not await acquire_instance_lock(r_lock, is_lite):
@@ -411,7 +327,7 @@ async def main():
         await r_lock.aclose()
         return
     await r_lock.aclose()
-    
+
     refresh_instance_lock_task.start()
     print(ts(), "✅ Instance lock acquired (Worker)")
 

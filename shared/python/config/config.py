@@ -32,6 +32,12 @@ PATTERN_SCAN_INTERVAL_MINUTES = 15
 PATTERN_ALERT_COOLDOWN_HOURS = 24
 DIARY_CHANNEL_NAMES = ["denik-abstinence", "deník", "diary", "můj-deník"]
 
+# --- Quest / Challenge ---
+QUEST_CHANNEL_ID = int(os.getenv("QUEST_CHANNEL_ID", "0")) or None  # None = any channel
+CHALLENGE_START_DATE = os.getenv("CHALLENGE_START_DATE", "20260210")
+CHALLENGE_END_DATE = os.getenv("CHALLENGE_END_DATE", "20260310")
+HABIT_ROLES = {}  # Milestone days -> role ID, e.g. {7: 123456, 14: 789012, 21: ...}
+
 COMMANDS_CONFIG = {
     "ping": {"enabled": True, "admin_only": False},
     "echo": {"enabled": True, "admin_only": True},

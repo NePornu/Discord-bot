@@ -1,9 +1,10 @@
 package verification
 
 import (
+	crypto_rand "crypto/rand"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/big"
 	"strings"
 	"time"
 
@@ -17,8 +18,6 @@ type VerificationService struct {
 }
 
 func NewVerificationService(cfg *config.Config) *VerificationService {
-	// Initialize random seed
-	rand.Seed(time.Now().UnixNano())
 	return &VerificationService{Config: cfg}
 }
 
@@ -109,7 +108,13 @@ func (v *VerificationService) GenerateOTP() string {
 	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	b := make([]byte, 6)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		n, err := crypto_rand.Int(crypto_rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			// Fallback to simple index if crypto/rand fails (extremely unlikely)
+			b[i] = charset[0]
+			continue
+		}
+		b[i] = charset[n.Int64()]
 	}
 	return string(b)
 }
@@ -418,7 +423,7 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 		v.parseInt(state["created_at"]),
 		v.parseInt(state["code_entered_at"]),
 		now.Unix(),
-		i.Member.User.ID)
+		v.getModeratorID(i))
 
 	logMsg, err := s.ChannelMessageSend(v.Config.VerifLogChannel, logContent)
 	if err == nil {
@@ -499,6 +504,15 @@ func (v *VerificationService) parseInt(s string) int64 {
 	return val
 }
 
+func (v *VerificationService) getModeratorID(i *discordgo.InteractionCreate) string {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID
+	}
+	if i.User != nil {
+		return i.User.ID
+	}
+	return "unknown"
+}
 
 func (v *VerificationService) confirmSuccess(s *discordgo.Session, userID string) {
 	channel, err := s.UserChannelCreate(userID)

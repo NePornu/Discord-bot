@@ -22,6 +22,7 @@ import (
 	"github.com/nepornucz/discord-bot-core/internal/notifications"
 	"github.com/nepornucz/discord-bot-core/internal/challenge"
 	"github.com/nepornucz/discord-bot-core/internal/calendar"
+	"github.com/nepornucz/discord-bot-core/internal/reputation"
 )
 
 func sendConsoleLog(s *discordgo.Session, channelID string, msg string) {
@@ -81,6 +82,8 @@ func main() {
 	automodService := automod.NewAutoModService(cfg)
 	notifyService := notifications.NewNotifyService(cfg)
 	challengeService := challenge.NewChallengeService(cfg)
+	repService := reputation.NewReputationService(cfg)
+	levelsHandler := commands.NewLevelsHandler()
 	
 	// Calendar service strictly needs Redis
 	var calendarService *calendar.CalendarService
@@ -407,13 +410,60 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:        "rep",
+				Description: "Systém reputace a hodnocení členů",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "give",
+						Description: "Udělí bod reputace uživateli",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionUser,
+								Name:        "uzivatel",
+								Description: "Uživatel, kterému chceš dát bod",
+								Required:    true,
+							},
+						},
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "stats",
+						Description: "Zobrazí počet bodů reputace",
+						Options: []*discordgo.ApplicationCommandOption{
+							{
+								Type:        discordgo.ApplicationCommandOptionUser,
+								Name:        "uzivatel",
+								Description: "Uživatel (volitelné)",
+								Required:    false,
+							},
+						},
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionSubCommand,
+						Name:        "top",
+						Description: "Zobrazí žebříček nejvíce nápomocných členů",
+					},
+				},
+			},
 		}
 
+		adminPerm := int64(discordgo.PermissionAdministrator)
+		modPerm := int64(discordgo.PermissionKickMembers)
+
 		for _, cmd := range cmdList {
-			_, err := s.ApplicationCommandCreate(s.State.User.ID, "", cmd)
-			if err != nil {
-				log.Printf("Cannot create command %v: %v", cmd.Name, err)
+			switch cmd.Name {
+			case "purge", "echo", "status", "notify":
+				cmd.DefaultMemberPermissions = &adminPerm
+			case "verify", "automod":
+				cmd.DefaultMemberPermissions = &modPerm
 			}
+		}
+
+		_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", cmdList)
+		if err != nil {
+			log.Printf("Cannot bulk register commands: %v", err)
 		}
 
 		if cfg.ConsoleChannelID != "" {
@@ -462,10 +512,8 @@ func main() {
 		case "gdpr":
 			commands.HandleGDPR(s, i)
 		case "rank":
-			levelsHandler := commands.NewLevelsHandler()
 			levelsHandler.HandleRank(s, i)
 		case "rank-leaderboard":
-			levelsHandler := commands.NewLevelsHandler()
 			levelsHandler.HandleLeaderboard(s, i)
 		case "activity":
 			commands.HandleActivityStats(s, i)
@@ -481,6 +529,8 @@ func main() {
 			notifyService.HandleNotifyCommand(s, i)
 		case "challenge":
 			challengeService.HandleChallengeCommand(s, i)
+		case "rep":
+			repService.HandleCommand(s, i)
 		}
 	})
 
@@ -528,6 +578,14 @@ func main() {
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
+
+	// Graceful shutdown: release instance lock
+	log.Println("Shutting down...")
+	if redis_client.Client != nil {
+		lockKey := "bot:lock:primary"
+		redis_client.Client.Del(redis_client.Ctx, lockKey)
+		log.Println("Instance lock released.")
+	}
 
 	dg.Close()
 }

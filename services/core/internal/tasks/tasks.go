@@ -17,7 +17,7 @@ func StartHeartbeat() {
 			if redis_client.Client == nil {
 				continue
 			}
-			err := redis_client.Client.Set(redis_client.Ctx, "bot:heartbeat", strconv.FormatInt(time.Now().Unix(), 10), 0).Err()
+			err := redis_client.Client.SetEx(redis_client.Ctx, "bot:heartbeat", strconv.FormatInt(time.Now().Unix(), 10), 120*time.Second).Err()
 			if err != nil {
 				log.Printf("[ERROR] Heartbeat failed: %v", err)
 			}
