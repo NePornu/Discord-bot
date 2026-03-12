@@ -340,6 +340,43 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 	}
 
 	key := fmt.Sprintf("verify:state:%s", userID)
+	lockKey := fmt.Sprintf("verify:approve_lock:%s", userID)
+
+	if redis_client.Client != nil {
+		// 1. Acquire lock to prevent concurrent approvals
+		locked, _ := redis_client.Client.SetNX(redis_client.Ctx, lockKey, "1", 10*time.Second).Result()
+		if !locked {
+			log.Printf("DEBUG: HandleApprove already in progress for user %s", userID)
+			if i.Type == discordgo.InteractionMessageComponent {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "⚠️ Toto schválení již zpracovává jiný moderátor.",
+						Flags:   discordgo.MessageFlagsEphemeral,
+					},
+				})
+			}
+			return
+		}
+		defer redis_client.Client.Del(redis_client.Ctx, lockKey)
+
+		// 2. Check if already approved
+		status, _ := redis_client.Client.HGet(redis_client.Ctx, key, "status").Result()
+		if status == "APPROVED" {
+			log.Printf("DEBUG: User %s already approved", userID)
+			if i.Type == discordgo.InteractionMessageComponent {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseUpdateMessage,
+					Data: &discordgo.InteractionResponseData{
+						Content:    "✅ Uživatel již byl schválen.",
+						Components: []discordgo.MessageComponent{},
+					},
+				})
+			}
+			return
+		}
+	}
+
 	var state map[string]string
 	now := time.Now()
 	if redis_client.Client != nil {
@@ -383,26 +420,22 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 		now.Unix(),
 		i.Member.User.ID)
 
-	s.ChannelMessageSend(v.Config.VerifLogChannel, logContent)
+	logMsg, err := s.ChannelMessageSend(v.Config.VerifLogChannel, logContent)
+	if err == nil {
+		go func(msgID string, channelID string) {
+			time.Sleep(60 * time.Second)
+			s.ChannelMessageDelete(channelID, msgID)
+		}(logMsg.ID, logMsg.ChannelID)
+	}
 
-	content := fmt.Sprintf("✅ **Uživatel <@%s> byl schválen moderátorem <@%s>.**", userID, i.Member.User.ID)
 
 	if i.Type == discordgo.InteractionMessageComponent {
-		// Try to keep the embed if we can access it
-		msg, err := s.ChannelMessage(v.Config.VerificationChannel, i.Message.ID)
-		if err == nil && len(msg.Embeds) > 0 {
-			embed := msg.Embeds[0]
-			embed.Description = fmt.Sprintf("Automaticky mu byla přidělena ověřovací role.\n\n✅ **Status:** Schváleno moderátorem <@%s>", i.Member.User.ID)
-			embed.Color = 0x2ecc71 // Success Green
-			
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseUpdateMessage,
-				Data: &discordgo.InteractionResponseData{
-					Embeds:     []*discordgo.MessageEmbed{embed},
-					Components: []discordgo.MessageComponent{},
-				},
-			})
-		} else {
+		// Delete the moderator message as requested
+		err := s.ChannelMessageDelete(i.ChannelID, i.Message.ID)
+		if err != nil {
+			log.Printf("ERROR: Failed to delete moderator message %s: %v", i.Message.ID, err)
+			// Fallback to update if delete fails
+			content := fmt.Sprintf("✅ **Uživatel <@%s> byl schválen.**", userID)
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseUpdateMessage,
 				Data: &discordgo.InteractionResponseData{
@@ -410,8 +443,14 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 					Components: []discordgo.MessageComponent{},
 				},
 			})
+		} else {
+			// Interaction MUST be acknowledged even if message is deleted
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredMessageUpdate,
+			})
 		}
 	} else {
+		content := fmt.Sprintf("✅ **Uživatel <@%s> byl schválen.**", userID)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: &content,
 		})
