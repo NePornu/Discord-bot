@@ -106,6 +106,7 @@ async def load_commands():
         return []
 
     loaded_cogs = []
+    loaded_exts = set()
     for filename in os.listdir(commands_dir):
         # Skip hidden files and __init__
         if filename.startswith("_") or filename == "__init__.py":
@@ -117,6 +118,10 @@ async def load_commands():
         
         if is_module or is_pkg:
             ext_name = filename[:-3] if is_module else filename
+            
+            if ext_name in loaded_exts:
+                continue
+                
             module_name = f"services.worker.commands.{ext_name}"
 
             await send_console_log(f"Načítám: {module_name}")
@@ -124,6 +129,7 @@ async def load_commands():
                 await bot.load_extension(module_name)
                 await send_console_log(f"✅ {module_name} načten")
                 loaded_cogs.append(ext_name)
+                loaded_exts.add(ext_name)
             except Exception as e:
                 import traceback
                 tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))[-1800:]

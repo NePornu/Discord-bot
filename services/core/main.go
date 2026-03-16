@@ -465,6 +465,48 @@ func main() {
 				},
 			},
 		},
+		{
+			Name:        "patterns",
+			Description: "Detekce vzorců chování (Python)",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "check",
+					Description: "Ručně zkontrolovat vzorce u konkrétního uživatele",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionUser,
+							Name:        "user",
+							Description: "Uživatel ke kontrole",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "status",
+					Description: "Zobrazí stav pattern detection enginu",
+				},
+			},
+		},
+		{
+			Name:        "nsfwsync",
+			Description: "Manuální sken profilovek na serveru (Python)",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "limit",
+					Description: "Maximální počet uživatelů k otestování",
+					Required:    false,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "Konkrétní uživatel k otestování",
+					Required:    false,
+				},
+			},
+		},
 	}
 
 	// Set permissions
@@ -483,7 +525,14 @@ func main() {
 	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		slog.Info("Bot is online", "user", s.State.User.Username+"#"+s.State.User.Discriminator)
 		
-		_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, cfg.GuildID, cmdList)
+		guildID := cfg.GuildID
+		if guildID == "" {
+			slog.Info("Registering commands GLOBALLY")
+		} else {
+			slog.Info("Registering commands for GUILD", "guildID", guildID)
+		}
+
+		_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, guildID, cmdList)
 		if err != nil {
 			slog.Error("Cannot bulk register commands", "error", err)
 		}
