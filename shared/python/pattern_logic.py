@@ -28,7 +28,8 @@ KEYWORD_GROUPS = {
     "help_others": ["vítám", "vítej", "držím palce", "drž se",
                     "ahoj", "rád tě vidím", "neboj se"],
     "despair": ["nemá to cenu", "vzdávám", "končím", "sbohem",
-                "odcházím", "konec"],
+                "odcházím", "konec", "pochybnost", "nejistota"],
+    "interaction": ["@jméno", "@user", "co ty", "jak ty", "taky"],
 }
 
 # Match whole words for short keywords to avoid false positives

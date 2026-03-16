@@ -59,8 +59,11 @@ else
     echo "✅ Go Core started with PID $GO_PID (Logs: go_bot.log)"
 fi
 
-# Locking is now handled natively by the bot instances via Redis SetNX
-# Manual clearing here would break multi-instance prevention.
+# Multi-instance protection: Clear stale locks if maintenance script exists
+if [ -f "$BOT_DIR/scripts/maintenance/clear_locks.py" ]; then
+    echo "🧹 Cleaning stale Redis locks..."
+    PYTHONPATH="$BOT_DIR/shared/python" "$PYTHON_CMD" "$BOT_DIR/scripts/maintenance/clear_locks.py" > /dev/null 2>&1
+fi
 
 # 3. Start Python Worker in background
 echo "[3/3] Starting Python Sidecar (Lite Mode)..."

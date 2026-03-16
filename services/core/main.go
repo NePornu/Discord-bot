@@ -487,6 +487,16 @@ func main() {
 					Name:        "status",
 					Description: "Zobrazí stav pattern detection enginu",
 				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "list",
+					Description: "Seznam uživatelů s detekovanými vzorci",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "info",
+					Description: "Informace o dostupných vzorcích",
+				},
 			},
 		},
 		{
