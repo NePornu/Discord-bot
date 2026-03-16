@@ -42,29 +42,6 @@ services:
         reservations:
           memory: 32M
 
-#   discord-bot-dashboard:
-#     build: .
-#     container_name: discord-bot-dashboard
-#     restart: always
-#     depends_on:
-#       - redis
-#     environment:
-#       - BOT_TOKEN=${DASHBOARD_TOKEN}
-#       - BOT_LITE_MODE=1
-#       - REDIS_URL=redis://redis:6379/0
-#       - TZ=Europe/Prague
-#       - PYTHONPATH=/app
-#     volumes:
-#       - .:/app
-#     networks:
-#       - botnet
-#     deploy:
-#       resources:
-#         limits:
-#           memory: 256M
-#         reservations:
-#           memory: 64M
-
   metricord-dashboard:
     build: .
     container_name: web-dashboard

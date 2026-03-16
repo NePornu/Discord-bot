@@ -614,6 +614,7 @@ func main() {
 	dg.AddHandler(logHandler.OnMessageUpdate)
 	dg.AddHandler(logHandler.OnGuildMemberAdd)
 	dg.AddHandler(logHandler.OnGuildMemberRemove)
+	dg.AddHandler(verifyService.OnMemberRemove)
 
 	// Custom Listeners
 	dg.AddHandler(levelsListener.OnMessage)

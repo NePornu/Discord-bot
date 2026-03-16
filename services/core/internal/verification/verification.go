@@ -207,14 +207,36 @@ func (v *VerificationService) logJoin(s *discordgo.Session, m *discordgo.GuildMe
 		"⏳ **Status:** Čeká na zadání kódu...",
 		m.User.Mention(), m.User.Username, m.User.ID, creationTime, creationTime, m.User.AvatarURL("1024"))
 
+	// Create buttons for immediate moderator actions
+	btnWarn := discordgo.Button{
+		Label:    "Upozornit",
+		Style:    discordgo.SecondaryButton,
+		CustomID: "verif_warn:" + m.User.ID,
+		Emoji:    &discordgo.ComponentEmoji{Name: "⚠️"},
+	}
+	btnKick := discordgo.Button{
+		Label:    "Vyhodit (Kick)",
+		Style:    discordgo.DangerButton,
+		CustomID: "verif_kick:" + m.User.ID,
+		Emoji:    &discordgo.ComponentEmoji{Name: "🚪"},
+	}
+	comps := []discordgo.MessageComponent{
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{btnWarn, btnKick},
+		},
+	}
+
 	slog.Debug("Sending join log", "channel", logChannel)
-	msg, err := s.ChannelMessageSend(logChannel, msgContent)
+	msg, err := s.ChannelMessageSendComplex(logChannel, &discordgo.MessageSend{
+		Content:    msgContent,
+		Components: comps,
+	})
 	if err != nil {
 		slog.Error("Error sending join log", "channel", logChannel, "error", err)
 		return
 	}
 
-	// Also send to Verification Log channel if configured
+	// Also send to Verification Log channel if configured (without buttons usually)
 	if verifLogChannel != "" && verifLogChannel != logChannel {
 		s.ChannelMessageSend(verifLogChannel, msgContent)
 	}
@@ -223,6 +245,48 @@ func (v *VerificationService) logJoin(s *discordgo.Session, m *discordgo.GuildMe
 	if redis_client.Client != nil {
 		redis_client.Client.HSet(redis_client.Ctx, key, "approve_msg_id", msg.ID)
 	}
+}
+
+func (v *VerificationService) OnMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
+	slog.Debug("OnMemberRemove triggered", "user", m.User.Username, "id", m.User.ID)
+
+	key := fmt.Sprintf("verify:state:%s", m.User.ID)
+	if redis_client.Client == nil {
+		return
+	}
+
+	state, _ := redis_client.Client.HGetAll(redis_client.Ctx, key).Result()
+	if len(state) == 0 {
+		return
+	}
+
+	// Only clean up if they weren't already approved
+	if state["status"] == "APPROVED" {
+		return
+	}
+
+	logChannel := v.Config.VerificationChannel
+	msgID := state["approve_msg_id"]
+
+	if logChannel != "" && msgID != "" {
+		// 1. Delete the moderator notification
+		err := s.ChannelMessageDelete(logChannel, msgID)
+		if err != nil {
+			slog.Error("Failed to delete mod notification on leave", "msgID", msgID, "error", err)
+		} else {
+			slog.Info("Deleted mod notification as user left during verification", "userID", m.User.ID)
+		}
+	}
+
+	// 2. Log to verif-log channel
+	if v.Config.VerifLogChannel != "" {
+		leaveMsg := fmt.Sprintf("👋 **Uživatel opustil server během verifikace:** %s (%s)\nID: `%s`", 
+			m.User.Mention(), m.User.Username, m.User.ID)
+		s.ChannelMessageSend(v.Config.VerifLogChannel, leaveMsg)
+	}
+
+	// 3. Clean up Redis state
+	redis_client.Client.Del(redis_client.Ctx, key)
 }
 
 func (v *VerificationService) OnMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -480,13 +544,23 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 }
 
 func (v *VerificationService) HandleWarn(s *discordgo.Session, i *discordgo.InteractionCreate, userID string) {
-	content := fmt.Sprintf("⚠️ **Varování pro <@%s> bylo zaznamenáno moderátorem <@%s>.**", userID, i.Member.User.ID)
-	// For now just respond, we can add more logic later
+	slog.Info("Moderator issued a warning during verification", "modID", i.Member.User.ID, "targetID", userID)
+	
+	// Create DM to the user
+	dm, err := s.UserChannelCreate(userID)
+	if err == nil {
+		warningMsg := "⚠️ **Upozornění od moderátorů**\n\n" +
+			"Byl jsi upozorněn moderátorem během procesu ověření. Prosím, ujisti se, že postupuješ podle pokynů a dodržuješ pravidla serveru.\n" +
+			"Pokud máš potíže s ověřením, kontaktuj podporu (pokud je dostupná) nebo zkus kód zadat znovu."
+		s.ChannelMessageSend(dm.ID, warningMsg)
+	}
+
+	content := fmt.Sprintf("⚠️ **Varování pro <@%s> bylo zaznamenáno a odesláno do DM.**", userID)
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: content,
-			Flags:   64,
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }
