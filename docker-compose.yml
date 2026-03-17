@@ -63,7 +63,6 @@ services:
       - "8092:8092"
     volumes:
       - .:/app
-      - ./data/dashboard_std.log:/app/dashboard_std.log
     networks:
       - botnet
     deploy:

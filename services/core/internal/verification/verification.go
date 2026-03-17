@@ -11,6 +11,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/nepornucz/discord-bot-core/internal/config"
 	"github.com/nepornucz/discord-bot-core/internal/redis_client"
+	"github.com/nepornucz/discord-bot-core/internal/stats"
 )
 
 type VerificationService struct {
@@ -141,6 +142,9 @@ func (v *VerificationService) OnMemberJoin(s *discordgo.Session, m *discordgo.Gu
 	if m.User.Bot {
 		return
 	}
+
+	// Record join in stats
+	stats.RecordJoin(m.GuildID)
 
 	// 1. Setup Lock to prevent duplicate handling across multiple bot instances
 	lockKey := fmt.Sprintf("verify:dm_lock:%s", m.User.ID)

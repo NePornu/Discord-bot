@@ -37,6 +37,8 @@ def K_ALERT(gid, uid, pat):       return f"pat:alert_sent:{gid}:{uid}:{pat}"
 def K_JOIN(gid, uid):             return f"pat:user_join:{gid}:{uid}"
 def K_LAST_SCAN(gid):             return f"pat:last_scan:{gid}"
 def K_QUESTION(gid, uid, mid):    return f"pat:question:{gid}:{uid}:{mid}"
+def K_STAFF_RESPONSE(gid, uid):  return f"pat:staff_resp:{gid}:{uid}"
+def K_MSG_LEN(gid, mid):         return f"pat:msg_len:{gid}:{mid}"
 
 PAT_TTL = 730 * 86400  # 2 years
 

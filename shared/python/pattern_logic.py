@@ -25,15 +25,30 @@ KEYWORD_GROUPS = {
                        "jsem zpět", "chyběl jsem"],
     "methodology": ["deník", "parťák", "metodika", "denní rutina",
                     "studená sprcha", "meditace", "cvičení"],
-    "help_others": ["vítám", "vítej", "držím palce", "drž se",
-                    "ahoj", "rád tě vidím", "neboj se"],
+    "help_others": ["vítám", "vítej", "držím palce", "drž se", "ahoj",
+                    "rád tě vidím", "neboj se", "zvládneš", "jsme v tom spolu"],
     "despair": ["nemá to cenu", "vzdávám", "končím", "sbohem",
                 "odcházím", "konec", "pochybnost", "nejistota"],
     "interaction": ["@jméno", "@user", "co ty", "jak ty", "taky"],
+    "preachy": ["měli byste", "musíte", "je potřeba", "nesmíte", "každý musí"],
+    "analytical": ["analýza", "reflexe", "příčina", "důsledek", "souvislost",
+                   "metodika", "proces", "kognitivní", "vzorec"],
 }
 
 # Match whole words for short keywords to avoid false positives
-SHORT_WORDS = {"nic", "vždy", "stále", "zase", "znovu", "super", "ahoj"}
+SHORT_WORDS = {"nic", "vždy", "stále", "zase", "znovu", "super", "ahoj", "znov"}
+
+
+def is_analytical_style(text: str) -> bool:
+    """Check if text is 'analytical' (low emoji density, structured)."""
+    if not text or len(text) < 200:
+        return False
+    emoji_pattern = re.compile(r"[\U00010000-\U0010ffff]", flags=re.UNICODE)
+    emojis = emoji_pattern.findall(text)
+    emoji_density = len(emojis) / len(text)
+    # Low emoji density + presence of logical structure indicators (bullet points, long paragraphs)
+    has_structure = "\n" in text or " -" in text or "1." in text
+    return emoji_density < 0.005 and has_structure
 
 
 def normalize_text(text: str) -> str:

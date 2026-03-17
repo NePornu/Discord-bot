@@ -6,14 +6,18 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 # Manual .env loading
-env_path = "/root/discord-bot/.env"
-if os.path.exists(env_path):
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                os.environ[key] = val.strip('"').strip("'")
+def load_env():
+    possible_paths = ["/app/.env", "/root/discord-bot/.env", ".env"]
+    for path in possible_paths:
+        if os.path.exists(path):
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, val = line.split("=", 1)
+                        os.environ[key] = val.strip('"').strip("'")
+            return
+load_env()
 
 # Configuration & Secrets
 SECRET_KEY = os.getenv("DASHBOARD_SECRET_KEY", secrets.token_urlsafe(32))
@@ -31,7 +35,9 @@ except:
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 # Template setup
-templates = Jinja2Templates(directory="web/frontend/templates")
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = BASE_DIR.parent / "frontend" / "templates"
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # Discord API
 DISCORD_API_BASE = "https://discord.com/api/v10"

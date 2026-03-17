@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -7,7 +8,10 @@ from collections import defaultdict, Counter
 import redis.asyncio as redis
 import httpx
 import sys
-sys.path.append('/root/discord-bot')
+# Add project root to sys.path
+root_dir = "/app" if os.path.exists("/app") else "/root/discord-bot"
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
 
 from shared.python.redis_client import get_redis, REDIS_URL
 from functools import wraps
@@ -52,7 +56,7 @@ try:
 except ImportError:
     BOT_TOKEN = ""
 
-DATA_DIR = Path("data")
+DATA_DIR = Path("/app/data") if os.path.exists("/app/data") else Path("data")
 CONFIG_PATH = DATA_DIR / "challenge_config.json"
 
 
@@ -1576,26 +1580,30 @@ async def get_security_score(guild_id: int, days: int = 7) -> Dict[str, Any]:
                 "mod_ratio": {
                     "score": int(mod_ratio_score),
                     "weight": int(weights["mod_ratio"]),
-                    "label": "Poměr moderátorů",
-                    "detail": f"{users_per_mod:.0f} uživatelů/mod"
+                    "label": "Tým a moderace",
+                    "detail": f"{users_per_mod:.0f} uživatelů/mod",
+                    "description": "Hodnotí kapacitní zajištění komunity moderátorským týmem a celkovou strukturu rolí. Sleduje poměr aktivních členů k počtu moderátorů a dlouhodobou aktivitu týmu."
                 },
                 "security": {
                     "score": int(security_settings_score),
                     "weight": int(weights["security"]),
-                    "label": "Zabezpečení serveru",
-                    "detail": f"Úroveň {verification_level}/4"
+                    "label": "Bezpečnost a konfigurace",
+                    "detail": f"Úroveň {verification_level}/4",
+                    "description": "Zaměřuje se na technickou konfiguraci a bezpečnostní nastavení platformy. Posuzuje úroveň ověřování členů, filtry obsahu a používání 2FA u oprávněných účtů."
                 },
                 "engagement": {
                     "score": int(engagement_score),
                     "weight": int(weights["engagement"]),
-                    "label": "Zapojení uživatelů",
-                    "detail": f"{participation_rate:.2f}% aktivních" if participation_rate < 1 else f"{participation_rate:.1f}% aktivních"
+                    "label": "Engagement a živost",
+                    "detail": f"{participation_rate:.2f}% aktivních" if participation_rate < 1 else f"{participation_rate:.1f}% aktivních",
+                    "description": "Hodnotí míru zapojení členů a celkovou živost komunity. Sleduje podíl aktivních uživatelů v čase, míru interakce a využívání komunikačních kanálů."
                 },
                 "moderation": {
                     "score": int(moderation_score),
                     "weight": int(weights["moderation"]),
-                    "label": "Zdraví moderace",
-                    "detail": f"{mod_actions} akcí/měsíc"
+                    "label": "Aktivita moderace",
+                    "detail": f"{mod_actions} akcí/měsíc",
+                    "description": "Zaměřuje se na reálnou činnost moderátorského systému a přiměřenost zásahů. Hodnotí četnost opatření ve vztahu k aktivitě a konzistenci zásahů v čase."
                 }
             },
             "insights": generate_security_insights(metrics)

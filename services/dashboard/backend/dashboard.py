@@ -4,14 +4,19 @@ import os
 import json
 
 # Manual .env loading
-env_path = "/root/discord-bot/.env"
-if os.path.exists(env_path):
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                os.environ[key] = val.strip('"').strip("'")
+def load_env():
+    possible_paths = ["/app/.env", "/root/discord-bot/.env", ".env"]
+    for path in possible_paths:
+        if os.path.exists(path):
+            print(f"DEBUG: Loading env from {path}")
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, val = line.split("=", 1)
+                        os.environ[key] = val.strip('"').strip("'")
+            return
+load_env()
 
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -25,7 +30,10 @@ from collections import defaultdict
 import secrets
 import httpx
 import sys
-sys.path.append('/root/discord-bot')
+# Add project root to sys.path
+root_dir = "/app" if os.path.exists("/app") else "/root/discord-bot"
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
 from shared.python.redis_client import get_redis_client
 import uuid
 import asyncio
@@ -86,6 +94,26 @@ from .utils import (
 
 
 app = FastAPI(title="Metricord", docs_url=None, redoc_url=None)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    err_msg = traceback.format_exc()
+    print(f"FATAL ERROR: {err_msg}")
+    try:
+        # Log to a file we can read later
+        log_path = "/app/data/dashboard_fatal.log" if os.path.exists("/app") else "/root/discord-bot/data/dashboard_fatal.log"
+        with open(log_path, "a") as f:
+            f.write(f"\n--- {datetime.now()} ---\n{err_msg}\n")
+    except: pass
+    
+    return HTMLResponse(content=f"""
+    <html><body style="background:#111;color:#f88;font-family:monospace;padding:20px;">
+    <h2>Internal Server Error Debugger</h2>
+    <p>The dashboard encountered a fatal error. This has been logged.</p>
+    <div style="white-space:pre-wrap;background:#222;padding:10px;border-radius:5px;">{err_msg}</div>
+    </body></html>
+    """, status_code=500)
 
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie=SESSION_COOKIE_NAME, max_age=SESSION_EXPIRY_HOURS * 3600, same_site="lax", https_only=False)
 

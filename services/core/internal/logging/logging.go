@@ -7,6 +7,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/nepornucz/discord-bot-core/internal/config"
+	"github.com/nepornucz/discord-bot-core/internal/stats"
 )
 
 type Logger struct {
@@ -75,6 +76,9 @@ func (l *Logger) OnGuildMemberAdd(s *discordgo.Session, m *discordgo.GuildMember
 }
 
 func (l *Logger) OnGuildMemberRemove(s *discordgo.Session, m *discordgo.GuildMemberRemove) {
+	// Record leave in stats
+	stats.RecordLeave(m.GuildID)
+
 	msg := fmt.Sprintf("📤 **%s** (%s) opustil/a server.", m.User.Username, m.User.ID)
 	logChannel := l.Config.WaitLogChannelID
 

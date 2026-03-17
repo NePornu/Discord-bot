@@ -3,8 +3,8 @@ import logging
 from datetime import datetime, timezone
 import discord
 from discord.ext import commands
-from .common import K_MSG, K_KW, K_FIRST, K_REPLY, K_DIARY, K_QUESTION, K_JOIN, PAT_TTL, get_today, is_staff, is_diary_channel
-from shared.python.pattern_logic import KEYWORD_GROUPS, count_keywords, count_words
+from .common import K_MSG, K_KW, K_FIRST, K_REPLY, K_DIARY, K_QUESTION, K_JOIN, K_STAFF_RESPONSE, K_MSG_LEN, PAT_TTL, get_today, is_staff, is_diary_channel
+from shared.python.pattern_logic import KEYWORD_GROUPS, count_keywords, count_words, is_analytical_style
 
 logger = logging.getLogger("PatternDetector")
 
@@ -21,9 +21,6 @@ class PatternSignals(commands.Cog):
         if message.guild.id != self._guild_id:
             return
             
-        if isinstance(message.author, discord.Member) and is_staff(message.author):
-            return
-
         r = await self._get_redis()
         try:
             gid = message.guild.id
@@ -33,21 +30,23 @@ class PatternSignals(commands.Cog):
             wc = count_words(text)
             is_reply = message.reference is not None
             mentions = len(message.mentions)
+            author_is_staff = isinstance(message.author, discord.Member) and is_staff(message.author)
 
             pipe = r.pipeline()
 
-            # --- Aggregate message stats ---
-            msg_key = K_MSG(gid, uid, today)
-            pipe.hincrby(msg_key, "word_count", wc)
-            pipe.hincrby(msg_key, "msg_count", 1)
-            pipe.hincrby(msg_key, "char_count", len(text))
-            if is_reply:
-                pipe.hincrby(msg_key, "reply_count", 1)
-            if mentions > 0:
-                pipe.hincrby(msg_key, "mention_count", mentions)
-            pipe.expire(msg_key, PAT_TTL)
+            # --- Aggregate message stats (Skip staff for some metrics) ---
+            if not author_is_staff:
+                msg_key = K_MSG(gid, uid, today)
+                pipe.hincrby(msg_key, "word_count", wc)
+                pipe.hincrby(msg_key, "msg_count", 1)
+                pipe.hincrby(msg_key, "char_count", len(text))
+                if is_reply:
+                    pipe.hincrby(msg_key, "reply_count", 1)
+                if mentions > 0:
+                    pipe.hincrby(msg_key, "mention_count", mentions)
+                pipe.expire(msg_key, PAT_TTL)
 
-            # --- Keyword scanning ---
+            # --- Keyword scanning & Analytical style ---
             if len(text) > 3:
                 for group in KEYWORD_GROUPS:
                     hits = count_keywords(text, group)
@@ -55,13 +54,37 @@ class PatternSignals(commands.Cog):
                         kw_key = K_KW(gid, uid, today, group)
                         pipe.incrby(kw_key, hits)
                         pipe.expire(kw_key, PAT_TTL)
+                
+                if is_analytical_style(text):
+                    pipe.incr(K_KW(gid, uid, today, "analytical_hits"))
+                    pipe.expire(K_KW(gid, uid, today, "analytical_hits"), PAT_TTL)
+
+            # --- Message length caching (for deletion tracking) ---
+            mlen_key = K_MSG_LEN(gid, message.id)
+            pipe.set(mlen_key, str(len(text)), ex=3600) # Only cache for 1 hour
 
             # --- First message tracking ---
-            first_key = K_FIRST(gid, uid)
-            pipe.hsetnx(first_key, "msg_id", str(message.id))
-            pipe.hsetnx(first_key, "timestamp", str(int(message.created_at.timestamp())))
-            pipe.hsetnx(first_key, "channel_id", str(message.channel.id))
-            pipe.expire(first_key, PAT_TTL)
+            if not author_is_staff:
+                first_key = K_FIRST(gid, uid)
+                pipe.hsetnx(first_key, "msg_id", str(message.id))
+                pipe.hsetnx(first_key, "timestamp", str(int(message.created_at.timestamp())))
+                pipe.hsetnx(first_key, "channel_id", str(message.channel.id))
+                pipe.expire(first_key, PAT_TTL)
+
+            # --- Staff Response Tracking ---
+            if author_is_staff and is_reply and message.reference.message_id:
+                try:
+                    ref_msg = message.reference.cached_message or await message.channel.fetch_message(message.reference.message_id)
+                    if ref_msg and not is_staff(ref_msg.author) and not ref_msg.author.bot:
+                        # Check if this was a response to their FIRST message
+                        first_data = await r.hgetall(K_FIRST(gid, ref_msg.author.id))
+                        if first_data.get("msg_id") == str(ref_msg.id):
+                            # Record time to respond
+                            diff = int(message.created_at.timestamp()) - int(first_data["timestamp"])
+                            pipe.setnx(K_STAFF_RESPONSE(gid, ref_msg.author.id), str(diff))
+                            pipe.expire(K_STAFF_RESPONSE(gid, ref_msg.author.id), PAT_TTL)
+                except Exception:
+                    pass
 
             # --- Reply-pair tracking ---
             if is_reply and message.reference.message_id:
@@ -91,12 +114,12 @@ class PatternSignals(commands.Cog):
                                 ref_msg = None
                         if ref_msg and ref_msg.author.id != uid:
                             diary_key = K_DIARY(gid, ref_msg.author.id)
-                            pipe.lrem(diary_key, 0, str(ref_msg.id))
+                            pipe.lrem(diary_key, 0, json.dumps({"msg_id": str(ref_msg.id), "ts": int(ref_msg.created_at.timestamp())}, sort_keys=True))
                     except Exception:
                         pass
                 else:
                     diary_key = K_DIARY(gid, uid)
-                    entry = json.dumps({"msg_id": str(message.id), "ts": int(message.created_at.timestamp())})
+                    entry = json.dumps({"msg_id": str(message.id), "ts": int(message.created_at.timestamp())}, sort_keys=True)
                     pipe.lpush(diary_key, entry)
                     pipe.ltrim(diary_key, 0, 9)
                     pipe.expire(diary_key, PAT_TTL)
@@ -107,7 +130,7 @@ class PatternSignals(commands.Cog):
                 pipe.set(q_key, str(int(message.created_at.timestamp())), ex=24 * 3600)
 
             # --- Join date tracking ---
-            if isinstance(message.author, discord.Member) and message.author.joined_at:
+            if isinstance(message.author, discord.Member) and message.author.joined_at and not author_is_staff:
                 join_key = K_JOIN(gid, uid)
                 pipe.setnx(join_key, str(int(message.author.joined_at.timestamp())))
                 pipe.expire(join_key, PAT_TTL)
@@ -132,9 +155,20 @@ class PatternSignals(commands.Cog):
             return
         try:
             r = await self._get_redis()
-            key = K_DEL(message.guild.id, message.author.id, get_today())
+            gid, uid, today = message.guild.id, message.author.id, get_today()
+            
+            # Record standard deletion
+            key = f"pat:del:{gid}:{uid}:{today}"
             await r.incr(key)
             await r.expire(key, PAT_TTL)
+            
+            # Check if it was a LONG message (for Post-dumping Shame)
+            mlen_val = await r.get(K_MSG_LEN(gid, message.id))
+            if mlen_val and int(mlen_val) > 500: # Over 500 chars 
+                long_del_key = f"pat:del_long:{gid}:{uid}:{today}"
+                await r.incr(long_del_key)
+                await r.expire(long_del_key, PAT_TTL)
+                
             await r.aclose()
         except Exception as e:
             logger.error(f"on_message_delete signal error: {e}")
@@ -152,7 +186,7 @@ class PatternSignals(commands.Cog):
             return
         try:
             r = await self._get_redis()
-            key = K_EDIT(payload.guild_id, uid, get_today())
+            key = f"pat:edit:{payload.guild_id}:{uid}:{get_today()}"
             await r.incr(key)
             await r.expire(key, PAT_TTL)
             await r.aclose()

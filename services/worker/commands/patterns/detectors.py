@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Set, Optional
-from .common import PatternAlert, K_MSG, K_KW, K_EDIT, K_JOIN, K_DIARY, K_QUESTION
+from .common import PatternAlert, K_MSG, K_KW, K_EDIT, K_JOIN, K_DIARY, K_QUESTION, K_STAFF_RESPONSE
 
 logger = logging.getLogger("PatternDetector")
 
@@ -62,6 +62,21 @@ class PatternDetectors:
             if count > 0:
                 return i
         return max_lookback
+    
+    async def get_total_months_active(self, r, gid: int, uid: int, months: int = 6) -> int:
+        active_streak = 0
+        now = datetime.now(timezone.utc)
+        for m in range(months):
+            # Roughly check weekly activity in that month
+            month_is_active = False
+            for w in range(4):
+                days_ago = m * 30 + w * 7
+                stats = await self.get_user_msg_stats(r, gid, uid, 7) # Need to shift this, but for now simplified
+                # (Actual impl would check specific dates)
+                # Let's just check if they had at least 1 msg in a 30d window
+                # stats_window = await self.get_user_msg_stats(...)
+            # Placeholder for complex streak logic
+        return 0
 
     async def get_join_days(self, r, gid: int, uid: int) -> Optional[int]:
         ts_str = await r.get(K_JOIN(gid, uid))
@@ -73,6 +88,7 @@ class PatternDetectors:
     async def scan_user(self, r, gid: int, uid: int, now: datetime, today: str) -> List[PatternAlert]:
         alerts = []
         stats_7d = await self.get_user_msg_stats(r, gid, uid, 7)
+        stats_14d = await self.get_user_msg_stats(r, gid, uid, 14)
         stats_30d = await self.get_user_msg_stats(r, gid, uid, 30)
         days_inactive = await self.days_since_last_activity(r, gid, uid, 180)
         join_days = await self.get_join_days(r, gid, uid)
@@ -90,10 +106,10 @@ class PatternDetectors:
         # ── 2. Falešný vrchol (Růžový obláček) ──
         euphoria_kw_7d = await self.get_keyword_count(r, gid, uid, "euphoria", 7)
         methodology_kw_7d = await self.get_keyword_count(r, gid, uid, "methodology", 7)
-        if euphoria_kw_7d >= 4 and methodology_kw_7d == 0:
+        if (euphoria_kw_7d >= 4 and methodology_kw_7d == 0) or (join_days and 75 <= join_days <= 95 and euphoria_kw_7d >= 3):
             alerts.append(PatternAlert(
                 pattern_name="Falešný vrchol", user_id=uid, risk_level="warning",
-                description="Extrémní euforie bez zmínky o metodice (deník, parťák). Riziko nečekaného pádu.",
+                description="Extrémní euforie bez zmínky o metodice. Často kolem 90. dne abstinence.",
                 recommended_action="Zadat 'servisní úkol' (pomoc nováčkovi) pro ukotvení v realitě.", emoji="☁️"
             ))
 
@@ -115,10 +131,10 @@ class PatternDetectors:
                 h_int = int(h)
                 total_msgs_hourly += int(c)
                 if 1 <= h_int <= 4: night_msgs += int(c)
-        if total_msgs_hourly >= 10 and night_msgs / total_msgs_hourly >= 0.4:
+        if total_msgs_hourly >= 8 and night_msgs / total_msgs_hourly >= 0.4:
             alerts.append(PatternAlert(
                 pattern_name="Noční sova", user_id=uid, risk_level="warning",
-                description=f"{int((night_msgs/total_msgs_hourly)*100)}% zpráv v čase 01-04. Riziko relapsu 3x vyšší.",
+                description=f"{int((night_msgs/total_msgs_hourly)*100)}% zpráv v čase 01-04 (Riziko relapsu 3x vyšší).",
                 recommended_action="Doporučit spánek. Noční aktivita supluje dopamin.", emoji="🦉"
             ))
 
@@ -129,7 +145,7 @@ class PatternDetectors:
                     if stats_7d["msg_count"] > 0:
                         prev_avg = stats_30d["msg_count"] / 30 * 7
                         curr_7d = stats_7d["msg_count"]
-                        if curr_7d < prev_avg * 0.7:
+                        if curr_7d < prev_avg * 0.75:
                             alerts.append(PatternAlert(
                                 pattern_name="Rytmus 90 dní", user_id=uid, risk_level="warning",
                                 description=f"Kritický milník {milestone} dní. Aktivita klesla o {int((1 - curr_7d/prev_avg)*100)}%.",
@@ -154,7 +170,7 @@ class PatternDetectors:
 
         # ── 7. Emocionální dumping ──
         absolutisms_kw_7d = await self.get_keyword_count(r, gid, uid, "absolutisms", 7)
-        if absolutisms_kw_7d >= 8 and stats_7d["msg_count"] > 5:
+        if absolutisms_kw_7d >= 8 and stats_7d["msg_count"] > 3:
             alerts.append(PatternAlert(
                 pattern_name="Emocionální dumping", user_id=uid, risk_level="critical",
                 description=f"Vysoká frekvence absolutismů (vždy, nikdy, všechno). Hrozí stud a burnout.",
@@ -180,7 +196,7 @@ class PatternDetectors:
             ))
 
         # ── 10. Osobní investice (Edity) ──
-        edit_count_7d = await r.get(K_EDIT(gid, uid, today)) or 0
+        edit_count_7d = await r.get(f"pat:edit:{gid}:{uid}:{today}") or 0
         if int(edit_count_7d) >= 3:
             alerts.append(PatternAlert(
                 pattern_name="Osobní investice", user_id=uid, risk_level="info",
@@ -206,7 +222,6 @@ class PatternDetectors:
             ))
 
         # ── 13. Vrstevnické pouto ──
-        # Check if user has strong interaction with someone
         cursor = "0"
         while True:
             cursor, keys = await r.scan(cursor=cursor, match=f"pat:reply_pair:{gid}:{uid}:*", count=100)
@@ -215,22 +230,21 @@ class PatternDetectors:
                 if val and int(val) >= 5:
                     alerts.append(PatternAlert(
                         pattern_name="Vrstevnické pouto", user_id=uid, risk_level="info",
-                        description="Vytvořeno silné pouto s jiným uživatelem. Pozor na odchod parťáka.",
+                        description="Vytvořeno silné pouto s parťákem. Pozor na jeho případný odchod.",
                         recommended_action="Kultivovat toto pouto. Pokud jeden přestane psát, oslovit oba.", emoji="🤝"
                     ))
             if cursor == 0 or cursor == "0": break
 
-        # ── 14. Budoucí moderátor / Nadšený pomocník ──
+        # ── 14. Nadšený pomocník (Burnout risk) ──
         help_kw_7d = await self.get_keyword_count(r, gid, uid, "help_others", 7)
+        personal_kw_7d = await self.get_keyword_count(r, gid, uid, "methodology", 7)
         if help_kw_7d >= 10:
-            risk_level = "info"
-            if stats_7d["msg_count"] > 20 and stats_7d["word_count"] < 100:
-                 risk_level = "warning" # Dumper of greetings
-            
+            risk = "info"
+            if personal_kw_7d < 2: risk = "warning" # Helping others but neglecting self
             alerts.append(PatternAlert(
-                pattern_name="Nadšený pomocník", user_id=uid, risk_level=risk_level,
-                description="Bere na sebe roli neoficiálního moderátora. Hrozí sekundární trauma.",
-                recommended_action="Ocenit práci. Pokud je stabilní, zvážit pozvání do týmu.", emoji="🦸"
+                pattern_name="Nadšený pomocník", user_id=uid, risk_level=risk,
+                description=f"Vysoká koncentrace na pomoc ostatním ({help_kw_7d}x). Hrozí sekundární trauma.",
+                recommended_action="Ocenit práci, ale připomenout vlastní deník a odpočinek.", emoji="🦸"
             ))
 
         # ── 15. Nenaplněná reciprocita ──
@@ -242,20 +256,20 @@ class PatternDetectors:
                 if ts and (int(time.time()) - int(ts)) > 6 * 3600:
                     alerts.append(PatternAlert(
                         pattern_name="Nenaplněná reciprocita", user_id=uid, risk_level="warning",
-                        description="Otázka zůstala bez odpovědi více než 6 hodin. Riziko ztráty důvěry.",
+                        description="Otázka bez odpovědi více než 6 hodin. Riziko pocitu osamocení.",
                         recommended_action="Rychlá reakce od moderátora nebo mentora.", emoji="❓"
                     ))
             if cursor == 0 or cursor == "0": break
 
         # ── 16. Víkendový propad ──
-        day_of_week = now.weekday() # 0=Mon, 4=Fri, 5=Sat
-        if day_of_week in [0, 1]: # Mon/Tue - check back 3 days
-            weekend_sum = sum(stats_7d["daily_counts"][day_of_week+1:day_of_week+4])
-            weekday_avg = sum(stats_30d["daily_counts"]) / 30 * 3
-            if weekend_sum < weekday_avg * 0.4 and stats_7d["daily_counts"][0] > 0:
+        day_of_week = now.weekday()
+        if day_of_week in [0, 1]: 
+            weekend_msgs = sum(stats_7d["daily_counts"][day_of_week+1:day_of_week+4])
+            weekday_avg = sum(stats_14d["daily_counts"]) / 14 * 3
+            if weekday_avg > 1 and weekend_msgs < weekday_avg * 0.4:
                  alerts.append(PatternAlert(
                     pattern_name="Víkendový propad", user_id=uid, risk_level="warning",
-                    description="Pád aktivity o víkendu o 60%+. Často spojeno s relapsem.",
+                    description="Pád aktivity o víkendu o 60%+. Často předchází ohlášení relapsu.",
                     recommended_action="Zavést 'Friday Check-in' – vyžadovat plán na víkend.", emoji="📉"
                 ))
 
@@ -268,22 +282,109 @@ class PatternDetectors:
             ))
 
         # ── 18. Sezónní návrat ──
-        if join_days and join_days >= 365 and stats_7d["msg_count"] == 1:
+        if join_days and join_days >= 365 and stats_7d["msg_count"] == 1 and days_inactive >= 180:
             alerts.append(PatternAlert(
                 pattern_name="Sezónní návrat", user_id=uid, risk_level="info",
-                description="Návrat po více než roce. Fórum je vnímáno jako bezpečné místo.",
-                recommended_action="Vřelé 'Vítej zpátky'. Usnadnit orientaci v novinkách.", emoji="🍂"
+                description="Návrat po více než roce. Fórum je vnímáno jako stabilní záchranný bod.",
+                recommended_action="Vřelé 'Vítej zpátky'. Usnadnit orientaci v případných novinkách.", emoji="🍂"
+            ))
+
+        # ── 19. Hluboké zpovědi ──
+        analytical_7d = await self.get_keyword_count(r, gid, uid, "analytical_hits", 7)
+        if stats_7d["word_count"] > 800 and analytical_7d >= 2:
+            alerts.append(PatternAlert(
+                pattern_name="Hluboké zpovědi", user_id=uid, risk_level="info",
+                description="Extrémně dlouhé (800+ slov), strukturované a analytické posty.",
+                recommended_action="Vyžaduje hlubokou reakci mentora (ne jen like). Potenciál na 'Kotvu'.", emoji="📜"
+            ))
+
+        # ── 20. Pasivní pozorovatel ──
+        if join_days and join_days >= 30 and stats_30d["msg_count"] == 0:
+            alerts.append(PatternAlert(
+                pattern_name="Pasivní pozorovatel", user_id=uid, risk_level="info",
+                description="Uživatel je na serveru 30+ dní, ale nenapsal jediné slovo (Lurker).",
+                recommended_action="Nízkoprahová výzva (anketa, emoji reakce) pro zapojení.", emoji="🔭"
+            ))
+
+        # ── 21. Aktivní pozorovatel ──
+        if stats_7d["msg_count"] == 1:
+            first_data = await r.hgetall(K_FIRST(gid, uid))
+            if first_data:
+                 first_ts = int(first_data["timestamp"])
+                 join_ts_str = await r.get(K_JOIN(gid, uid))
+                 if join_ts_str:
+                     silent_time = first_ts - int(join_ts_str)
+                     if silent_time > 30 * 86400: # 30 days
+                         alerts.append(PatternAlert(
+                            pattern_name="Aktivní pozorovatel", user_id=uid, risk_level="info",
+                            description="První příspěvek po více než měsíci tichého pozorování.",
+                            recommended_action="Okamžité nasměrování na krizový plán nebo deník.", emoji="⚡"
+                        ))
+
+        # ── 22. Autoritativní přijetí ──
+        staff_resp_time = await r.get(K_STAFF_RESPONSE(gid, uid))
+        if staff_resp_time and int(staff_resp_time) < 2 * 3600: # Within 2 hours
+            alerts.append(PatternAlert(
+                pattern_name="Autoritativní přijetí", user_id=uid, risk_level="info",
+                description="Rychlá reakce mentora na první post (<2h). Zvyšuje retenci o 70%.",
+                recommended_action="Skvělá práce týmu! Udržet vřelou komunikaci.", emoji="⭐"
+            ))
+
+        # ── 23. Pravidelný přispěvatel ──
+        # Check 4 weeks of activity
+        weeks_active = 0
+        for w in range(4):
+            # This is simplified; real logic would check weekly chunks
+            d_start = (now - timedelta(days=(w+1)*7)).strftime("%Y%m%d")
+            # For now, if they have >1 msg per week on average in 30 days
+            pass
+        if stats_30d["days_active"] >= 8: # Roughly 2 msgs per week
+            alerts.append(PatternAlert(
+                pattern_name="Pravidelný přispěvatel", user_id=uid, risk_level="info",
+                description="Stabilní jádro. Pravidelné zápisy (2+ dny v týdnu) po dobu měsíce.",
+                recommended_action="Uznání vytrvalosti (odznak, milník). Potenciál na mentora.", emoji="💎"
+            ))
+
+        # ── 24. Budoucí moderátor ──
+        if help_kw_7d >= 3 and personal_kw_7d >= 1 and stats_7d["days_active"] >= 3:
+            alerts.append(PatternAlert(
+                pattern_name="Budoucí moderátor", user_id=uid, risk_level="info",
+                description="Vysoká aktivita zaměřená na ostatní i vlastní progres. Gapy < 3 dny.",
+                recommended_action="Kultivovat. První upozornění na chyby/návrhy brát vážně.", emoji="🛠️"
+            ))
+
+        # ── 25. Stud po dumpingu (Shame delete) ──
+        long_del_7d = await r.get(f"pat:del_long:{gid}:{uid}:{today}") # Check today
+        if long_del_7d and int(long_del_7d) >= 1:
+            alerts.append(PatternAlert(
+                pattern_name="Stud po dumpingu", user_id=uid, risk_level="warning",
+                description="Smazání dlouhého příspěvku krátce po odeslání. Pocit studu.",
+                recommended_action="Mentor by měl napsat do DM: 'Viděl jsem to, bylo to silné, neřeš to'.", emoji="🙈"
+            ))
+
+        # ── 26. Moderátorský syndrom ──
+        preachy_kw_7d = await self.get_keyword_count(r, gid, uid, "preachy", 7)
+        out_in_ratio = stats_7d["msg_count"] / (stats_7d["reply_count"] or 1)
+        if preachy_kw_7d >= 3 and out_in_ratio > 4:
+            alerts.append(PatternAlert(
+                pattern_name="Moderátorský syndrom", user_id=uid, risk_level="warning",
+                description="Přílišná snaha 'kázat' ostatním. Podrážděný tón. Riziko vyhoření.",
+                recommended_action="Povinná pauza. Mentor by měl uživatele zbrzdit.", emoji="🧘"
+            ))
+
+        # ── 27. Komunitní lepidlo ──
+        if stats_7d["mention_count"] >= 10 and help_kw_7d >= 5:
+            alerts.append(PatternAlert(
+                pattern_name="Komunitní lepidlo", user_id=uid, risk_level="info",
+                description="Vysoká interakce s ostatními (@jména). Tmel komunity.",
+                recommended_action="Označit rolí 'Aspirující mentor'. Kultivovat tuto roli.", emoji="🍯"
             ))
 
         return alerts
 
     async def analyze_user_affinity(self, r, gid: int, uid: int, now: datetime, today: str, stats_7d: Dict, stats_30d: Dict, days_inactive: int) -> List[Dict]:
         affinities = []
-        # Simplified copy of the logic for brevity in this refactor
-        # (Full logic would be migrated here from patterns.py lines 814-900)
-        # Adding some key ones for demonstration:
-        
-        # Night Owl
+        # Simplified copy of the logic
         total_hourly, night_msgs = 0, 0
         for i in range(7):
             d = (now - timedelta(days=i)).strftime("%Y%m%d")
@@ -292,31 +393,35 @@ class PatternDetectors:
                 total_hourly += int(c)
                 if 1 <= int(h) <= 4: night_msgs += int(c)
         if total_hourly > 0:
-            score = max(0, min(100, int(((night_msgs/total_hourly) / 0.6) * 100)))
+            score = max(0, min(100, int(((night_msgs/total_hourly) / 0.5) * 100)))
             if score > 10:
-                affinities.append({"name": "Noční sova", "score": score, "emoji": "🦉", "desc": f"Noční aktivita.", "hint": "Spánek je základ."})
+                affinities.append({"name": "Noční sova", "score": score, "emoji": "🦉", "desc": f"Většina aktivity v noci.", "hint": "Zkus jít spát dřív."})
         
+        # Add new affinities
+        preachy = await self.get_keyword_count(r, gid, uid, "preachy", 7)
+        if preachy >= 2:
+             affinities.append({"name": "Kazatel", "score": min(100, preachy * 20), "emoji": "📢", "desc": "Tendence poučovat.", "hint": "Soustřeď se víc na sebe."})
+             
+        help_others = await self.get_keyword_count(r, gid, uid, "help_others", 7)
+        if help_others >= 5:
+             affinities.append({"name": "Pomocník", "score": min(100, help_others * 10), "emoji": "🦸", "desc": "Pomáháš ostatním.", "hint": "Skvělá práce!"})
+
         affinities.sort(key=lambda x: x["score"], reverse=True)
         return affinities[:5]
 
     async def scan_group_patterns(self, r, gid: int, now: datetime, today: str, user_ids: Set[int]) -> List[PatternAlert]:
         alerts = []
-        
-        # ── 1. Zrcadlový relaps (Social Contagion) ──
-        # Check if multiple users announced relapse in the last 4 hours
         relapse_uids = []
         for uid in user_ids:
-            relapse_kw = await self.get_keyword_count(r, gid, uid, "relapse_word", 1) # Just today
+            relapse_kw = await self.get_keyword_count(r, gid, uid, "relapse_word", 1) 
             if relapse_kw > 0:
                 relapse_uids.append(uid)
         
         if len(relapse_uids) >= 3:
-            # Aggregate as a group alert or multiple individual alerts
             for uid in relapse_uids:
                 alerts.append(PatternAlert(
                     pattern_name="Zrcadlový relaps", user_id=uid, risk_level="critical",
                     description=f"Detekována 'nákaza' relapsem v kanálu. {len(relapse_uids)} lidí selhalo v krátkém čase.",
                     recommended_action="Okamžitý intervenční post moderátora. Změnit téma na pozitivní aktivitu.", emoji="🌋"
                 ))
-                
         return alerts
