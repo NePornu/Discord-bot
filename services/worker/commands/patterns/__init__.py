@@ -1,6 +1,6 @@
 import time
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Set
 
 import discord
@@ -10,7 +10,7 @@ from discord.ext import commands
 from shared.python.config import config
 from shared.python.redis_client import get_redis_client
 
-from .common import K_LAST_SCAN, is_staff
+from .common import K_LAST_SCAN, K_FIRST, is_staff
 from .signals import PatternSignals
 from .detectors import PatternDetectors
 from .scanner import PatternScanner
@@ -65,19 +65,75 @@ class PatternDetectorCog(commands.Cog):
             days_inactive = await self.detectors.days_since_last_activity(r, self._guild_id, user.id, 180)
             affinities = await self.detectors.analyze_user_affinity(r, self._guild_id, user.id, now, today, stats_7d, stats_30d, days_inactive)
 
-            embed = discord.Embed(title=f"🔍 Diagnostika: {user.display_name}", color=0x5865F2, timestamp=now)
+            embed = discord.Embed(
+                title=f"🔍 Diagnostika: {user.display_name}", 
+                description=f"Hloubková analýza chování: {user.mention}",
+                color=0x5865F2, 
+                timestamp=now
+            )
             embed.set_thumbnail(url=user.display_avatar.url)
             
-            act_val = f"**7 dní:** {stats_7d['msg_count']} zpráv\n**30 dní:** {stats_30d['msg_count']} zpráv"
-            embed.add_field(name="📊 Statistiky", value=act_val, inline=True)
-
-            if affinities:
-                aff_text = "\n".join([f"{af['emoji']} **{af['name']}** `{af['score']}%`" for af in affinities])
-                embed.add_field(name="🎯 Afinita", value=aff_text, inline=False)
+            # --- Detailed Stats Section ---
+            interactivity = (stats_7d["reply_count"] / max(1, stats_7d["msg_count"])) * 100
+            avg_words = stats_7d["avg_words_per_msg"]
             
+            # Time context from detectors
+            last_date = (now - timedelta(days=days_inactive)).strftime("%d.%m.%Y") if days_inactive < 180 else "Nikdy"
+            first_msg_ts = await r.hgetall(K_FIRST(self._guild_id, user.id))
+            first_date = datetime.fromtimestamp(int(first_msg_ts["timestamp"])).strftime("%d.%m.%Y") if first_msg_ts else "Neznámo"
+            join_days = await self.detectors.get_join_days(r, self._guild_id, user.id)
+            
+            stats_text = (
+                f"📅 **Aktivita (7d):** {stats_7d['msg_count']} zpráv\n"
+                f"✍️ **Délka zpráv:** {avg_words:.1f} slov/zpr\n"
+                f"🤝 **Interaktivita:** {int(interactivity)}% (odpovědi)\n"
+                f"💤 **Dny ticha:** {days_inactive} dní\n"
+                f"🕰️ **Poslední aktivita:** {last_date}\n"
+                f"🌱 **První zpráva:** {first_date} ({join_days or 0}d člen)"
+            )
+            embed.add_field(name="📊 Klíčové metriky", value=stats_text, inline=True)
+            
+            # --- Urgency Window Logic ---
+            urgency_text = "⚪ **Nízká** (Informační)"
             if alerts:
-                pat_text = "\n".join([f"**{a.emoji} {a.pattern_name}**" for a in alerts[:5]])
-                embed.add_field(name=f"🚨 Poplachy", value=pat_text, inline=False)
+                highest_risk = "info"
+                all_names = {a.pattern_name for a in alerts}
+                for a in alerts:
+                    if a.risk_level == "critical": highest_risk = "critical"
+                    elif a.risk_level == "warning" and highest_risk != "critical": highest_risk = "warning"
+                
+                if highest_risk == "critical":
+                    if days_inactive <= 2: urgency_text = "🔴 **VYSOKÁ** (Kritické! Vyřídit ihned)"
+                    elif days_inactive <= 7: urgency_text = "🟠 **STŘEDNÍ** (Stále důležité)"
+                    else: urgency_text = "⚪ **NÍZKÁ** (Příležitost už nejspíš vyhasla)"
+                elif highest_risk == "warning":
+                    if days_inactive <= 3: urgency_text = "🟡 **STŘEDNÍ** (Doporučeno do 48h)"
+                    else: urgency_text = "⚪ **NÍZKÁ** (Pozdní reakce)"
+                elif "Jednorázovka" in all_names:
+                    if days_inactive <= 2: urgency_text = "🟡 **STŘEDNÍ** (Klíčové pro retenci!)"
+                    else: urgency_text = "⚪ **NÍZKÁ** (Uživatel už pravděpodobně nepíše)"
+            
+            embed.add_field(name="🚑 Naléhavost zásahu", value=urgency_text, inline=True)
+            
+            # --- Pattern Fulfillment Section ---
+            if affinities:
+                aff_lines = []
+                for af in affinities:
+                    # Create a simple progress bar: [■■□□□]
+                    filled = int(af['score'] / 10)
+                    bar = "▰" * filled + "▱" * (10 - filled)
+                    aff_lines.append(f"{af['emoji']} **{af['name']}** `{af['score']}%`\n`{bar}`\n*{af['desc']}*")
+                
+                embed.add_field(name="🎯 Naplnění vzorců", value="\n\n".join(aff_lines), inline=False)
+            
+            # --- Final Verdict / Alerts ---
+            if alerts:
+                pat_text = "\n".join([f"**{a.emoji} {a.pattern_name}** ({a.level_label})" for a in alerts[:5]])
+                embed.add_field(name=f"🚨 Aktivní poplachy", value=pat_text, inline=False)
+            else:
+                embed.add_field(name=f"🚨 Poplachy", value="✅ Žádné aktivní vzorce k řešení.", inline=False)
+
+            embed.set_footer(text=f"ID: {user.id} • Procenta značí míru shody se vzorcem.")
 
             await itx.followup.send(embed=embed, ephemeral=True)
         finally:

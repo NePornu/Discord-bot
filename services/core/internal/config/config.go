@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -13,16 +14,25 @@ type Config struct {
 	KCAdminPassword     string
 	KCInternalURL       string
 	AlertChannelID      string
+	ServerLogChannelID string
+	PatternLogChannelID string
+	AvatarLogChannelID  string
 	DashboardToken      string
 	GuildID             string
-	VerificationChannel string
-	VerifLogChannel     string
-	WelcomeChannel      string
+	VerificationChannel   string
+	VerifLogChannel       string
+	LinkApprovalChannel   string
+	LinkExemptChannels    []string
+	LinkExemptRoles       []string
+	WelcomeChannel        string
 	VerifiedRole        string
 	VerificationCode    string
 	ConsoleChannelID    string
 	WaitLogChannelID    string
 	WaitingRoleID       string
+	Role18Plus         string
+	Role15_17          string
+	VerificationSecret  string
 }
 
 func LoadConfig() *Config {
@@ -50,6 +60,9 @@ func LoadConfig() *Config {
 		KCAdminPassword:     cleanEnv("KC_ADMIN_PASSWORD"),
 		KCInternalURL:       cleanEnv("KC_INTERNAL_URL"),
 		AlertChannelID:      cleanEnv("ALERT_CHANNEL_ID"),
+		ServerLogChannelID:  cleanEnv("SERVER_LOG_CHANNEL_ID"),
+		PatternLogChannelID: cleanEnv("PATTERN_LOG_CHANNEL_ID"),
+		AvatarLogChannelID:  cleanEnv("AVATAR_LOG_CHANNEL_ID"),
 		DashboardToken:      cleanEnv("DASHBOARD_TOKEN"),
 		GuildID:             cleanEnv("GUILD_ID"),
 		VerificationChannel: cleanEnv("VERIFICATION_CHANNEL_ID"),
@@ -60,5 +73,26 @@ func LoadConfig() *Config {
 		ConsoleChannelID:    cleanEnv("CONSOLE_CHANNEL_ID"),
 		WaitLogChannelID:    cleanEnv("WAIT_LOG_CHANNEL_ID"),
 		WaitingRoleID:       cleanEnv("WAITING_ROLE_ID"),
+		Role18Plus:         cleanEnv("ROLE_18_PLUS"),
+		Role15_17:           cleanEnv("ROLE_15_17"),
+		VerificationSecret:  cleanEnv("VERIFICATION_SECRET"),
+		LinkApprovalChannel: cleanEnv("LINK_APPROVAL_CHANNEL_ID"),
+		LinkExemptChannels:  parseCommaList(cleanEnv("LINK_EXEMPT_CHANNELS")),
+		LinkExemptRoles:     parseCommaList(cleanEnv("LINK_EXEMPT_ROLES")),
 	}
+}
+
+func parseCommaList(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	res := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			res = append(res, trimmed)
+		}
+	}
+	return res
 }

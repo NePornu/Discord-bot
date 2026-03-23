@@ -14,10 +14,10 @@ var (
 	Ctx    = context.Background()
 )
 
-// Timeout returns a context with a 5-second timeout for Redis operations.
+// Timeout returns a context with a 2-second timeout for Redis operations.
 // Use this for operations that shouldn't hang indefinitely.
 func Timeout() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(Ctx, 5*time.Second)
+	return context.WithTimeout(Ctx, 2*time.Second)
 }
 
 func Init(redisURL string) {
@@ -26,6 +26,11 @@ func Init(redisURL string) {
 		slog.Error("Error parsing Redis URL", "error", err)
 		os.Exit(1)
 	}
+
+	// Set stricter timeouts to fit within Discord's 3s interaction limit
+	opts.ReadTimeout = 2 * time.Second
+	opts.WriteTimeout = 2 * time.Second
+	opts.PoolTimeout = 3 * time.Second
 
 	Client = redis.NewClient(opts)
 	

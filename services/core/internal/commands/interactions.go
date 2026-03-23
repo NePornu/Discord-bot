@@ -37,7 +37,7 @@ func HandleReport(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *con
 		},
 	}
 
-	s.ChannelMessageSendEmbed(cfg.AlertChannelID, embed)
+	s.ChannelMessageSendEmbed(cfg.ServerLogChannelID, embed)
 }
 
 func HandleGDPR(s *discordgo.Session, i *discordgo.InteractionCreate) {

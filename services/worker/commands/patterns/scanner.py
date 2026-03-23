@@ -68,13 +68,29 @@ class PatternScanner:
             except Exception as e:
                 logger.error(f"Error in group pattern scan: {e}")
 
-            # 5. Send alerts (with dedup)
-            sent_count = 0
+            # 5. Group alerts by user & check mutes
+            from .common import K_MUTE
+            user_to_alerts = {}
             for alert in found_alerts:
+                # Check for 7-day mute
+                if await r.exists(K_MUTE(gid, alert.user_id)):
+                    continue
+
                 if await self.alerts.should_send_alert(r, gid, alert):
-                    await self.alerts.send_alert(alert)
-                    await self.alerts.mark_alert_sent(r, gid, alert)
-                    sent_count += 1
+                    if alert.user_id not in user_to_alerts:
+                        user_to_alerts[alert.user_id] = []
+                    user_to_alerts[alert.user_id].append(alert)
+
+            # 6. Send batched alerts
+            sent_count = 0
+            for uid, alerts in user_to_alerts.items():
+                try:
+                    await self.alerts.send_batched_alerts(uid, alerts)
+                    for alert in alerts:
+                        await self.alerts.mark_alert_sent(r, gid, alert)
+                    sent_count += len(alerts)
+                except Exception as e:
+                    logger.error(f"Failed to send batched alerts for user {uid}: {e}")
 
             await r.set(K_LAST_SCAN(gid), str(int(now.timestamp())), ex=86400)
             await r.aclose()

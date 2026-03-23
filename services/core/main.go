@@ -91,6 +91,7 @@ func main() {
 	challengeService := challenge.NewChallengeService(cfg)
 	repService := reputation.NewReputationService(cfg)
 	levelsHandler := commands.NewLevelsHandler()
+	stickyRolesListener := listeners.NewStickyRolesListener(cfg)
 	
 	// Calendar service strictly needs Redis
 	var calendarService *calendar.CalendarService
@@ -122,6 +123,14 @@ func main() {
 		{
 			Name:        "help",
 			Description: "Zobrazí nápovědu k botovi",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "prikaz",
+					Description: "Konkrétní příkaz, o kterém chceš vědět víc",
+					Required:    false,
+				},
+			},
 		},
 		{
 			Name:        "echo",
@@ -271,6 +280,100 @@ func main() {
 					Name:        "ping",
 					Description: "Pošle ti testovací DM s OTP",
 				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "progress",
+					Description: "Zobrazí statistiky ověření členů (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "broadcast",
+					Description: "Aktivuje chytré pošťouchnutí pro neověřené (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "admin",
+					Description: "🛡️ Správa a přehled ověřování (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "toggle",
+					Description: "Zapne/vypne systém pošťuchování (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "onboarding",
+					Description: "Odešle menu pro ověření věku (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "bulk-migrate",
+					Description: "Převede uživatele v čekárně na nový systém (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "bulk-reverify",
+					Description: "Spustí hromadné ověřování všech členů (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "reset-age",
+					Description: "Resetuje kompletní proces ověření uživatele (Admin)",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionUser,
+							Name:        "uzivatel",
+							Description: "Uživatel k resetování",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "reset",
+					Description: "Resetuje kompletní proces ověření uživatele (Admin)",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionUser,
+							Name:        "uzivatel",
+							Description: "Uživatel k resetování",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "bulk-all",
+					Description: "Pošle nové ověření VŠEM členům na serveru (Admin)",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionBoolean,
+							Name:        "dry-run",
+							Description: "Pouze spočítá uživatele, nic neposílá",
+							Required:    false,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "list-waiting",
+					Description: "Zobrazí seznam uživatelů v čekárně (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "list-db",
+					Description: "Zobrazí seznam prověřených uživatelů z databáze (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "audit-ages",
+					Description: "Prohledá historii zpráv a najde zmínky o věku (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "redis-audit",
+					Description: "Zobrazí audit dat v Redis (Admin)",
+				},
 			},
 		},
 		{
@@ -316,6 +419,92 @@ func main() {
 							Required:    true,
 						},
 					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "link-toggle",
+					Description: "Zapnout/vypnout schvalování odkazů",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionBoolean,
+							Name:        "zapnuto",
+							Description: "Status schvalování",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "link-channel",
+					Description: "Nastavit kanál pro schvalování odkazů",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionChannel,
+							Name:        "kanal",
+							Description: "Kanál pro schvalování",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "exempt-add",
+					Description: "Přidat roli, kanál nebo kategorii do výjimek",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionRole,
+							Name:        "role",
+							Description: "Role k ignorování",
+							Required:    false,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionChannel,
+							Name:        "kanal",
+							Description: "Kanál k ignorování",
+							Required:    false,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionChannel,
+							Name:        "kategorie",
+							Description: "Kategorie k ignorování",
+							Required:    false,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "exempt-remove",
+					Description: "Odstranit z výjimek",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "role",
+							Description: "ID role k odstranění",
+							Required:    false,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "kanal",
+							Description: "ID kanálu k odstranění",
+							Required:    false,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "kategorie",
+							Description: "ID kategorie k odstranění",
+							Required:    false,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "exempt-list",
+					Description: "Zobrazit seznam všech výjimek",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "status",
+					Description: "Zobrazit aktuální nastavení AutoModu",
 				},
 			},
 		},
@@ -622,13 +811,45 @@ func main() {
 	// Logging handlers
 	dg.AddHandler(logHandler.OnMessageDelete)
 	dg.AddHandler(logHandler.OnMessageUpdate)
+	dg.AddHandler(logHandler.OnMessageCreate)
 	dg.AddHandler(logHandler.OnGuildMemberAdd)
 	dg.AddHandler(logHandler.OnGuildMemberRemove)
+	dg.AddHandler(logHandler.OnGuildMemberUpdate)
+	dg.AddHandler(logHandler.OnVoiceStateUpdate)
+	dg.AddHandler(logHandler.OnGuildBanAdd)
+	dg.AddHandler(logHandler.OnGuildBanRemove)
+	dg.AddHandler(logHandler.OnChannelCreate)
+	dg.AddHandler(logHandler.OnChannelDelete)
+	dg.AddHandler(logHandler.OnChannelUpdate)
+	dg.AddHandler(logHandler.OnMessageReactionAdd)
+	dg.AddHandler(logHandler.OnMessageReactionRemove)
+	dg.AddHandler(logHandler.OnMessageReactionRemoveAll)
+	dg.AddHandler(logHandler.OnInteractionCreate)
+	dg.AddHandler(logHandler.OnGuildRoleCreate)
+	dg.AddHandler(logHandler.OnGuildRoleUpdate)
+	dg.AddHandler(logHandler.OnGuildRoleDelete)
+	dg.AddHandler(logHandler.OnGuildUpdate)
+	dg.AddHandler(logHandler.OnThreadCreate)
+	dg.AddHandler(logHandler.OnThreadDelete)
+	dg.AddHandler(logHandler.OnInviteCreate)
+	dg.AddHandler(logHandler.OnInviteDelete)
+	dg.AddHandler(logHandler.OnWebhooksUpdate)
+	dg.AddHandler(logHandler.OnGuildScheduledEventCreate)
+	dg.AddHandler(logHandler.OnGuildScheduledEventUpdate)
+	dg.AddHandler(logHandler.OnGuildScheduledEventDelete)
+	dg.AddHandler(logHandler.OnAutoModerationActionExecution)
+	dg.AddHandler(logHandler.OnAutoModerationRuleCreate)
+	dg.AddHandler(logHandler.OnAutoModerationRuleUpdate)
+	dg.AddHandler(logHandler.OnAutoModerationRuleDelete)
+	dg.AddHandler(logHandler.OnMessageDeleteBulk)
+	dg.AddHandler(logHandler.OnGuildEmojisUpdate)
 	dg.AddHandler(verifyService.OnMemberRemove)
 
 	// Custom Listeners
 	dg.AddHandler(levelsListener.OnMessage)
 	dg.AddHandler(activityListener.OnMessage)
+	dg.AddHandler(stickyRolesListener.OnMemberRemove)
+	dg.AddHandler(stickyRolesListener.OnMemberJoin)
 
 	dg.AddHandler(verifyService.OnMemberJoin)
 	dg.AddHandler(verifyService.OnMessageCreate)
@@ -637,14 +858,34 @@ func main() {
 	dg.AddHandler(challengeService.OnMessage)
 	dg.AddHandler(challengeService.OnReactionAdd)
 
-	// Interaction Handler (Buttons / Selects)
+	// Interaction Handler (Buttons / Selects / Modals)
 	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if i.Type == discordgo.InteractionMessageComponent {
+		slog.Info("Interaction received", "type", i.Type, "userID", verifyService.GetUserIDFromInteraction(i))
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("RECOVERED PANIC in interaction handler", "error", r, "type", i.Type)
+				// Try to respond to Discord if it was a component or modal interaction
+				if i.Type == discordgo.InteractionMessageComponent || i.Type == discordgo.InteractionModalSubmit {
+					s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+						Type: discordgo.InteractionResponseChannelMessageWithSource,
+						Data: &discordgo.InteractionResponseData{
+							Content: "⚠️ V aplikaci došlo k chybě. Prosím kontaktujte administrátora.",
+							Flags:   discordgo.MessageFlagsEphemeral,
+						},
+					})
+				}
+			}
+		}()
+
+		switch i.Type {
+		case discordgo.InteractionMessageComponent:
 			verifyService.HandleButtonClick(s, i)
 			automodService.HandleInteraction(s, i)
 			if calendarService != nil {
 				calendarService.HandleInteraction(s, i)
 			}
+		case discordgo.InteractionModalSubmit:
+			verifyService.HandleModalSubmit(s, i)
 		}
 	})
 

@@ -61,7 +61,7 @@ except ImportError:
     print(f"INFO: Using secrets from environment.")
 
 APP_MODE = os.getenv("APP_MODE", "dashboard") # dashboard or training
-SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "metricord_session")
+SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "nepornu_session")
 DASHBOARD_PORT = 8092
 TRAINING_PORT = 8093
 SERVER_IP = "207.180.223.191" # Or pull from env if available
@@ -91,7 +91,7 @@ from .utils import (
 )
 
 
-app = FastAPI(title="Metricord", docs_url=None, redoc_url=None)
+app = FastAPI(title="NePornu", docs_url=None, redoc_url=None)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

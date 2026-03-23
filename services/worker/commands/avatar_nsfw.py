@@ -301,7 +301,7 @@ class AvatarNSFW(commands.Cog):
             # Vše ostatní -> LOG_CHANNEL_ID (1404416148077809705)
             
             target_nsfw_id = getattr(config, "PROFILE_LOG_CHANNEL_ID", 1404734262485450772)
-            target_sfw_id = getattr(config, "LOG_CHANNEL_ID", 1404416148077809705)
+            target_sfw_id = getattr(config, "PROFILE_LOG_CHANNEL_ID", 1404734262485450772)
             
             if is_nsfw:
                 print(f"[NSFW] Detekován závadný avatar: {user} (score: {score:.3f})")
@@ -361,6 +361,14 @@ class AvatarNSFW(commands.Cog):
             if after.display_avatar:
                 print(f"[NSFW] Serverová změna avataru u {after} v {after.guild} - provádím kontrolu...")
                 await self.check_avatar(after)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        """Checks the avatar of a newly joined member."""
+        if member.bot:
+            return
+        print(f"[NSFW] Nový člen {member} - provádím kontrolu avataru...")
+        await self.check_avatar(member)
 
     @commands.is_owner()
     @commands.command(name="nsfwsync")
