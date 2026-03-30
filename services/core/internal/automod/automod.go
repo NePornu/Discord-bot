@@ -296,9 +296,21 @@ func (a *AutoModService) isLinkExempt(s *discordgo.Session, m *discordgo.Message
 	// 1. Roles (Merged .env + Redis)
 	if m.Member != nil {
 		allExemptRoles := append(a.Config.LinkExemptRoles, settings.ExemptRoles...)
+		
+		// Map role IDs to names for name-based matching
+		roleNames := make(map[string]string)
+		g, err := s.State.Guild(m.GuildID)
+		if err == nil {
+			for _, r := range g.Roles {
+				roleNames[r.ID] = r.Name
+			}
+		}
+
 		for _, roleID := range m.Member.Roles {
-			for _, exemptRole := range allExemptRoles {
-				if roleID == exemptRole {
+			roleName := roleNames[roleID]
+			for _, exempt := range allExemptRoles {
+				// Match by ID or Name (case-insensitive)
+				if roleID == exempt || (roleName != "" && strings.EqualFold(roleName, exempt)) {
 					return true
 				}
 			}
@@ -307,8 +319,15 @@ func (a *AutoModService) isLinkExempt(s *discordgo.Session, m *discordgo.Message
 
 	// 2. Channels (Merged .env + Redis)
 	allExemptChannels := append(a.Config.LinkExemptChannels, settings.ExemptChannels...)
-	for _, channelID := range allExemptChannels {
-		if m.ChannelID == channelID {
+	channel, err := s.State.Channel(m.ChannelID)
+	channelName := ""
+	if err == nil {
+		channelName = channel.Name
+	}
+
+	for _, exempt := range allExemptChannels {
+		// Match by ID or Name (case-insensitive)
+		if m.ChannelID == exempt || (channelName != "" && strings.EqualFold(channelName, exempt)) {
 			return true
 		}
 	}

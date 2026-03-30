@@ -17,7 +17,8 @@ KEYWORD_GROUPS = {
     "wall_keywords": ["nevím", "stále", "pořád stejné", "dokola",
                       "stále stejné", "netuším"],
     "absolutisms": ["všechno", "nikdy", "vždy", "nic", "úplně",
-                    "absolutně", "totálně"],
+                    "absolutně", "totálně", "vždyť", "každý", "všichni",
+                    "neustále", "pořád", "beznadějně", "pokaždé"],
     "activation": ["už nemůžu", "včera se to stalo", "poprvé píšu",
                    "první příspěvek", "jsem tu nový", "rozhodl jsem se", "přidávám se", "zkusím to"],
     "relapse_word": ["relaps", "relapsnul", "selhal jsem"],
@@ -33,6 +34,7 @@ KEYWORD_GROUPS = {
     "preachy": ["měli byste", "musíte", "je potřeba", "nesmíte", "každý musí"],
     "analytical": ["analýza", "reflexe", "příčina", "důsledek", "souvislost",
                    "metodika", "proces", "kognitivní", "vzorec"],
+    "survival": ["survival", "přežití", "krizový plán", "krizáč", "nouzovka", "sos", "panika"],
 }
 
 # Match whole words for short keywords to avoid false positives

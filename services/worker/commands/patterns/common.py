@@ -40,6 +40,12 @@ def K_LAST_SCAN(gid):             return f"pat:last_scan:{gid}"
 def K_QUESTION(gid, uid, mid):    return f"pat:question:{gid}:{uid}:{mid}"
 def K_STAFF_RESPONSE(gid, uid):  return f"pat:staff_resp:{gid}:{uid}"
 def K_MSG_LEN(gid, mid):         return f"pat:msg_len:{gid}:{mid}"
+def K_NOTES(gid, uid):           return f"pat:notes:{gid}:{uid}"
+def K_THREAD(gid, uid):          return f"pat:thread:{gid}:{uid}"
+def K_THREAD_UID(tid):           return f"pat:thread_uid:{tid}"
+def K_STATUS(gid, uid):          return f"pat:status:{gid}:{uid}"
+def K_FOLLOWUP(gid, uid):        return f"pat:followup:{gid}:{uid}"
+def K_LAST_ACTIVITY(gid, uid):   return f"pat:last_act:{gid}:{uid}"
 
 PAT_TTL = 730 * 86400  # 2 years
 

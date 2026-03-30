@@ -3,7 +3,8 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Set, Optional
-from .common import PatternAlert, K_MSG, K_KW, K_EDIT, K_JOIN, K_DIARY, K_QUESTION, K_STAFF_RESPONSE, K_FIRST
+import discord
+from .common import PatternAlert, K_MSG, K_KW, K_EDIT, K_JOIN, K_DIARY, K_QUESTION, K_STAFF_RESPONSE, K_FIRST, K_MUTE
 
 logger = logging.getLogger("PatternDetector")
 
@@ -73,6 +74,26 @@ class PatternDetectors:
             return (int(time.time()) - join_ts) // 86400
         return None
 
+    async def get_all_time_stats(self, r, gid: int, uid: int) -> Dict:
+        # Scan all pat:msg:gid:uid:* keys
+        total_msgs = 0
+        cursor = "0"
+        match = f"pat:msg:{gid}:{uid}:*"
+        while True:
+            cursor, keys = await r.scan(cursor=cursor, match=match, count=1000)
+            for k in keys:
+                data = await r.hgetall(k)
+                total_msgs += int(data.get("msg_count", 0))
+            if cursor == 0 or cursor == "0": break
+        return {"total_msgs": total_msgs}
+
+    async def get_klient_notes(self, r, gid: int, uid: int) -> List[Dict]:
+        from .common import K_NOTES
+        data = await r.get(K_NOTES(gid, uid))
+        if data:
+            return json.loads(data)
+        return []
+
     async def scan_user(self, r, gid: int, uid: int, now: datetime, today: str) -> List[PatternAlert]:
         alerts = []
         stats_7d = await self.get_user_msg_stats(r, gid, uid, 7)
@@ -87,7 +108,7 @@ class PatternDetectors:
         first_msg_date = datetime.fromtimestamp(int(first_msg_ts["timestamp"])).strftime("%d.%m.%Y") if first_msg_ts else "Neznámo"
 
         # ── 1. Jednorázovka ──
-        if stats_30d["msg_count"] == 1 and days_inactive >= 1:
+        if stats_30d["msg_count"] == 1 and 1 <= days_inactive <= 7:
             total_90 = (await self.get_user_msg_stats(r, gid, uid, 90))["msg_count"]
             if total_90 == 1:
                 alerts.append(PatternAlert(
@@ -161,11 +182,11 @@ class PatternDetectors:
                         recommended_action="Brzdit nadšení. Nařídit klidový režim (max 3 zprávy denně).", emoji="💥"
                     ))
 
-        # ── 7. Emocionální dumping ──
+        # ── 7. Emoční dumping ──
         absolutisms_kw_7d = await self.get_keyword_count(r, gid, uid, "absolutisms", 7)
         if absolutisms_kw_7d >= 8 and stats_7d["msg_count"] > 3:
             alerts.append(PatternAlert(
-                pattern_name="Emocionální dumping", user_id=uid, risk_level="critical",
+                pattern_name="Emoční dumping", user_id=uid, risk_level="critical",
                 description=f"Vysoká frekvence absolutismů (vždy, nikdy, všechno). Hrozí stud a burnout.",
                 recommended_action="Přesunout do vlákna/ventingu. Snížit tlak na okamžité 'řešení'.", emoji="🤮"
             ))
@@ -290,7 +311,7 @@ class PatternDetectors:
             alerts.append(PatternAlert(
                 pattern_name="Sezónní návrat", user_id=uid, risk_level="info",
                 description="Návrat po více než roce. Fórum je vnímáno jako stabilní záchranný bod.",
-                recommended_action="Vřelé 'Vítej zpátky'. Usnadnit orientaci v případných novinkách.", emoji="🍂"
+                recommended_action="Vřelé 'Vítej zpátky'. Usnadnit orientaci v novinkách.", emoji="🍂"
             ))
 
         # ── 21. Aktivní pozorovatel ──
@@ -347,6 +368,25 @@ class PatternDetectors:
                 recommended_action="Ocenit přínos pro komunitu a podporu ostatních.", emoji="🤝"
             ))
 
+        # ── 28. Survival Metoda ──
+        survival_kw_7d = await self.get_keyword_count(r, gid, uid, "survival", 7)
+        if survival_kw_7d >= 3:
+            alerts.append(PatternAlert(
+                pattern_name="Survival Metoda", user_id=uid, risk_level="info",
+                description=f"Klient aktivně zmiňuje prvky Survival metody ({survival_kw_7d}x).",
+                recommended_action="Podpořit v dodržování metodiky. Pozitivní signál.", emoji="🛡️"
+            ))
+
+        # ── 29. Absence krizového plánu ──
+        if join_days and join_days > 14 and stats_7d["msg_count"] > 5:
+            plan_kw_30d = await self.get_keyword_count(r, gid, uid, "methodology", 30)
+            if plan_kw_30d == 0:
+                alerts.append(PatternAlert(
+                    pattern_name="Absence plánu", user_id=uid, risk_level="warning",
+                    description="Klient je aktivní přes 14 dní, ale nezmínil krizový plán ani metodiku.",
+                    recommended_action="Mentor by měl nenápadně navést na sestavení krizového plánu.", emoji="📝"
+                ))
+
         return alerts
 
     async def analyze_user_affinity(self, r, gid: int, uid: int, now: datetime, today: str, stats_7d: Dict, stats_30d: Dict, days_inactive: int) -> List[Dict]:
@@ -396,7 +436,7 @@ class PatternDetectors:
                     "hint": "Bránit pocitu točení v kruhu."
                 })
 
-        # 3. Emotional Dumping %
+        # 3. Emoční dumping %
         if "Emoční dumping" not in active_names:
             absolutisms_kw = await self.get_keyword_count(r, gid, uid, "absolutisms", 7)
             score = min(100, int((absolutisms_kw / 8) * 100))
@@ -448,3 +488,97 @@ class PatternDetectors:
                     recommended_action="Okamžitý intervenční post moderátora. Změnit téma na pozitivní aktivitu.", emoji="🌋"
                 ))
         return alerts
+
+    async def build_diagnostic_embed(self, r, uid: int, user_mention: str, user_display_name: str, avatar_url: Optional[str]) -> discord.Embed:
+        now = datetime.now(timezone.utc)
+        today = now.strftime("%Y%m%d")
+        gid = self._guild_id
+
+        alerts = await self.scan_user(r, gid, uid, now, today)
+        stats_7d = await self.get_user_msg_stats(r, gid, uid, 7)
+        stats_30d = await self.get_user_msg_stats(r, gid, uid, 30)
+        days_inactive = await self.days_since_last_activity(r, gid, uid, 365) # Look back a year
+        affinities = await self.analyze_user_affinity(r, gid, uid, now, today, stats_7d, stats_30d, days_inactive)
+        all_time = await self.get_all_time_stats(r, gid, uid)
+        notes = await self.get_klient_notes(r, gid, uid)
+
+        embed = discord.Embed(
+            title=f"🔍 Karta klienta: {user_display_name}", 
+            description=f"Hloubková analýza chování: {user_mention}",
+            color=0x5865F2, 
+            timestamp=now
+        )
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+        
+        # --- Detailed Stats Section ---
+        interactivity = (stats_7d["reply_count"] / max(1, stats_7d["msg_count"])) * 100
+        avg_words = stats_7d["avg_words_per_msg"]
+        
+        last_date = (now - timedelta(days=days_inactive)).strftime("%d.%m.%Y") if days_inactive < 365 else "Nikdy"
+        first_msg_ts = await r.hgetall(K_FIRST(gid, uid))
+        first_date = datetime.fromtimestamp(int(first_msg_ts["timestamp"])).strftime("%d.%m.%Y") if first_msg_ts else "Neznámo"
+        join_days = await self.get_join_days(r, gid, uid)
+        
+        stats_text = (
+            f"📅 **Aktivita (7d):** {stats_7d['msg_count']} zpráv\n"
+            f"📈 **Celkem zpráv:** {all_time['total_msgs']}\n"
+            f"✍️ **Délka zpráv:** {avg_words:.1f} slov/zpr\n"
+            f"🤝 **Interaktivita:** {int(interactivity)}% (odpovědi)\n"
+            f"💤 **Dny ticha:** {days_inactive} dní\n"
+            f"🕰️ **Poslední aktivita:** {last_date}\n"
+            f"🌱 **V komunitě:** {join_days or 0} dní (od {first_date})"
+        )
+        embed.add_field(name="📊 Klíčové metriky", value=stats_text, inline=True)
+        
+        # --- Urgency Window Logic ---
+        urgency_text = "⚪ **Nízká** (Informační)"
+        if alerts:
+            highest_risk = "info"
+            all_names = {a.pattern_name for a in alerts}
+            for a in alerts:
+                if a.risk_level == "critical": highest_risk = "critical"
+                elif a.risk_level == "warning" and highest_risk != "critical": highest_risk = "warning"
+            
+            if highest_risk == "critical":
+                if days_inactive <= 2: urgency_text = "🔴 **VYSOKÁ** (Kritické! Vyřídit ihned)"
+                elif days_inactive <= 7: urgency_text = "🟠 **STŘEDNÍ** (Stále důležité)"
+                else: urgency_text = "⚪ **NÍZKÁ** (Příležitost už nejspíš vyhasla)"
+            elif highest_risk == "warning":
+                if days_inactive <= 3: urgency_text = "🟡 **STŘEDNÍ** (Doporučeno do 48h)"
+                else: urgency_text = "⚪ **NÍZKÁ** (Pozdní reakce)"
+            elif "Jednorázovka" in all_names:
+                if days_inactive <= 2: urgency_text = "🟡 **STŘEDNÍ** (Klíčové pro retenci!)"
+                else: urgency_text = "⚪ **NÍZKÁ** (Uživatel už pravděpodobně nepíše)"
+        
+        embed.add_field(name="🚑 Naléhavost zásahu", value=urgency_text, inline=True)
+        
+        # --- Notes Section ---
+        if notes:
+            last_notes = notes[-3:] # Show last 3 notes
+            note_lines = []
+            for n in last_notes:
+                dt = datetime.fromtimestamp(n['ts']).strftime("%d.%m.")
+                note_lines.append(f"• `[{dt}]` **{n['author']}**: {n['content']}")
+            embed.add_field(name="📝 Poslední poznámky týmu", value="\n".join(note_lines), inline=False)
+        else:
+            embed.add_field(name="📝 Poznámky", value="*Žádné poznámky k tomuto klientovi.*", inline=False)
+
+        # --- Pattern Fulfillment Section ---
+        if affinities:
+            aff_lines = []
+            for af in affinities:
+                filled = int(af['score'] / 10)
+                bar = "▰" * filled + "▱" * (10 - filled)
+                aff_lines.append(f"{af['emoji']} **{af['name']}** `{af['score']}%`\n`{bar}`\n*{af['desc']}*")
+            
+            embed.add_field(name="🎯 Naplnění vzorců", value="\n\n".join(aff_lines), inline=False)
+        
+        if alerts:
+            pat_text = "\n".join([f"**{a.emoji} {a.pattern_name}** ({a.level_label})" for a in alerts[:5]])
+            embed.add_field(name=f"🚨 Aktivní poplachy", value=pat_text, inline=False)
+        else:
+            embed.add_field(name=f"🚨 Poplachy", value="✅ Žádné aktivní vzorce k řešení.", inline=False)
+
+        embed.set_footer(text=f"ID: {uid} • NePornu Karta klienta")
+        return embed

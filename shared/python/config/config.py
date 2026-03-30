@@ -59,5 +59,9 @@ COMMANDS_CONFIG = {
     "help": {"enabled": True, "admin_only": True},
     "nsfwsync": {"enabled": True, "admin_only": True},
     "quest_stats": {"enabled": True, "admin_only": False},
-    "quest_backfill": {"enabled": True, "admin_only": True}
+    "quest_backfill": {"enabled": True, "admin_only": True},
+    "sync": {"enabled": True, "admin_only": True},
+    "say": {"enabled": True, "admin_only": True},
+    "edit": {"enabled": True, "admin_only": True},
+    "delete": {"enabled": True, "admin_only": True}
 }

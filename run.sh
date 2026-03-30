@@ -29,7 +29,16 @@ fi
 
 # Load environment variables
 if [ -f "$BOT_DIR/.env" ]; then
-    export $(grep -v '^#' "$BOT_DIR/.env" | xargs)
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Mark lines starting with # as comments
+        [[ "$line" =~ ^#.*$ ]] && continue
+        # Ignore empty lines
+        [[ -z "$line" ]] && continue
+        # Split key and value, strip surrounding quotes from value
+        key=$(echo "$line" | cut -d'=' -f1)
+        value=$(echo "$line" | cut -d'=' -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+        export "$key=$value"
+    done < "$BOT_DIR/.env"
 fi
 
 # Override REDIS_URL for local execution (replace docker service name with localhost)

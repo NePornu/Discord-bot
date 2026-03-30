@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 import discord
 from discord.ext import commands
-from .common import K_MSG, K_KW, K_FIRST, K_REPLY, K_DIARY, K_QUESTION, K_JOIN, K_STAFF_RESPONSE, K_MSG_LEN, PAT_TTL, get_today, is_staff, is_diary_channel
+from .common import K_MSG, K_KW, K_FIRST, K_REPLY, K_DIARY, K_QUESTION, K_JOIN, K_STAFF_RESPONSE, K_MSG_LEN, K_LAST_ACTIVITY, PAT_TTL, get_today, is_staff, is_diary_channel
 from shared.python.pattern_logic import KEYWORD_GROUPS, count_keywords, count_words, is_analytical_style
 
 logger = logging.getLogger("PatternDetector")
@@ -32,6 +32,25 @@ class PatternSignals(commands.Cog):
             mentions = len(message.mentions)
             author_is_staff = isinstance(message.author, discord.Member) and is_staff(message.author)
 
+            # --- Klient Thread Note Capturing ---
+            if isinstance(message.channel, discord.Thread) and author_is_staff:
+                from .common import K_THREAD_UID, K_NOTES
+                uid_str = await r.get(K_THREAD_UID(message.channel.id))
+                if uid_str:
+                    target_uid = int(uid_str)
+                    notes_data = await r.get(K_NOTES(gid, target_uid))
+                    notes_list = json.loads(notes_data) if notes_data else []
+                    notes_list.append({
+                        "ts": int(message.created_at.timestamp()),
+                        "author": message.author.display_name,
+                        "content": text
+                    })
+                    await r.set(K_NOTES(gid, target_uid), json.dumps(notes_list[-50:]), ex=PAT_TTL)
+                    try: await message.add_reaction("📝")
+                    except: pass
+                    # We don't need to process this message for other patterns
+                    return
+
             pipe = r.pipeline()
 
             # --- Aggregate message stats (Skip staff for some metrics) ---
@@ -45,6 +64,8 @@ class PatternSignals(commands.Cog):
                 if mentions > 0:
                     pipe.hincrby(msg_key, "mention_count", mentions)
                 pipe.expire(msg_key, PAT_TTL)
+                # Track last activity for follow-ups
+                pipe.set(K_LAST_ACTIVITY(gid, uid), str(int(message.created_at.timestamp())), ex=PAT_TTL)
 
             # --- Keyword scanning & Analytical style ---
             if len(text) > 3:

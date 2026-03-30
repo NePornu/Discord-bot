@@ -14,7 +14,7 @@ from .common import K_LAST_SCAN, K_FIRST, is_staff
 from .signals import PatternSignals
 from .detectors import PatternDetectors
 from .scanner import PatternScanner
-from .alerts import PatternAlerts
+from .alerts import PatternAlerts, DiagnosticResultView
 
 logger = logging.getLogger("PatternDetector")
 
@@ -59,83 +59,12 @@ class PatternDetectorCog(commands.Cog):
         today = now.strftime("%Y%m%d")
 
         try:
-            alerts = await self.detectors.scan_user(r, self._guild_id, user.id, now, today)
-            stats_7d = await self.detectors.get_user_msg_stats(r, self._guild_id, user.id, 7)
-            stats_30d = await self.detectors.get_user_msg_stats(r, self._guild_id, user.id, 30)
-            days_inactive = await self.detectors.days_since_last_activity(r, self._guild_id, user.id, 180)
-            affinities = await self.detectors.analyze_user_affinity(r, self._guild_id, user.id, now, today, stats_7d, stats_30d, days_inactive)
-
-            embed = discord.Embed(
-                title=f"🔍 Diagnostika: {user.display_name}", 
-                description=f"Hloubková analýza chování: {user.mention}",
-                color=0x5865F2, 
-                timestamp=now
+            embed = await self.detectors.build_diagnostic_embed(
+                r, user.id, user.mention, user.display_name, user.display_avatar.url
             )
-            embed.set_thumbnail(url=user.display_avatar.url)
-            
-            # --- Detailed Stats Section ---
-            interactivity = (stats_7d["reply_count"] / max(1, stats_7d["msg_count"])) * 100
-            avg_words = stats_7d["avg_words_per_msg"]
-            
-            # Time context from detectors
-            last_date = (now - timedelta(days=days_inactive)).strftime("%d.%m.%Y") if days_inactive < 180 else "Nikdy"
-            first_msg_ts = await r.hgetall(K_FIRST(self._guild_id, user.id))
-            first_date = datetime.fromtimestamp(int(first_msg_ts["timestamp"])).strftime("%d.%m.%Y") if first_msg_ts else "Neznámo"
-            join_days = await self.detectors.get_join_days(r, self._guild_id, user.id)
-            
-            stats_text = (
-                f"📅 **Aktivita (7d):** {stats_7d['msg_count']} zpráv\n"
-                f"✍️ **Délka zpráv:** {avg_words:.1f} slov/zpr\n"
-                f"🤝 **Interaktivita:** {int(interactivity)}% (odpovědi)\n"
-                f"💤 **Dny ticha:** {days_inactive} dní\n"
-                f"🕰️ **Poslední aktivita:** {last_date}\n"
-                f"🌱 **První zpráva:** {first_date} ({join_days or 0}d člen)"
-            )
-            embed.add_field(name="📊 Klíčové metriky", value=stats_text, inline=True)
-            
-            # --- Urgency Window Logic ---
-            urgency_text = "⚪ **Nízká** (Informační)"
-            if alerts:
-                highest_risk = "info"
-                all_names = {a.pattern_name for a in alerts}
-                for a in alerts:
-                    if a.risk_level == "critical": highest_risk = "critical"
-                    elif a.risk_level == "warning" and highest_risk != "critical": highest_risk = "warning"
-                
-                if highest_risk == "critical":
-                    if days_inactive <= 2: urgency_text = "🔴 **VYSOKÁ** (Kritické! Vyřídit ihned)"
-                    elif days_inactive <= 7: urgency_text = "🟠 **STŘEDNÍ** (Stále důležité)"
-                    else: urgency_text = "⚪ **NÍZKÁ** (Příležitost už nejspíš vyhasla)"
-                elif highest_risk == "warning":
-                    if days_inactive <= 3: urgency_text = "🟡 **STŘEDNÍ** (Doporučeno do 48h)"
-                    else: urgency_text = "⚪ **NÍZKÁ** (Pozdní reakce)"
-                elif "Jednorázovka" in all_names:
-                    if days_inactive <= 2: urgency_text = "🟡 **STŘEDNÍ** (Klíčové pro retenci!)"
-                    else: urgency_text = "⚪ **NÍZKÁ** (Uživatel už pravděpodobně nepíše)"
-            
-            embed.add_field(name="🚑 Naléhavost zásahu", value=urgency_text, inline=True)
-            
-            # --- Pattern Fulfillment Section ---
-            if affinities:
-                aff_lines = []
-                for af in affinities:
-                    # Create a simple progress bar: [■■□□□]
-                    filled = int(af['score'] / 10)
-                    bar = "▰" * filled + "▱" * (10 - filled)
-                    aff_lines.append(f"{af['emoji']} **{af['name']}** `{af['score']}%`\n`{bar}`\n*{af['desc']}*")
-                
-                embed.add_field(name="🎯 Naplnění vzorců", value="\n\n".join(aff_lines), inline=False)
-            
-            # --- Final Verdict / Alerts ---
-            if alerts:
-                pat_text = "\n".join([f"**{a.emoji} {a.pattern_name}** ({a.level_label})" for a in alerts[:5]])
-                embed.add_field(name=f"🚨 Aktivní poplachy", value=pat_text, inline=False)
-            else:
-                embed.add_field(name=f"🚨 Poplachy", value="✅ Žádné aktivní vzorce k řešení.", inline=False)
-
-            embed.set_footer(text=f"ID: {user.id} • Procenta značí míru shody se vzorcem.")
-
-            await itx.followup.send(embed=embed, ephemeral=True)
+            # Add view with "Open Case" button
+            view = DiagnosticResultView(user.id, self._guild_id, self.alerts, self.detectors)
+            await itx.followup.send(embed=embed, view=view, ephemeral=True)
         finally:
             await r.aclose()
 
@@ -216,7 +145,9 @@ class PatternDetectorCog(commands.Cog):
                 ("🤝 Vrstevnické pouto", "Silná vazba na parťáka. Pozor na jeho odchod."),
                 ("🦸 Nadšený pomocník", "Přílišná koncentrace na pomoc ostatním na úkor sebe.")
             ],
-            "📅 Retence a Čas": [
+            "📅 Retence a Metodika": [
+                ("🛡️ Survival Metoda", "Aktivní zmínky o prvcích Survival metody."),
+                ("📝 Absence plánu", "Aktivní 14+ dní bez zmínky o krizovém plánu."),
                 ("📆 Rytmus 90 dní", "Klesající aktivita u milníků 21, 60, 90 dní."),
                 ("📉 Víkendový propad", "Pád aktivity o víkendech o 60%+."),
                 ("👋 Jednorázovka", "Pouze 1 zpráva od registrace."),
@@ -235,6 +166,72 @@ class PatternDetectorCog(commands.Cog):
         await itx.response.send_message(embeds=embeds[:2], ephemeral=True)
         if len(embeds) > 2:
             await itx.followup.send(embeds=embeds[2:], ephemeral=True)
+
+    @pattern_group.command(name="reset-all", description="Kritický reset: Smaže všechny aktivní karty a historii detekcí.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def reset_all(self, itx: discord.Interaction):
+        await itx.response.defer(ephemeral=True)
+        r = await self._get_redis()
+        gid = self._guild_id
+        
+        try:
+            # 1. Thread Cleanup
+            thread_prefix = f"pat:thread:{gid}:"
+            cursor = "0"
+            thread_keys = []
+            while True:
+                cursor, keys = await r.scan(cursor=cursor, match=f"{thread_prefix}*", count=1000)
+                thread_keys.extend(keys)
+                if cursor == 0 or cursor == "0": break
+            
+            deleted_threads = 0
+            for k in thread_keys:
+                tid_str = await r.get(k)
+                if tid_str:
+                    try:
+                        tid = int(tid_str)
+                        thread = itx.guild.get_thread(tid)
+                        if not thread:
+                            try: thread = await itx.guild.fetch_channel(tid)
+                            except: pass
+                        
+                        if thread and isinstance(thread, discord.Thread):
+                            await thread.delete()
+                            deleted_threads += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to delete thread {tid_str}: {e}")
+                
+                await r.delete(k)
+                if tid_str:
+                    from .common import K_THREAD_UID
+                    await r.delete(K_THREAD_UID(int(tid_str)))
+
+            # 2. Alert History Cleanup
+            alert_prefix = f"pat:alert_sent:{gid}:"
+            cursor = "0"
+            alert_keys = []
+            while True:
+                cursor, keys = await r.scan(cursor=cursor, match=f"{alert_prefix}*", count=1000)
+                alert_keys.extend(keys)
+                if cursor == 0 or cursor == "0": break
+            
+            if alert_keys:
+                # Delete in chunks to avoid large command issues
+                for i in range(0, len(alert_keys), 100):
+                    chunk = alert_keys[i:i+100]
+                    await r.delete(*chunk)
+
+            await itx.followup.send(
+                f"✅ **Reset dokončen.**\n"
+                f"- Smazáno aktivních karet (vláken): `{deleted_threads}`\n"
+                f"- Vymazáno záznamů o historii detekcí: `{len(alert_keys)}`", 
+                ephemeral=True
+            )
+        except Exception as e:
+            logger.error(f"Error in reset_all: {e}")
+            await itx.followup.send(f"❌ Nastala chyba při resetu: {e}", ephemeral=True)
+        finally:
+            await r.aclose()
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PatternDetectorCog(bot))

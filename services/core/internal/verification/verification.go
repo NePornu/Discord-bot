@@ -650,22 +650,27 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 
 	v.confirmSuccess(s, userID)
 
-	// 6. Update Mod Log (Edit in place)
 	u, _ := s.User(userID)
 	username := userID
 	if u != nil {
 		username = u.Username
 	}
 
+	avatarScore := state["avatar_score"]
+	if avatarScore == "" {
+		avatarScore = "Nezkontrolováno"
+	}
+
 	logContent := fmt.Sprintf("✅ **Uživatel ověřen:**\n\n"+
 		"**Uživatel:** <@%s> (%s)\n"+
 		"**ID:** %s\n"+
-		"**Kategorie:** **%s**\n\n"+
+		"**Kategorie:** **%s**\n"+
+		"**Avatar Check:** %s\n\n"+
 		"**Časový průběh:**\n"+
 		"• Připojení: <t:%d:F>\n"+
 		"• Schválení: <t:%d:F>\n\n"+
 		"**Moderátor:** Schválil <@%s>",
-		userID, username, userID, ageCategory,
+		userID, username, userID, ageCategory, avatarScore,
 		v.parseInt(state["created_at"]),
 		now.Unix(),
 		v.GetUserIDFromInteraction(i))
@@ -871,10 +876,9 @@ func (v *VerificationService) HandleModalSubmit(s *discordgo.Session, i *discord
 	if age < 15 {
 		// Scenario A: Under 15 - Friendly Rejection + Safety Tips + Kick
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: "✅ Informace byly odeslány do tvých soukromých zpráv.",
-				Flags:   discordgo.MessageFlagsEphemeral,
+				Flags: discordgo.MessageFlagsEphemeral,
 			},
 		})
 
@@ -916,10 +920,9 @@ func (v *VerificationService) HandleModalSubmit(s *discordgo.Session, i *discord
 		}
 
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: "✅ Poslední krok najdeš ve svých soukromých zprávách (potvrzení souhlasu).",
-				Flags:   discordgo.MessageFlagsEphemeral,
+				Flags: discordgo.MessageFlagsEphemeral,
 			},
 		})
 

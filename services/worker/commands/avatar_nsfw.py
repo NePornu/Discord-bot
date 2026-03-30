@@ -9,6 +9,7 @@ import hashlib
 import asyncio
 import os
 from shared.python.config import config
+from shared.python.redis_client import get_redis_client
 
 class WarnUserModal(discord.ui.Modal, title="⚠️ Upozornit uživatele"):
     def __init__(self, user: discord.User):
@@ -119,15 +120,15 @@ class AvatarNSFW(commands.Cog):
         percentage = min(max(score * 100, 0), 100)
         
         if score < 0.2:
-            level = "Velmi nízká"
+            level = "✅ Bezpečný"
         elif score < 0.5:
-            level = "Nízká"
+            level = "⚠️ Nízké riziko"
         elif score < 0.8:
-            level = "Možná"
+            level = "🔥 Možné riziko"
         elif score < 0.95:
-            level = "Vysoká"
+            level = "🚨 Vysoké riziko"
         else:
-            level = "Kritická"
+            level = "☢️ Kritické riziko"
             
         return f"{level} ({percentage:.1f}%)"
 
@@ -243,7 +244,11 @@ class AvatarNSFW(commands.Cog):
             self.cache.pop(next(iter(self.cache)))
         self.cache[key] = value
 
-    async def check_avatar(self, user):
+    async def check_avatar(self, user, trigger="manual"):
+        """
+        Checks a user's avatar.
+        trigger: "join", "update", or "manual"
+        """
         if not user.display_avatar:
             return
 
@@ -265,84 +270,100 @@ class AvatarNSFW(commands.Cog):
                 self.update_cache(img_hash, scores)
 
             # Debug log to console
-            print(f"[NSFW] DEBUG: User {user} ({user.id}) | Scores: {scores}")
+            print(f"[NSFW] {trigger.upper()} check: User {user} ({user.id}) | Scores: {scores}")
 
-            # Predpokládáme, že index 1 je NSFW
             score = scores[1]
-            
             threshold = getattr(config, "NSFW_THRESHOLD", 0.5)
-            log_channel_id = getattr(config, "PROFILE_LOG_CHANNEL_ID", None)
-            alert_channel_id = getattr(config, "NSFW_ALERT_CHANNEL_ID", config.LOG_CHANNEL_ID)
-            
-            log_channel = self.bot.get_channel(log_channel_id) if log_channel_id else None
-            # Fallback if channel not in cache
-            if not log_channel and log_channel_id:
-                try:
-                    log_channel = await self.bot.fetch_channel(log_channel_id)
-                except Exception as e:
-                    print(f"[NSFW] Nelze najít log channel {log_channel_id}: {e}")
-
-            alert_channel = self.bot.get_channel(alert_channel_id)
-            if not alert_channel and alert_channel_id:
-                try:
-                    alert_channel = await self.bot.fetch_channel(alert_channel_id)
-                except Exception as e:
-                    print(f"[NSFW] Nelze najít alert channel {alert_channel_id}: {e}")
-            
-            is_nsfw = score > threshold
             formatted_score = self.format_nsfw_score(score)
-            
-            # ROUTING:
-            # - NSFW: only to alert_channel (PROFILE_LOG_CHANNEL_ID) with buttons
-            # - SFW: only to log_channel (LOG_CHANNEL_ID)
-            
-            # Define targets based on user preference:
-            # Problematické -> PROFILE_LOG_CHANNEL_ID (1404734262485450772)
-            # Vše ostatní -> LOG_CHANNEL_ID (1404416148077809705)
-            
-            target_nsfw_id = getattr(config, "PROFILE_LOG_CHANNEL_ID", 1404734262485450772)
-            target_sfw_id = getattr(config, "PROFILE_LOG_CHANNEL_ID", 1404734262485450772)
-            
-            if is_nsfw:
-                print(f"[NSFW] Detekován závadný avatar: {user} (score: {score:.3f})")
-                alert_channel = self.bot.get_channel(target_nsfw_id)
-                if not alert_channel:
-                    try: alert_channel = await self.bot.fetch_channel(target_nsfw_id)
-                    except: pass
-                
-                if alert_channel:
-                    embed = discord.Embed(
-                        title="🚨 NSFW Avatar Detekován",
-                        description=f"Uživatel {user.mention} (`{user.id}`) má potenciálně závadnou profilovku.\nPravděpodobnost NSFW: `{formatted_score}`",
-                        color=discord.Color.red(),
-                        timestamp=discord.utils.utcnow()
-                    )
-                    embed.set_thumbnail(url=url)
+            is_nsfw = score > threshold
+
+            # JOIN TRIGGER: Update mod log in "čekárna" and log to "logu čekárny"
+            if trigger == "join":
+                # 1. Update existing join message in Verification Channel
+                verif_channel_id = getattr(config, "VERIFICATION_CHANNEL_ID", None)
+                try:
+                    r = await get_redis_client()
+                    state_key = f"verify:state:{user.id}"
+                    # Save score to Redis for Go Core to pick up in final report
+                    await r.hset(state_key, "avatar_score", formatted_score)
                     
-                    try:
-                        view = NSFWActionView(user)
-                        await alert_channel.send(embed=embed, view=view)
-                    except Exception as e:
-                        print(f"[NSFW] Chyba při posílání alertu: {e}")
-            else:
-                # SFW logic - goes to server logs
-                log_channel = self.bot.get_channel(target_sfw_id)
+                    msg_id = None
+                    for attempt in range(10): # 10 attempts * 0.5s = 5s total
+                        msg_id = await r.hget(state_key, "approve_msg_id")
+                        if msg_id:
+                            break
+                        await asyncio.sleep(0.5)
+                        
+                    await r.aclose()
+                    
+                    if not msg_id:
+                        print(f"[NSFW] Warning: 'approve_msg_id' not found in Redis after 5s for user {user.id}. Cannot update join message.")
+                        return
+
+                    channel = self.bot.get_channel(int(verif_channel_id))
+                    if not channel:
+                        channel = await self.bot.fetch_channel(int(verif_channel_id))
+                    
+                    if channel:
+                        try:
+                            msg = await channel.fetch_message(int(msg_id))
+                            new_content = msg.content
+                            if "Avatar Check:" not in new_content:
+                                new_content = new_content.replace("Status:", f"Avatar Check: `{formatted_score}`\nStatus:")
+                            await msg.edit(content=new_content)
+                            print(f"[NSFW] Updated join message {msg_id} with score {formatted_score}")
+                        except Exception as e:
+                            print(f"[NSFW] Failed to fetch or edit join message {msg_id}: {e}")
+                except Exception as e:
+                    print(f"[NSFW] Redis/Message update error: {e}")
+
+                # 2. Log to SERVER_LOG_CHANNEL_ID (Wait Log)
+                log_channel_id = getattr(config, "LOG_CHANNEL_ID", 1404416148077809705)
+                log_channel = self.bot.get_channel(log_channel_id)
                 if not log_channel:
-                    try: log_channel = await self.bot.fetch_channel(target_sfw_id)
+                    try: log_channel = await self.bot.fetch_channel(log_channel_id)
                     except: pass
                     
                 if log_channel:
+                    status_text = "**NSFW DETEKOVAN** 🚨" if is_nsfw else "**OK** ✅"
                     log_embed = discord.Embed(
-                        title="✅ Avatar Check",
-                        description=f"User: {user.mention} (`{user.id}`)\nScore: `{formatted_score}`\nStatus: **OK**",
-                        color=discord.Color.green(),
+                        title="🛡️ Avatar Join Check",
+                        description=f"Uživatel: {user.mention} (`{user.id}`)\nRiziko: `{formatted_score}`\nStatus: {status_text}",
+                        color=discord.Color.red() if is_nsfw else discord.Color.green(),
                         timestamp=discord.utils.utcnow()
                     )
                     log_embed.set_thumbnail(url=url)
-                    try:
-                        await log_channel.send(embed=log_embed)
-                    except Exception as e:
-                        print(f"[NSFW] Chyba při posílání logu: {e}")
+                    await log_channel.send(embed=log_embed)
+
+            # UPDATE OR MANUAL: Log to Profile Logs (AVATAR_LOG_CHANNEL_ID / PROFILE_LOG_CHANNEL_ID)
+            else:
+                target_log_id = getattr(config, "PROFILE_LOG_CHANNEL_ID", 1404734262485450772)
+                alert_channel = self.bot.get_channel(target_log_id)
+                if not alert_channel:
+                    try: alert_channel = await self.bot.fetch_channel(target_log_id)
+                    except: pass
+
+                if alert_channel:
+                    if is_nsfw:
+                        embed = discord.Embed(
+                            title="🚨 NSFW Avatar Detekován (Změna)",
+                            description=f"Uživatel {user.mention} (`{user.id}`) si změnil profilovku.\nRiziko: `{formatted_score}`",
+                            color=discord.Color.red(),
+                            timestamp=discord.utils.utcnow()
+                        )
+                        embed.set_thumbnail(url=url)
+                        view = NSFWActionView(user)
+                        await alert_channel.send(embed=embed, view=view)
+                    else:
+                        # Log SFW change too? Based on user request "při změně avatara to pošli do profile logs"
+                        log_embed = discord.Embed(
+                            title="✅ Avatar Check (Změna)",
+                            description=f"Uživatel: {user.mention} (`{user.id}`)\nRiziko: `{formatted_score}`\nStatus: **OK**",
+                            color=discord.Color.green(),
+                            timestamp=discord.utils.utcnow()
+                        )
+                        log_embed.set_thumbnail(url=url)
+                        await alert_channel.send(embed=log_embed)
 
         except Exception as e:
             print(f"[NSFW] Chyba při kontrole avataru {user}: {e}")
@@ -352,7 +373,7 @@ class AvatarNSFW(commands.Cog):
         if before.avatar != after.avatar:
             if after.avatar:
                 print(f"[NSFW] Globální změna avataru u {after} - provádím kontrolu...")
-                await self.check_avatar(after)
+                await self.check_avatar(after, trigger="update")
 
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
@@ -360,7 +381,7 @@ class AvatarNSFW(commands.Cog):
         if before.guild_avatar != after.guild_avatar:
             if after.display_avatar:
                 print(f"[NSFW] Serverová změna avataru u {after} v {after.guild} - provádím kontrolu...")
-                await self.check_avatar(after)
+                await self.check_avatar(after, trigger="update")
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -368,7 +389,7 @@ class AvatarNSFW(commands.Cog):
         if member.bot:
             return
         print(f"[NSFW] Nový člen {member} - provádím kontrolu avataru...")
-        await self.check_avatar(member)
+        await self.check_avatar(member, trigger="join")
 
     @commands.is_owner()
     @commands.command(name="nsfwsync")
