@@ -68,6 +68,30 @@ class PatternDetectorCog(commands.Cog):
         finally:
             await r.aclose()
 
+    @pattern_group.command(name="discourse_report", description="Generovat diagnostický přehled pro uživatele na Discourse.")
+    @app_commands.describe(user_id="Discourse ID uživatele")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def discourse_report(self, itx: discord.Interaction, user_id: int):
+        await itx.response.defer(ephemeral=True)
+        
+        # We use a dummy alert to trigger the manual report
+        from .common import PatternAlert
+        dummy_alert = PatternAlert(
+            pattern_name="Manuální prověření",
+            user_id=user_id,
+            risk_level="info",
+            description="Tento přehled byl vygenerován na žádost moderátora.",
+            recommended_action="Zhodnotit celkový profil a aktivitu uživatele.",
+            emoji="👤"
+        )
+        
+        try:
+            await self.alerts.send_discourse_alert(user_id, [dummy_alert])
+            await itx.followup.send(f"✅ Diagnostický přehled pro uživatele `{user_id}` byl vygenerován na Discourse.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Manual discourse report failed: {e}")
+            await itx.followup.send(f"❌ Selhalo generování přehledu: {e}", ephemeral=True)
+
     @pattern_group.command(name="status", description="Zobrazí stav pattern detection enginu.")
     @app_commands.checks.has_permissions(administrator=True)
     async def status(self, itx: discord.Interaction):

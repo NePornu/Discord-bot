@@ -18,11 +18,12 @@ import redis.asyncio as aioredis
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from shared.pattern_logic import count_keywords, count_words
+from shared.python.pattern_logic import count_keywords, count_words
 from shared.python.redis_client import get_redis_client
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger("DiscourseBackfill")
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 DISCOURSE_GID = 999 
 PAT_TTL = 730 * 86400  # 2 years TTL
@@ -117,7 +118,7 @@ class DiscourseBackfiller:
             pipe.expire(hour_key, PAT_TTL)
 
             # Keyword scanning
-            from shared.pattern_logic import KEYWORD_GROUPS
+            from shared.python.pattern_logic import KEYWORD_GROUPS
             for group in KEYWORD_GROUPS:
                 hits = count_keywords(text, group)
                 if hits > 0:
@@ -125,6 +126,20 @@ class DiscourseBackfiller:
                     pipe.incrby(kw_key, hits)
                     pipe.expire(kw_key, PAT_TTL)
                     total_hits += hits
+
+            # Activity stats for scanner (Essential!)
+            daily_idx = f"stats:user_daily:{DISCOURSE_GID}:{date_str}"
+            pipe.zincrby(daily_idx, 1, str(uid))
+            pipe.expire(daily_idx, PAT_TTL)
+
+            ts_epoch = int(ts.timestamp())
+            last_act_key = f"pat:last_act:{DISCOURSE_GID}:{uid}"
+            pipe.set(last_act_key, str(ts_epoch))
+            pipe.expire(last_act_key, PAT_TTL)
+
+            first_msg_key = f"pat:first_msg:{DISCOURSE_GID}:{uid}"
+            pipe.hsetnx(first_msg_key, "timestamp", str(ts_epoch))
+            pipe.expire(first_msg_key, PAT_TTL)
 
             processed_count += 1
             if len(pipe) > 500:

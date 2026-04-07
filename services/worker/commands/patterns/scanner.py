@@ -23,6 +23,7 @@ class PatternScanner:
 
     @tasks.loop(minutes=config.PATTERN_SCAN_INTERVAL_MINUTES)
     async def pattern_scanner(self):
+        logger.info("Pattern scanner loop triggered!")
         try:
             r = await self._get_redis()
             gid = self._guild_id
@@ -31,6 +32,9 @@ class PatternScanner:
             # 1. Identify staff to skip
             
             await self.scan_guild(r, gid)
+            # 2. Scan Discourse (Synthetic GID 999)
+            await self.scan_guild(r, 999)
+            
             await self.check_followups()
             
             await r.aclose()
@@ -98,7 +102,7 @@ class PatternScanner:
         sent_count = 0
         for uid, alerts in user_to_alerts.items():
             try:
-                await self.alerts.send_batched_alerts(uid, alerts)
+                await self.alerts.send_batched_alerts(uid, alerts, gid=gid)
                 for alert in alerts:
                     await self.alerts.mark_alert_sent(r, gid, alert)
                 sent_count += len(alerts)
@@ -156,4 +160,4 @@ class PatternScanner:
     @pattern_scanner.before_loop
     async def _before_scanner(self):
         await self.bot.wait_until_ready()
-        await asyncio.sleep(30)
+        await asyncio.sleep(5)

@@ -7,6 +7,13 @@ import time
 import platform
 import sys
 from datetime import datetime
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
 
 # Manual .env loading (trying multiple paths for local vs container)
 env_paths = [

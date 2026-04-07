@@ -686,6 +686,11 @@ func main() {
 					Name:        "info",
 					Description: "Informace o dostupných vzorcích",
 				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "reset-all",
+					Description: "Kritický reset: Smaže všechny aktivní karty a historii detekcí (Admin)",
+				},
 			},
 		},
 		{
@@ -713,9 +718,9 @@ func main() {
 	modPerm := int64(discordgo.PermissionKickMembers)
 	for _, cmd := range cmdList {
 		switch cmd.Name {
-		case "purge", "echo", "status", "notify", "stats":
+		case "echo", "status", "notify", "stats":
 			cmd.DefaultMemberPermissions = &adminPerm
-		case "verify", "automod":
+		case "verify", "automod", "purge":
 			cmd.DefaultMemberPermissions = &modPerm
 		}
 	}

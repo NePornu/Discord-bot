@@ -6,6 +6,8 @@ from typing import Dict, List, Set, Optional
 import discord
 from .common import PatternAlert, K_MSG, K_KW, K_EDIT, K_JOIN, K_DIARY, K_QUESTION, K_STAFF_RESPONSE, K_FIRST, K_MUTE
 
+import subprocess
+from .ai_service import AIService
 logger = logging.getLogger("PatternDetector")
 
 class PatternDetectors:
@@ -67,6 +69,20 @@ class PatternDetectors:
     async def get_total_months_active(self, r, gid: int, uid: int, months: int = 6) -> int:
         return 0 # Placeholder
 
+    async def fetch_recent_discourse_posts(self, uid: int, limit: int = 10) -> List[str]:
+        """Fetch last N posts for a user from Discourse database."""
+        cmd = f'docker exec app sudo -u postgres psql -d discourse -t -A -c "SELECT raw FROM posts WHERE user_id = {uid} AND post_number > 0 ORDER BY created_at DESC LIMIT {limit};"'
+        try:
+            res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if res.returncode == 0:
+                posts = [p.strip() for p in res.stdout.split("\n") if p.strip()]
+                return posts
+            else:
+                logger.error(f"Failed to fetch Discourse posts: {res.stderr}")
+        except Exception as e:
+            logger.error(f"Error fetching Discourse posts: {e}")
+        return []
+
     async def get_join_days(self, r, gid: int, uid: int) -> Optional[int]:
         ts_str = await r.get(K_JOIN(gid, uid))
         if ts_str:
@@ -107,13 +123,13 @@ class PatternDetectors:
         first_msg_ts = await r.hgetall(K_FIRST(gid, uid))
         first_msg_date = datetime.fromtimestamp(int(first_msg_ts["timestamp"])).strftime("%d.%m.%Y") if first_msg_ts else "Neznámo"
 
-        # ── 1. Jednorázovka ──
-        if stats_30d["msg_count"] == 1 and 1 <= days_inactive <= 7:
+        # ── 1. Jednorázovka (RELAXED for demonstration) ──
+        if stats_30d["msg_count"] >= 1 and 1 <= days_inactive <= 60:
             total_90 = (await self.get_user_msg_stats(r, gid, uid, 90))["msg_count"]
-            if total_90 == 1:
+            if total_90 >= 1:
                 alerts.append(PatternAlert(
                     pattern_name="Jednorázovka", user_id=uid, risk_level="info",
-                    description=f"Uživatel napsal pouze 1 příspěvek a poté zmlkl ({days_inactive}d neaktivní).",
+                    description=f"Uživatel napsal {total_90} příspěvků a poté zmlkl ({days_inactive}d neaktivní).",
                     recommended_action="Okamžitý uvítací DM od mentora. První den je kritický.", emoji="👋"
                 ))
 
@@ -489,18 +505,88 @@ class PatternDetectors:
                 ))
         return alerts
 
+    async def get_diagnostic_context(self, r, gid: int, uid: int, now: datetime, today: str) -> Dict:
+        """Centralized diagnostic data collection for both Discord and Discourse."""
+        alerts = await self.scan_user(r, gid, uid, now, today)
+        stats_7d = await self.get_user_msg_stats(r, gid, uid, 7)
+        stats_30d = await self.get_user_msg_stats(r, gid, uid, 30)
+        days_inactive = await self.days_since_last_activity(r, gid, uid, 365)
+        affinities = await self.analyze_user_affinity(r, gid, uid, now, today, stats_7d, stats_30d, days_inactive)
+        all_time = await self.get_all_time_stats(r, gid, uid)
+        notes = await self.get_klient_notes(r, gid, uid)
+        
+        # Inactivity/Timing dates
+        last_date = (now - timedelta(days=days_inactive)).strftime("%d.%m.%Y") if days_inactive < 365 else "Nikdy"
+        first_msg_ts = await r.hgetall(K_FIRST(gid, uid))
+        first_date = datetime.fromtimestamp(int(first_msg_ts["timestamp"])).strftime("%d.%m.%Y") if first_msg_ts else "Neznámo"
+        join_days = await self.get_join_days(r, gid, uid)
+
+        # Urgency Logic
+        urgency_text = "⚪ **Nízká** (Informační)"
+        urgency_color = 0x95A5A6
+        if alerts:
+            highest_risk = "info"
+            all_names = {a.pattern_name for a in alerts}
+            for a in alerts:
+                if a.risk_level == "critical": highest_risk = "critical"
+                elif a.risk_level == "warning" and highest_risk != "critical": highest_risk = "warning"
+            
+            if highest_risk == "critical":
+                if days_inactive <= 2: 
+                    urgency_text = "🔴 **VYSOKÁ** (Kritické! Vyřídit ihned)"
+                    urgency_color = 0xE74C3C
+                elif days_inactive <= 7: 
+                    urgency_text = "🟠 **STŘEDNÍ** (Stále důležité)"
+                    urgency_color = 0xE67E22
+                else: 
+                    urgency_text = "⚪ **NÍZKÁ** (Příležitost už vyhasla)"
+            elif highest_risk == "warning":
+                if days_inactive <= 3: 
+                    urgency_text = "🟡 **STŘEDNÍ** (Doporučeno do 48h)"
+                    urgency_color = 0xF1C40F
+                else: 
+                    urgency_text = "⚪ **NÍZKÁ** (Pozdní reakce)"
+            elif "Jednorázovka" in all_names:
+                if days_inactive <= 2: 
+                    urgency_text = "🟡 **STŘEDNÍ** (Klíčové pro retenci)"
+                    urgency_color = 0xF1C40F
+                else: 
+                    urgency_text = "⚪ **NÍZKÁ** (Uživatel už nepíše)"
+
+        interactivity = (stats_7d["reply_count"] / max(1, stats_7d["msg_count"])) * 100
+
+        res_ctx = {
+            "alerts": alerts,
+            "stats_7d": stats_7d,
+            "stats_30d": stats_30d,
+            "days_inactive": days_inactive,
+            "affinities": affinities,
+            "all_time": all_time,
+            "notes": notes,
+            "urgency_text": urgency_text,
+            "urgency_color": urgency_color,
+            "interactivity": interactivity,
+            "last_msg_date": last_date,
+            "first_msg_date": first_date,
+            "join_days": join_days or 0
+        }
+
+        # AI Summary (Optional, only for Discourse GID 999 for now to save tokens)
+        ai_summary = None
+        if gid == 999:
+            posts = await self.fetch_recent_discourse_posts(uid)
+            if posts:
+                ai_summary = await AIService.summarize_posts(posts, ctx=res_ctx)
+
+        res_ctx["ai_summary"] = ai_summary
+        return res_ctx
+
     async def build_diagnostic_embed(self, r, uid: int, user_mention: str, user_display_name: str, avatar_url: Optional[str]) -> discord.Embed:
         now = datetime.now(timezone.utc)
         today = now.strftime("%Y%m%d")
         gid = self._guild_id
-
-        alerts = await self.scan_user(r, gid, uid, now, today)
-        stats_7d = await self.get_user_msg_stats(r, gid, uid, 7)
-        stats_30d = await self.get_user_msg_stats(r, gid, uid, 30)
-        days_inactive = await self.days_since_last_activity(r, gid, uid, 365) # Look back a year
-        affinities = await self.analyze_user_affinity(r, gid, uid, now, today, stats_7d, stats_30d, days_inactive)
-        all_time = await self.get_all_time_stats(r, gid, uid)
-        notes = await self.get_klient_notes(r, gid, uid)
+        
+        ctx = await self.get_diagnostic_context(r, gid, uid, now, today)
 
         embed = discord.Embed(
             title=f"🔍 Karta klienta: {user_display_name}", 
@@ -512,50 +598,25 @@ class PatternDetectors:
             embed.set_thumbnail(url=avatar_url)
         
         # --- Detailed Stats Section ---
-        interactivity = (stats_7d["reply_count"] / max(1, stats_7d["msg_count"])) * 100
+        stats_7d = ctx["stats_7d"]
         avg_words = stats_7d["avg_words_per_msg"]
-        
-        last_date = (now - timedelta(days=days_inactive)).strftime("%d.%m.%Y") if days_inactive < 365 else "Nikdy"
-        first_msg_ts = await r.hgetall(K_FIRST(gid, uid))
-        first_date = datetime.fromtimestamp(int(first_msg_ts["timestamp"])).strftime("%d.%m.%Y") if first_msg_ts else "Neznámo"
-        join_days = await self.get_join_days(r, gid, uid)
         
         stats_text = (
             f"📅 **Aktivita (7d):** {stats_7d['msg_count']} zpráv\n"
-            f"📈 **Celkem zpráv:** {all_time['total_msgs']}\n"
+            f"📈 **Celkem zpráv:** {ctx['all_time']['total_msgs']}\n"
             f"✍️ **Délka zpráv:** {avg_words:.1f} slov/zpr\n"
-            f"🤝 **Interaktivita:** {int(interactivity)}% (odpovědi)\n"
-            f"💤 **Dny ticha:** {days_inactive} dní\n"
-            f"🕰️ **Poslední aktivita:** {last_date}\n"
-            f"🌱 **V komunitě:** {join_days or 0} dní (od {first_date})"
+            f"🤝 **Interaktivita:** {int(ctx['interactivity'])}% (odpovědi)\n"
+            f"💤 **Dny ticha:** {ctx['days_inactive']} dní\n"
+            f"🕰️ **Poslední aktivita:** {ctx['last_msg_date']}\n"
+            f"🌱 **V komunitě:** {ctx['join_days']} dní (od {ctx['first_msg_date']})"
         )
         embed.add_field(name="📊 Klíčové metriky", value=stats_text, inline=True)
-        
-        # --- Urgency Window Logic ---
-        urgency_text = "⚪ **Nízká** (Informační)"
-        if alerts:
-            highest_risk = "info"
-            all_names = {a.pattern_name for a in alerts}
-            for a in alerts:
-                if a.risk_level == "critical": highest_risk = "critical"
-                elif a.risk_level == "warning" and highest_risk != "critical": highest_risk = "warning"
-            
-            if highest_risk == "critical":
-                if days_inactive <= 2: urgency_text = "🔴 **VYSOKÁ** (Kritické! Vyřídit ihned)"
-                elif days_inactive <= 7: urgency_text = "🟠 **STŘEDNÍ** (Stále důležité)"
-                else: urgency_text = "⚪ **NÍZKÁ** (Příležitost už nejspíš vyhasla)"
-            elif highest_risk == "warning":
-                if days_inactive <= 3: urgency_text = "🟡 **STŘEDNÍ** (Doporučeno do 48h)"
-                else: urgency_text = "⚪ **NÍZKÁ** (Pozdní reakce)"
-            elif "Jednorázovka" in all_names:
-                if days_inactive <= 2: urgency_text = "🟡 **STŘEDNÍ** (Klíčové pro retenci!)"
-                else: urgency_text = "⚪ **NÍZKÁ** (Uživatel už pravděpodobně nepíše)"
-        
-        embed.add_field(name="🚑 Naléhavost zásahu", value=urgency_text, inline=True)
+        embed.add_field(name="🚑 Naléhavost zásahu", value=ctx["urgency_text"], inline=True)
         
         # --- Notes Section ---
+        notes = ctx["notes"]
         if notes:
-            last_notes = notes[-3:] # Show last 3 notes
+            last_notes = notes[-3:] 
             note_lines = []
             for n in last_notes:
                 dt = datetime.fromtimestamp(n['ts']).strftime("%d.%m.")
@@ -565,6 +626,7 @@ class PatternDetectors:
             embed.add_field(name="📝 Poznámky", value="*Žádné poznámky k tomuto klientovi.*", inline=False)
 
         # --- Pattern Fulfillment Section ---
+        affinities = ctx["affinities"]
         if affinities:
             aff_lines = []
             for af in affinities:
@@ -574,6 +636,7 @@ class PatternDetectors:
             
             embed.add_field(name="🎯 Naplnění vzorců", value="\n\n".join(aff_lines), inline=False)
         
+        alerts = ctx["alerts"]
         if alerts:
             pat_text = "\n".join([f"**{a.emoji} {a.pattern_name}** ({a.level_label})" for a in alerts[:5]])
             embed.add_field(name=f"🚨 Aktivní poplachy", value=pat_text, inline=False)

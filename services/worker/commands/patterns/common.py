@@ -46,6 +46,7 @@ def K_THREAD_UID(tid):           return f"pat:thread_uid:{tid}"
 def K_STATUS(gid, uid):          return f"pat:status:{gid}:{uid}"
 def K_FOLLOWUP(gid, uid):        return f"pat:followup:{gid}:{uid}"
 def K_LAST_ACTIVITY(gid, uid):   return f"pat:last_act:{gid}:{uid}"
+def K_DISCOURSE_TOPIC(uid):      return f"pat:discourse_topic:{uid}"
 
 PAT_TTL = 730 * 86400  # 2 years
 

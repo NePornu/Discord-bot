@@ -3,6 +3,7 @@ import json
 import time
 import logging
 from datetime import datetime, timezone
+import re
 from typing import List, Optional
 import discord
 from shared.python.config import config
@@ -11,11 +12,12 @@ from .common import K_ALERT, K_MUTE, K_MSG, K_THREAD, K_THREAD_UID, K_FOLLOWUP, 
 
 logger = logging.getLogger("PatternDetector")
 
-class MentorDMModal(discord.ui.Modal, title="Poslat zprávu klientovi"):
-    message = discord.ui.TextInput(
-        label="Text zprávy",
+
+class ResolveModal(discord.ui.Modal, title="Vyřešit a uzavřít kartu"):
+    resolution = discord.ui.TextInput(
+        label="Jak byl klient dořešen?",
         style=discord.TextStyle.paragraph,
-        placeholder="Ahoj, všiml jsem si tvojí aktivity...",
+        placeholder="Např. Probrali jsme krizový plán, uživatel je stabilizovaný...",
         required=True,
         max_length=1000,
     )
@@ -27,61 +29,54 @@ class MentorDMModal(discord.ui.Modal, title="Poslat zprávu klientovi"):
 
     async def on_submit(self, itx: discord.Interaction):
         await itx.response.defer(ephemeral=True)
-        guild = itx.guild
-        member = guild.get_member(self.user_id) or await guild.fetch_member(self.user_id)
+        r = await get_redis_client()
+        gid = self.guild_id
+        uid = self.user_id
         
-        if not member:
-            await itx.followup.send("❌ Klient nebyl nalezen (možná opustil server).", ephemeral=True)
-            return
-
         try:
-            # Send DM
-            embed = discord.Embed(
-                title="Zpráva od mentora NePornu",
-                description=self.message.value,
-                color=0x3498DB
-            )
-            embed.set_footer(text="Na tuto zprávu můžeš odpovědět přímo zde.")
-            await member.send(embed=embed)
-            
-            # Log as note in thread
-            r = await get_redis_client()
-            notes_data = await r.get(K_NOTES(self.guild_id, self.user_id))
+            # 1. Save resolution note
+            notes_data = await r.get(K_NOTES(gid, uid))
             notes_list = json.loads(notes_data) if notes_data else []
             notes_list.append({
                 "ts": int(time.time()),
-                "author": f"{itx.user.display_name} (DM)",
-                "content": self.message.value
+                "author": f"{itx.user.display_name} (ZÁVĚR)",
+                "content": self.resolution.value
             })
-            await r.set(K_NOTES(self.guild_id, self.user_id), json.dumps(notes_list[-50:]), ex=730 * 86400)
+            await r.set(K_NOTES(gid, uid), json.dumps(notes_list[-50:]), ex=730 * 86400)
+            
+            # 2. Mute alerts for 30 days
+            await r.set(K_MUTE(gid, uid), "1", ex=30 * 86400)
+            
+            # 3. Clean up thread mapping
+            await r.delete(K_THREAD(gid, uid))
             await r.close()
             
-            await itx.followup.send(f"✅ Zpráva byla odeslána uživateli <@{self.user_id}> a uložena do poznámek klienta.", ephemeral=True)
+            await itx.followup.send(f"✅ Karta uživatele <@{uid}> byla vyřešena. Poznámka byla uložena a vlákno bude archivováno.", ephemeral=True)
             
-            # Post confirmation to thread
+            # 4. ARCHIVE thread
             if isinstance(itx.channel, discord.Thread):
-                await itx.channel.send(f"✉️ **@Moderační tým**: {itx.user.mention} poslal klientovi zprávu:\n> {self.message.value[:200]}...")
-
-        except discord.Forbidden:
-            await itx.followup.send("❌ Nepodařilo se odeslat zprávu. Uživatel má pravděpodobně vypnuté DM.", ephemeral=True)
+                try:
+                    await itx.channel.edit(archived=True, locked=False)
+                except Exception as e:
+                    logger.error(f"Failed to archive thread: {e}")
         except Exception as e:
-            logger.error(f"Error in MentorDMModal: {e}")
-            await itx.followup.send(f"❌ Nastala chyba při odesílání: {e}", ephemeral=True)
+            logger.error(f"Error in ResolveModal: {e}")
+            await itx.followup.send(f"❌ Chyba při ukládání: {e}", ephemeral=True)
 
-class ModeratorAssistantView(discord.ui.View):
+class ConfirmDeleteView(discord.ui.View):
     def __init__(self, user_id: int, guild_id: int):
-        super().__init__(timeout=None)
+        super().__init__(timeout=60)
         self.user_id = user_id
         self.guild_id = guild_id
 
-    @discord.ui.button(label="✔ Vyřešit", style=discord.ButtonStyle.success, custom_id="pat:handled")
-    async def mark_handled(self, itx: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Ano, smazat kartu", style=discord.ButtonStyle.danger)
+    async def confirm(self, itx: discord.Interaction, button: discord.ui.Button):
         await itx.response.defer(ephemeral=True)
         r = await get_redis_client()
         gid = self.guild_id
         uid = self.user_id
         
-        # Mute user for 30 days (INFO) or logic based on current state
+        # Mute user for 30 days (INFO) to prevent immediate re-detection
         await r.set(K_MUTE(gid, uid), "1", ex=30 * 86400)
         
         # Clean up thread reference
@@ -89,20 +84,37 @@ class ModeratorAssistantView(discord.ui.View):
         await r.delete(K_THREAD(gid, uid))
         await r.close()
         
-        # Disable buttons on the original message
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True
+        await itx.followup.send(f"✅ Karta uživatele <@{uid}> byla smazána.", ephemeral=True)
         
-        await itx.edit_original_response(view=self)
-        await itx.followup.send(f"✅ Klient <@{uid}> byl označen jako vyřešený. Vlákno bude archivováno.", ephemeral=True)
-        
-        # Archive thread if it is a thread
+        # DELETE thread if it is a thread
         if isinstance(itx.channel, discord.Thread):
             try:
-                await itx.channel.edit(archived=True, locked=False)
+                await itx.channel.delete()
             except Exception as e:
-                logger.error(f"Failed to archive thread: {e}")
+                logger.error(f"Failed to delete thread: {e}")
+
+    @discord.ui.button(label="Zrušit", style=discord.ButtonStyle.secondary)
+    async def cancel(self, itx: discord.Interaction, button: discord.ui.Button):
+        await itx.response.send_message("Operace byla zrušena.", ephemeral=True)
+
+class ModeratorAssistantView(discord.ui.View):
+    def __init__(self, user_id: int, guild_id: int):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.guild_id = guild_id
+
+    @discord.ui.button(label="📁 Vyřešit", style=discord.ButtonStyle.success, custom_id="pat:resolve")
+    async def resolve_trigger(self, itx: discord.Interaction, button: discord.ui.Button):
+        await itx.response.send_modal(ResolveModal(self.user_id, self.guild_id))
+
+    @discord.ui.button(label="🗑️ Smazat kartu", style=discord.ButtonStyle.danger, custom_id="pat:handled")
+    async def mark_handled(self, itx: discord.Interaction, button: discord.ui.Button):
+        view = ConfirmDeleteView(self.user_id, self.guild_id)
+        await itx.response.send_message(
+            "⚠️ **Opravdu chcete smazat tuto kartu?**\nTato akce je nevratná a vlákno bude odstraněno.", 
+            view=view, 
+            ephemeral=True
+        )
 
     @discord.ui.button(label="Aktivita", emoji="📊", style=discord.ButtonStyle.secondary, custom_id="pat:activity")
     async def view_activity(self, itx: discord.Interaction, button: discord.ui.Button):
@@ -131,10 +143,6 @@ class ModeratorAssistantView(discord.ui.View):
             await itx.followup.send(embed=embed, ephemeral=True)
         finally:
             await r.aclose()
-
-    @discord.ui.button(label="📩 Poslat mentora", style=discord.ButtonStyle.primary, custom_id="pat:mentor")
-    async def send_mentor(self, itx: discord.Interaction, button: discord.ui.Button):
-        await itx.response.send_modal(MentorDMModal(self.user_id, self.guild_id))
 
     @discord.ui.button(label="⏳ Sledovat (48h)", style=discord.ButtonStyle.secondary, custom_id="pat:follow")
     async def follow_up(self, itx: discord.Interaction, button: discord.ui.Button):
@@ -215,10 +223,18 @@ class PatternAlerts:
         ttl = cooldown_hours * 3600
         await r.set(key, str(int(time.time())), ex=ttl)
 
-    async def send_batched_alerts(self, user_id: int, alerts: List[PatternAlert]):
+    async def send_batched_alerts(self, user_id: int, alerts: List[PatternAlert], gid: int = None):
         if not alerts:
             return
+        
+        if gid is None:
+            gid = self._guild_id
             
+        if gid == 999:
+            # Discourse Alert
+            await self.send_discourse_alert(user_id, alerts)
+            return
+
         channel = await self.get_alert_channel()
         if not channel:
             logger.warning(f"Alert channel not found for batched alerts")
@@ -301,8 +317,125 @@ class PatternAlerts:
         except Exception as e:
             logger.error(f"Failed to send alert to thread: {e}")
 
-    async def send_alert(self, alert: PatternAlert):
-        await self.send_batched_alerts(alert.user_id, [alert])
+    async def send_discourse_alert(self, user_id: int, alerts: List[PatternAlert]):
+        if not alerts: return
+        
+        from .common import K_DISCOURSE_TOPIC
+        r = await get_redis_client()
+        existing_topic_id = await r.get(K_DISCOURSE_TOPIC(user_id))
+        
+        # 1. Get Discourse Username
+        import subprocess
+        cmd = f'docker exec app sudo -u postgres psql -d discourse -t -A -c "SELECT username FROM users WHERE id = {user_id}"'
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        username = res.stdout.strip() or f"User_{user_id}"
+        
+        # 2. Get Diagnostic Context
+        from .detectors import PatternDetectors
+        det = PatternDetectors(self._guild_id)
+        now = datetime.now(timezone.utc)
+        today = now.strftime("%Y%m%d")
+        ctx = await det.get_diagnostic_context(r, 999, user_id, now, today)
+
+        # 3. Build Rich Markdown
+        pattern_summaries = ", ".join([f"{a.emoji} {a.pattern_name}" for a in alerts])
+        title = f"Karta: {username}" # Simpler title for better matching
+        
+        stats = ctx["stats_7d"]
+        content = f"### 🔍 Diagnostický přehled: {username} (Update: {pattern_summaries})\n"
+        content += f"Komplexní analýza aktivity a chování uživatele @{username}\n\n"
+        
+        content += "#### 📊 Klíčové metriky\n"
+        content += "| Metrika | Hodnota |\n"
+        content += "| :--- | :--- |\n"
+        content += f"| 📅 Aktivita (7d) | {stats['msg_count']} zpráv |\n"
+        content += f"| 📈 Celkem zpráv | {ctx['all_time']['total_msgs']} |\n"
+        content += f"| ✍️ Délka zpráv | {stats['avg_words_per_msg']:.1f} slov/zpr |\n"
+        content += f"| 🤝 Interaktivita | {int(ctx['interactivity'])}% (odpovědi) |\n"
+        content += f"| 💤 Dny ticha | {ctx['days_inactive']} dní |\n"
+        content += f"| 🕰️ Poslední aktivita | {ctx['last_msg_date']} |\n"
+        content += f"| 🌱 V komunitě | {ctx['join_days']} dní (od {ctx['first_msg_date']}) |\n\n"
+        
+        content += f"#### 🚑 Naléhavost zásahu\n{ctx['urgency_text']}\n\n"
+        
+        if ctx.get("ai_summary"):
+            content += f"#### 🤖 AI Shrnutí aktivity\n{ctx['ai_summary']}\n\n"
+        
+        notes = ctx["notes"]
+        content += "#### 📝 Poznámky\n"
+        if notes:
+            for n in notes[-3:]:
+                dt = datetime.fromtimestamp(n['ts']).strftime("%d.%m.")
+                content += f"- `[{dt}]` **{n['author']}**: {n['content']}\n"
+        else:
+            content += "*Žádné poznámky k tomuto klientovi.*\n"
+        content += "\n"
+        
+        affinities = ctx["affinities"]
+        if affinities:
+            content += "#### 🎯 Naplnění vzorců\n"
+            for af in affinities:
+                filled = int(af['score'] / 10)
+                bar = "▰" * filled + "▱" * (10 - filled)
+                content += f"{af['emoji']} **{af['name']}** `{af['score']}%`\n`{bar}`\n*{af['desc']}*\n\n"
+        
+        content += "#### 🚨 Aktivní poplachy\n"
+        for a in alerts:
+            content += f"**{a.emoji} {a.pattern_name}** ({a.level_label})\n"
+            content += f"{a.description}\n"
+            content += f"💡 *Doporučení:* {a.recommended_action}\n\n"
+        
+        content += f"[Profil na fóru](/u/{username})"
+        
+        # 4. Create or Reply via Rails Runner
+        import base64
+        title_b64 = base64.b64encode(title.encode('utf-8')).decode('ascii')
+        content_b64 = base64.b64encode(content.encode('utf-8')).decode('ascii')
+        target_topic_id = existing_topic_id or 0
+        
+        ruby_script = f"""
+        require 'base64'
+        title = Base64.decode64('{title_b64}').force_encoding('UTF-8')
+        raw = Base64.decode64('{content_b64}').force_encoding('UTF-8')
+        topic_id = {target_topic_id}
+        
+        if topic_id > 0 && Topic.exists?(topic_id)
+          creator = PostCreator.new(Discourse.system_user, topic_id: topic_id, raw: raw, skip_validations: true)
+          post = creator.create
+          puts 'SUCCESS_REPLY:' + topic_id.to_s if post
+        else
+          # Double check by title if Redis is missing the key
+          existing = Topic.where(category_id: 11, title: title).first
+          if existing
+             creator = PostCreator.new(Discourse.system_user, topic_id: existing.id, raw: raw, skip_validations: true)
+             post = creator.create
+             puts 'SUCCESS_REPLY:' + existing.id.to_s if post
+          else
+             creator = PostCreator.new(Discourse.system_user, title: title, raw: raw, category: 11, tags: ['novy'], skip_validations: true)
+             post = creator.create
+             puts 'SUCCESS_NEW:' + post.topic_id.to_s if post
+          end
+        end
+        """
+        
+        cmd = ["docker", "exec", "-u", "discourse", "-w", "/var/www/discourse", "app", "bundle", "exec", "rails", "runner", ruby_script]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if "SUCCESS" in res.stdout:
+                id_match = re.search(r'SUCCESS_(NEW|REPLY):(\d+)', res.stdout)
+                if id_match:
+                    new_id = id_match.group(2)
+                    await r.set(K_DISCOURSE_TOPIC(user_id), new_id, ex=365 * 86400)
+                    logger.info(f"Discourse alert {id_match.group(1)} for {username} (Topic ID: {new_id})")
+            else:
+                logger.error(f"Failed to create/reply Discourse alert: {res.stdout} {res.stderr}")
+        except Exception as e:
+            logger.error(f"Error calling rails runner: {e}")
+        finally:
+            await r.close()
+
+    async def send_alert(self, alert: PatternAlert, gid: int = None):
+        await self.send_batched_alerts(alert.user_id, [alert], gid=gid)
 
     async def get_or_create_thread(self, user_id: int, display_name: str, avatar_url: Optional[str]) -> Optional[discord.Thread]:
         guild = self.bot.get_guild(self._guild_id)
@@ -328,11 +461,21 @@ class PatternAlerts:
             channel = await self.get_alert_channel()
             if not channel: return None
             
-            main_msg = await channel.send(f"📂 **Otevírám kartu pro klienta**: <@{user_id}>")
-            thread = await main_msg.create_thread(
-                name=f"🆔 Karta: {display_name}",
-                auto_archive_duration=10080
-            )
+            if isinstance(channel, discord.ForumChannel):
+                # Create a Forum Post
+                thread_with_msg = await channel.create_thread(
+                    name=f"🆔 Karta: {display_name}",
+                    content=f"📂 **Karta klienta**: <@{user_id}>",
+                    auto_archive_duration=10080
+                )
+                thread = thread_with_msg.thread
+            else:
+                # Standard Text Channel Thread
+                main_msg = await channel.send(f"📂 **Otevírám kartu pro klienta**: <@{user_id}>")
+                thread = await main_msg.create_thread(
+                    name=f"🆔 Karta: {display_name}",
+                    auto_archive_duration=10080
+                )
             
             await r.set(K_THREAD(self._guild_id, user_id), str(thread.id), ex=14 * 86400)
             await r.set(K_THREAD_UID(thread.id), str(user_id), ex=14 * 86400)

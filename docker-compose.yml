@@ -95,6 +95,33 @@ services:
         reservations:
           memory: 64M
 
+  worker:
+    build: .
+    container_name: discord-worker
+    restart: always
+    depends_on:
+      - redis
+    command: [ "python", "-u", "services/worker/main.py" ]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=.
+      - BOT_TOKEN=${BOT_TOKEN}
+      - GUILD_ID=${GUILD_ID:-1130541603598585958}
+      - TZ=Europe/Prague
+      - AI_PROVIDER=${AI_PROVIDER:-none}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - botnet
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+
 networks:
   botnet:
     external: true
