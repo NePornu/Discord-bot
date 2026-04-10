@@ -89,12 +89,18 @@ class AvatarNSFW(commands.Cog):
         print(f"[NSFW] Načítám model z: {model_path}")
         
         try:
+            # Optimize CPU usage by limiting threads
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = 1
+            opts.inter_op_num_threads = 1
+            
             self.session = ort.InferenceSession(
                 model_path,
+                sess_options=opts,
                 providers=["CPUExecutionProvider"]
             )
             self.input_name = self.session.get_inputs()[0].name
-            print(f"[NSFW] Model úspěšně načten. Inpu jméno: {self.input_name}")
+            print(f"[NSFW] Model úspěšně načten. Vstup: {self.input_name} (Threads: 1)")
         except Exception as e:
             print(f"[NSFW] CHYBA při načítání modelu: {e}")
             self.session = None
@@ -442,6 +448,7 @@ class AvatarNSFW(commands.Cog):
         
         if channel:
             await channel.send(f"✅ Sken dokončen. Zkontrolováno {count} avatarů.")
+            await asyncio.sleep(0.5) # Extra breath after full scan
 
 async def setup(bot):
     await bot.add_cog(AvatarNSFW(bot))

@@ -130,6 +130,10 @@ async def load_commands():
                 continue
                 
             module_name = f"services.worker.commands.{ext_name}"
+            
+            if module_name in bot.extensions:
+                await send_console_log(f"⚠️ {module_name} již načten, přeskakuji")
+                continue
 
             await send_console_log(f"Načítám: {module_name}")
             try:
@@ -137,6 +141,9 @@ async def load_commands():
                 await send_console_log(f"✅ {module_name} načten")
                 loaded_cogs.append(ext_name)
                 loaded_exts.add(ext_name)
+            except discord.ext.commands.errors.ExtensionAlreadyLoaded:
+                await send_console_log(f"⚠️ {module_name} již načten (zachyceno výjimkou), přeskakuji")
+                continue
             except Exception as e:
                 import traceback
                 tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))[-1800:]
@@ -206,13 +213,17 @@ async def heartbeat_task():
 async def before_heartbeat_task():
     pass
 
+async def setup_hook():
+    """Tato metoda se spustí přesně jednou při startu bota, před připojením ke gateway."""
+    await load_commands()
+
+bot.setup_hook = setup_hook
+
 @bot.event
 async def on_ready():
-    await send_console_log("=== PYTHON WORKER SPUŠTĚN ===")
+    await send_console_log("=== PYTHON WORKER READY ===")
     await send_console_log(f"Platforma: {platform.platform()} | Python: {sys.version.split(' ')[0]}")
     await send_console_log(f"PID: {os.getpid()} | CWD: {os.getcwd()}")
-
-    loaded_cogs = await load_commands()
     await send_console_log(f"Bot připojen: {bot.user} ({bot.user.id})")
 
     # Status updated in Go Core

@@ -7,4 +7,11 @@ cassandra-driver==3.29.0
 onnxruntime==1.17.1
 pillow==10.2.0
 numpy==1.26.4
-
+requests
+psutil
+docker
+python-dotenv
+aiohttp
+# Added for extensive monitoring
+psutil
+docker

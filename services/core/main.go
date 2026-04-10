@@ -366,8 +366,40 @@ func main() {
 				},
 				{
 					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "security-check",
+					Description: "🛡️ Ověří bezpečnostní otisk uživatele (Admin)",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionUser,
+							Name:        "uzivatel",
+							Description: "Uživatel k ověření",
+							Required:    true,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
 					Name:        "audit-ages",
 					Description: "Prohledá historii zpráv a najde zmínky o věku (Admin)",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "bulk-role",
+					Description: "🛡️ Hromadně schválí všechny členy dané role jako 18+ (Admin)",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionRole,
+							Name:        "role",
+							Description: "Role, jejíž členové mají být schváleni",
+							Required:    true,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionBoolean,
+							Name:        "dry-run",
+							Description: "Pouze spočítá uživatele, nic nemění",
+							Required:    false,
+						},
+					},
 				},
 				{
 					Type:        discordgo.ApplicationCommandOptionSubCommand,

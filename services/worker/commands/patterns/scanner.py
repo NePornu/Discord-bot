@@ -68,15 +68,34 @@ class PatternScanner:
         now = datetime.now(timezone.utc)
         today = now.strftime("%Y%m%d")
 
-        # 3. Scan each user
+        # 3. Scan each user (with activity filter and pacing)
+        cutoff_ts = int(time.time()) - (48 * 3600)  # Only users active in last 48h
+        scanned_count = 0
+        skipped_count = 0
+        
         for uid in user_ids:
             if uid in staff_ids:
                 continue
+                
+            # Activity filter to save resources
+            last_act = await r.get(K_LAST_ACTIVITY(gid, uid))
+            if not last_act or int(last_act) < cutoff_ts:
+                skipped_count += 1
+                continue
+                
             try:
                 user_alerts = await self.detectors.scan_user(r, gid, uid, now, today)
                 found_alerts.extend(user_alerts)
+                scanned_count += 1
+                
+                # Pacing: avoid slamming CPU if scanning many users
+                if scanned_count % 5 == 0:
+                    await asyncio.sleep(0.05)
             except Exception as e:
                 logger.error(f"Error scanning user {uid}: {e}")
+
+        if scanned_count > 0 or skipped_count > 0:
+            logger.info(f"Scan stats for gid {gid}: {scanned_count} scanned, {skipped_count} skipped (inactive)")
 
         # 4. Group patterns
         try:

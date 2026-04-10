@@ -1,412 +1,245 @@
-# -*- coding: utf-8 -*-
-"""
-Service Monitor - Monitors services and sends Discord alerts.
-Uses Redis for persistent state to prevent spam on restarts.
-"""
-import os
-import time
-import requests
-import redis
-import logging
+import asyncio
+import datetime
 import json
+import logging
+import os
 import socket
 import ssl
+import time
+import httpx
+import redis.asyncio as redis
+import psutil
+import shutil
+import docker
+import subprocess
 from datetime import datetime
+from shared.python.ai_client import AIClient
 
 # Configuration
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ALERT_CHANNEL_ID = os.getenv("ALERT_CHANNEL_ID")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-CHECK_INTERVAL = 60  # Seconds
-STRIKE_LIMIT = 5  # Require 5 consecutive failures before DOWN
-RECOVERY_LIMIT = 3  # Require 3 consecutive successes before UP recovery
-ALERT_COOLDOWN = 1800  # 30 minutes between alerts for same service (prevents spam)
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))
+ALERT_COOLDOWN = int(os.getenv("ALERT_COOLDOWN", "3600"))
+IGNORE_PATTERNS = [p.strip() for p in os.getenv("IGNORE_PATTERNS", "fluxer,sso,modest_raman").split(",") if p.strip()]
 
-# Service Configuration
+# Services to monitor
 SERVICES = [
-    {
-        "name": "Darci - darci.nepornu.cz",
-        "type": "http",
-        "url": "https://darci.nepornu.cz",
-        "external_url": "https://darci.nepornu.cz",
-        "initial_uptime": 97.8825,
-        "latency_threshold": 15000, 
-        "timeout": 30
-    },
-    {
-        "name": "Druhykrok.cz",
-        "type": "http",
-        "url": "https://druhykrok.cz",
-        "external_url": "https://druhykrok.cz",
-        "initial_uptime": 99.6628,
-        "keyword": "html" 
-    },
-    {
-        "name": "E-maily - nepornu.cz",
-        "type": "tcp",
-        "host": "smtp.gmail.com",
-        "port": 587,
-        "external_url": "https://nepornu.cz",
-        "initial_uptime": 99.9804
-    },
-    {
-        "name": "Fórum Nepornu - forum.nepornu.cz",
-        "type": "http",
-        "url": "https://forum.nepornu.cz",
-        "external_url": "https://forum.nepornu.cz",
-        "initial_uptime": 99.4248,
-        "latency_threshold": 5000,
-        "timeout": 30
-    },
-    {
-        "name": "NePornu Web - nepornu.cz",
-        "type": "http",
-        "url": "https://nepornu.cz", 
-        "external_url": "https://nepornu.cz",
-        "initial_uptime": 99.2948,
-        "keyword": "NePornu"
-    },
-    {
-        "name": "Discord Bot",
-        "type": "redis_heartbeat",
-        "key": "bot:heartbeat",
-        "timeout": 120,
-        "initial_uptime": 99.99
-    },
-    {
-        "name": "Dashboard",
-        "type": "http",
-        "url": "https://nepornu.cz/login",
-        "external_url": "https://nepornu.cz/login",
-        "initial_uptime": 99.95,
-        "keyword": "html",
-        "latency_threshold": 5000,
-        "timeout": 30
-    }
+    {"name": "Discourse HTTP", "type": "http", "url": "http://app:80"},
+    {"name": "Keycloak HTTP", "type": "http", "url": "http://keycloak:8080/health"},
+    {"name": "SSO Portal", "type": "http", "url": "http://sso-portal:8000"},
+    {"name": "Redis", "type": "tcp", "host": "redis", "port": 6379},
+    {"name": "Postgres", "type": "tcp", "host": "keycloak-db", "port": 5432}
 ]
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
-def get_redis_client():
+async def get_redis_client():
     return redis.from_url(REDIS_URL, decode_responses=True)
 
-def get_service_state(r, name):
-    """Get service state from Redis."""
-    key = f"monitor:state:{name}"
-    data = r.get(key)
-    if data:
-        return json.loads(data)
-    return None
-
-def set_service_state(r, name, state):
-    """Save service state to Redis."""
-    key = f"monitor:state:{name}"
-    r.set(key, json.dumps(state))
-
-def get_last_alert_time(r, name):
-    """Get last alert time from Redis (persistent across restarts)."""
-    key = f"monitor:last_alert:{name}"
-    val = r.get(key)
+async def get_last_alert_time(r, key):
+    val = await r.get(f"monitor:alert:{key}")
     return float(val) if val else 0
 
-def set_last_alert_time(r, name, ts):
-    """Set last alert time in Redis."""
-    key = f"monitor:last_alert:{name}"
-    r.set(key, str(ts))
-    r.expire(key, 86400)  # Expire after 24h
+async def set_last_alert_time(r, key, timestamp):
+    await r.set(f"monitor:alert:{key}", str(timestamp))
 
-def update_redis_status(r, service_states):
-    """Writes the current status of all services to Redis for the dashboard."""
-    try:
-        status_data = {
-            "last_updated": time.time(),
-            "next_update": time.time() + CHECK_INTERVAL,
-            "services": []
-        }
-        
-        for svc in SERVICES:
-            name = svc["name"]
-            state = service_states.get(name, {})
-            
-            # Calculate uptime
-            total = state.get("total_checks", 1)
-            up = state.get("up_checks", 1)
-            uptime_pct = (up / total) * 100 if total > 0 else 100.0
-            
-            # Store history
-            history_entry = {
-                "timestamp": int(time.time()),
-                "latency_ms": state.get("last_latency", 0),
-                "status": state.get("status", "UNKNOWN")
-            }
-            
-            history_key = f"monitoring:history:{name}"
-            r.lpush(history_key, json.dumps(history_entry))
-            r.ltrim(history_key, 0, 1439)  # Keep last 24h
-
-            status_data["services"].append({
-                "name": name,
-                "status": state.get("status", "UNKNOWN"),
-                "url": svc.get("external_url", ""),
-                "latency_ms": state.get("last_latency", 0),
-                "uptime_pct": round(uptime_pct, 4),
-                "type": svc.get("type", "http"),
-                "ssl_days": state.get("ssl_days", None)
-            })
-            
-        r.set("monitoring:status", json.dumps(status_data))
-    except Exception as e:
-        logging.error(f"Failed to update Redis status: {e}")
-
-def send_alert(r, service_name, status, error_details=None):
-    """Send alert to Discord with Redis-persistent cooldown."""
+async def send_alert(r, name, status, error_details=None, fields=None, diagnosis=None, force=False):
+    """Send alert to Discord only if status changes or 12h cooldown passed"""
     if not BOT_TOKEN or not ALERT_CHANNEL_ID:
-        logging.warning("No BOT_TOKEN or ALERT_CHANNEL_ID configured, skipping alert.")
-        return False
+        return
+        
+    for p in IGNORE_PATTERNS:
+        if p.lower() in name.lower():
+            return
+            
+    last_status = await r.get(f"monitor:sent_status:{name}")
+    last_alert = await get_last_alert_time(r, name)
     
-    # Check cooldown from Redis (persists across restarts)
-    last_alert = get_last_alert_time(r, service_name)
-    elapsed = time.time() - last_alert
+    # Determine if we should send
+    # 1. Force is True
+    # 2. Status has changed (e.g. OK -> WARNING, WARNING -> OK)
+    # 3. It's been more than 12 hours (long-term reminder for persistent issues)
+    is_changed = status != last_status
+    is_stale = time.time() - last_alert > 43200 # 12 hours
     
-    if elapsed < ALERT_COOLDOWN:
-        remaining = int(ALERT_COOLDOWN - elapsed)
-        logging.info(f"Skipping alert for {service_name} - cooldown active ({remaining}s remaining)")
-        return False
-    
-    # Update last alert time BEFORE sending to prevent race conditions
-    set_last_alert_time(r, service_name, time.time())
+    if not force and not is_changed and not is_stale:
+        return
 
-    color = 0x00FF00 if status == "UP" else 0xFF0000
-    emoji = "✅" if status == "UP" else "🔴"
-    title = f"{emoji} {service_name} is {status}"
+    # Don't update last_alert_time if it's just a repeated state we decided to skip
+    # (But here we decided to send it if it's changed or stale)
+    await set_last_alert_time(r, name, time.time())
+    await r.set(f"monitor:sent_status:{name}", status)
+
+    color = 0x00FF00 if status in ["UP", "OK"] else 0xFF0000
+    if status == "WARNING":
+        color = 0xFFAA00
+        emoji = "⚠️"
+    elif status == "URGENT":
+        color = 0xFF0000
+        emoji = "🚨"
+    else:
+        emoji = "✅" if status in ["UP", "OK"] else "🔴"
+        
+    title = f"{emoji} {name}: {status}"
     
     embed = {
         "title": title,
         "color": color,
         "timestamp": datetime.utcnow().isoformat(),
-        "fields": []
+        "fields": fields or []
     }
     
-    if error_details and status == "DOWN":
-        error_msg = str(error_details)[:200]
-        embed["fields"].append({"name": "Error", "value": error_msg, "inline": False})
+    if error_details:
+        embed["fields"].append({"name": "Details", "value": str(error_details)[:400], "inline": False})
     
-    embed["footer"] = {"text": f"Next alert possible in {ALERT_COOLDOWN // 60} minutes"}
+    if diagnosis:
+        embed["fields"].append({"name": "🧠 AI Analýza", "value": diagnosis, "inline": False})
+    
+    embed["footer"] = {"text": "Smart AI Monitor"}
 
     url = f"https://discord.com/api/v10/channels/{ALERT_CHANNEL_ID}/messages"
-    headers = {
-        "Authorization": f"Bot {BOT_TOKEN}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bot {BOT_TOKEN}", "Content-Type": "application/json"}
     payload = {"embeds": [embed]}
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        if response.status_code in [200, 201]:
-            logging.info(f"Sent {status} alert for {service_name}")
-            return True
-        else:
-            logging.error(f"Failed to send alert: {response.status_code} {response.text}")
-            return False
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(url, headers=headers, json=payload)
+        logging.info(f"Alert sent for {name} ({status})")
     except Exception as e:
         logging.error(f"Error sending alert: {e}")
-        return False
 
-def check_http(url, keyword=None, timeout=10):
+async def check_http(url):
     try:
         start = time.time()
-        response = requests.get(url, timeout=timeout, allow_redirects=True, 
-                              headers={"User-Agent": "StatusMonitor/1.0"})
-        latency = (time.time() - start) * 1000
-        
-        if response.status_code >= 400:
-             return False, f"Status: {response.status_code}", int(latency)
-
-        if keyword and keyword.lower() not in response.text.lower():
-             return False, f"Keyword '{keyword}' missing", int(latency)
-             
-        return True, "OK", int(latency)
-    except requests.exceptions.Timeout:
-        return False, "Connection timeout", 0
-    except requests.exceptions.ConnectionError:
-        return False, "Connection failed", 0
-    except Exception as e:
-        return False, str(e)[:100], 0
-
-def check_ssl(hostname, port=443):
-    context = ssl.create_default_context()
-    try:
-        with socket.create_connection((hostname, port), timeout=5) as sock:
-            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                cert = ssock.getpeercert()
-                not_after = cert['notAfter']
-                expiry_date = datetime.strptime(not_after, r'%b %d %H:%M:%S %Y %Z')
-                days_left = (expiry_date - datetime.utcnow()).days
-                return True, days_left
-    except Exception as e:
-        return False, str(e)
-
-def check_redis_heartbeat(key, timeout):
-    try:
-        start = time.time()
-        r = get_redis_client()
-        last_heartbeat = r.get(key)
-        r.close()
-        latency = (time.time() - start) * 1000
-        
-        if not last_heartbeat:
-            return False, "No heartbeat found", int(latency)
-            
-        last_time = float(last_heartbeat)
-        if time.time() - last_time > timeout:
-            return False, f"Heartbeat stale ({int(time.time() - last_time)}s ago)", int(latency)
-            
-        return True, "OK", int(latency)
-    except Exception as e:
-        return False, f"Redis error: {e}", 0
-
-def check_tcp(host, port):
-    try:
-        start = time.time()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(10)
-        result = sock.connect_ex((host, port))
-        sock.close()
-        latency = (time.time() - start) * 1000
-        
-        if result == 0:
-            return True, "OK", int(latency)
-        else:
-            return False, f"Connection failed (Code: {result})", int(latency)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+            latency = (time.time() - start) * 1000
+            if 200 <= resp.status_code < 400:
+                return True, "OK", int(latency)
+            return False, f"Status: {resp.status_code}", int(latency)
     except Exception as e:
         return False, str(e), 0
 
-def monitor_loop():
-    logging.info("Starting monitoring loop...")
-    logging.info(f"Alert cooldown: {ALERT_COOLDOWN}s, Strike limit: {STRIKE_LIMIT}, Recovery limit: {RECOVERY_LIMIT}")
-    
-    r = get_redis_client()
-    service_states = {}
-    
-    # Initialize states - try to load from Redis first
-    logging.info("Loading saved service states from Redis...")
-    for service in SERVICES:
-        name = service["name"]
-        try:
-            saved_state = get_service_state(r, name)
-            
-            if saved_state:
-                service_states[name] = saved_state
-                status = saved_state.get('status', 'UNKNOWN')
-                strikes = saved_state.get('strikes', 0)
-                logging.info(f"✓ Loaded state for '{name}': {status} (strikes: {strikes})")
-            else:
-                logging.info(f"✗ No saved state for '{name}', initializing fresh")
-                initial_pct = service.get("initial_uptime", 100.0)
-                total_checks = 1000000 
-                up_checks = int(total_checks * (initial_pct / 100))
-                
-                service_states[name] = {
-                    "status": "UP", 
-                    "strikes": 0,
-                    "recovery_strikes": 0,
-                    "total_checks": total_checks,
-                    "up_checks": up_checks,
-                    "last_latency": 0
-                }
-        except Exception as e:
-            logging.error(f"Error loading state for {name}: {e}")
-            service_states[name] = {
-                "status": "UP", 
-                "strikes": 0,
-                "recovery_strikes": 0,
-                "total_checks": 1000000,
-                "up_checks": 1000000,
-                "last_latency": 0
-            }
-    
-    logging.info(f"State loading complete. {len(service_states)} services initialized.")
+async def check_tcp(host, port):
+    try:
+        start = time.time()
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=10.0)
+        writer.close()
+        await writer.wait_closed()
+        latency = (time.time() - start) * 1000
+        return True, "OK", int(latency)
+    except Exception as e:
+        return False, str(e), 0
 
+async def check_system_health(r, states):
+    # Disk
+    try:
+        usage = shutil.disk_usage("/")
+        disk_pct = (usage.used / usage.total) * 100
+        new_status = "URGENT" if disk_pct > 95 else ("WARNING" if disk_pct > 85 else "OK")
+        
+        if new_status != states.get("System Disk"):
+            fields = [{"name": "Usage", "value": f"{disk_pct:.1f}%", "inline": True}]
+            await send_alert(r, "System Disk", new_status, fields=fields, force=True)
+            states["System Disk"] = new_status
+            if new_status != "OK":
+                subprocess.run(["docker", "system", "prune", "-f", "--filter", "until=24h"], capture_output=True)
+    except Exception as e: logging.error(f"Disk check error: {e}")
+
+    # RAM
+    try:
+        ram_pct = psutil.virtual_memory().percent
+        old_status = states.get("System RAM", "OK")
+        # Increasing threshold from 92 to 96 to reduce noise on 8GB system
+        if ram_pct > 96: new_status = "WARNING"
+        elif ram_pct < 88: new_status = "OK"
+        else: new_status = old_status
+            
+        if new_status != old_status:
+            await send_alert(r, "System RAM", new_status, fields=[{"name": "Usage", "value": f"{ram_pct}%"}])
+            states["System RAM"] = new_status
+    except Exception as e: logging.error(f"RAM check error: {e}")
+
+    # CPU
+    try:
+        # Use interval=None to get average since last call (approx 60s)
+        cpu_pct = psutil.cpu_percent(interval=None)
+        old_status = states.get("System CPU", "OK")
+        
+        # Increasing threshold from 95 to 98 to account for heavy service load
+        if cpu_pct > 98: new_status = "WARNING"
+        elif cpu_pct < 85: new_status = "OK"
+        else: new_status = old_status
+            
+        if new_status != old_status:
+            await send_alert(r, "System CPU", new_status, fields=[{"name": "Load", "value": f"{cpu_pct}%"}])
+            states["System CPU"] = new_status
+    except Exception as e: logging.error(f"CPU check error: {e}")
+
+async def check_docker(r, states, client):
+    try:
+        for c in client.containers.list(all=True):
+            if c.name == "discord-monitor": continue
+            s = c.attrs['State']
+            unhealthy = 'Health' in s and s['Health']['Status'] == 'unhealthy'
+            is_down = s['Status'] in ["restarting"] or (s['Status'] == "exited" and s['ExitCode'] != 0) or unhealthy
+            
+            curr_status = "DOWN" if is_down else "UP"
+            if curr_status != states.get(f"cnt:{c.name}"):
+                diagnosis = None
+                if curr_status == "DOWN":
+                    logs = c.logs(tail=20).decode('utf-8', errors='ignore')
+                    diagnosis = await AIClient.analyze_logs(c.name, logs)
+                
+                details = f"Status: {s['Status']}, Exit: {s['ExitCode']}" + (" (UNHEALTHY)" if unhealthy else "")
+                await send_alert(r, f"Container {c.name}", curr_status, error_details=details, diagnosis=diagnosis, force=True)
+                states[f"cnt:{c.name}"] = curr_status
+    except Exception as e: logging.error(f"Docker check error: {e}")
+
+async def monitor_loop():
+    logging.info("Starting Smart AI Monitor...")
+    r = await get_redis_client()
+    docker_client = docker.from_env()
+    local_states = {}
+    
+    # Initialize CPU measurement
+    psutil.cpu_percent(interval=None)
+    
     while True:
         try:
-            for service in SERVICES:
-                name = service["name"]
-                is_up = False
-                details = ""
-                latency = 0
+            for key in ["System Disk", "System RAM", "System CPU"]:
+                saved = await r.get(f"monitor:status:{key}")
+                if saved: local_states[key] = saved
+            
+            for s in SERVICES:
+                success, details, latency = await check_http(s["url"]) if s["type"] == "http" else await check_tcp(s["host"], s["port"])
+                curr = "UP" if success else "DOWN"
+                if curr != await r.get(f"monitor:status:svc:{s['name']}"):
+                    diagnosis = None
+                    if curr == "DOWN":
+                        # Try to find matching container logs
+                        svc_lower = s['name'].lower()
+                        for c in docker_client.containers.list(all=True):
+                            if svc_lower in c.name.lower() or c.name.lower() in svc_lower:
+                                logs = c.logs(tail=20).decode('utf-8', errors='ignore')
+                                diagnosis = await AIClient.analyze_logs(s['name'], logs)
+                                break
+                    
+                    await send_alert(r, s['name'], curr, error_details=details, diagnosis=diagnosis, force=True)
+                    await r.set(f"monitor:status:svc:{s['name']}", curr)
 
-                current_state = service_states[name]
-                
-                if service["type"] == "http":
-                    timeout = service.get("timeout", 10)
-                    is_up, details, latency = check_http(service["url"], service.get("keyword"), timeout)
-                    
-                    # SSL Check
-                    if is_up and service["url"].startswith("https://"):
-                        try:
-                            hostname = service["url"].split("//")[1].split("/")[0]
-                            port = 443
-                            if ":" in hostname:
-                                hostname, port = hostname.split(":")
-                                port = int(port)
-                                
-                            has_ssl, days_left = check_ssl(hostname, port)
-                            if has_ssl:
-                                current_state["ssl_days"] = days_left
-                        except Exception as e:
-                            logging.error(f"SSL Check error for {name}: {e}")
-
-                elif service["type"] == "redis_heartbeat":
-                    is_up, details, latency = check_redis_heartbeat(service["key"], service["timeout"])
-                elif service["type"] == "tcp":
-                    is_up, details, latency = check_tcp(service["host"], service["port"])
-                
-                # Update stats
-                current_state["last_latency"] = latency
-                current_state["total_checks"] += 1
-                if is_up:
-                    current_state["up_checks"] += 1
-                
-                prev_status = current_state["status"]
-                
-                if is_up:
-                    current_state["strikes"] = 0
-                    
-                    if prev_status == "DOWN":
-                        current_state["recovery_strikes"] += 1
-                        logging.info(f"{name} recovery {current_state['recovery_strikes']}/{RECOVERY_LIMIT}")
-                        
-                        if current_state["recovery_strikes"] >= RECOVERY_LIMIT:
-                            logging.info(f"{name} recovered!")
-                            current_state["status"] = "UP"
-                            current_state["recovery_strikes"] = 0
-                            send_alert(r, name, "UP")
-                    else:
-                        current_state["recovery_strikes"] = 0
-                        current_state["status"] = "UP"
-                else:
-                    current_state["recovery_strikes"] = 0
-                    
-                    if prev_status in ["UP", "WARNING", "DEGRADED"]:
-                        current_state["strikes"] += 1
-                        logging.info(f"{name} strike {current_state['strikes']}/{STRIKE_LIMIT}")
-                        
-                        if current_state["strikes"] >= STRIKE_LIMIT:
-                            logging.error(f"{name} is DOWN!")
-                            current_state["status"] = "DOWN"
-                            send_alert(r, name, "DOWN", details)
-                
-                # Save state to Redis
-                set_service_state(r, name, current_state)
+            await check_system_health(r, local_states)
+            await check_docker(r, local_states, docker_client)
             
-            # Update dashboard status
-            update_redis_status(r, service_states)
-            
-            time.sleep(CHECK_INTERVAL)
-            
+            for k, v in local_states.items(): await r.set(f"monitor:status:{k}", v)
+            await asyncio.sleep(CHECK_INTERVAL)
         except Exception as e:
-            logging.error(f"Error in monitor loop: {e}")
-            time.sleep(CHECK_INTERVAL)
+            logging.error(f"Loop error: {e}")
+            await asyncio.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
-    monitor_loop()
+    asyncio.run(monitor_loop())

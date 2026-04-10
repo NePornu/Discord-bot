@@ -80,14 +80,19 @@ services:
       - redis
     command: [ "python", "-u", "scripts/monitor.py" ]
     environment:
+      - PYTHONPATH=.
       - REDIS_URL=redis://redis:6379/0
       - BOT_TOKEN=${BOT_TOKEN}
       - ALERT_CHANNEL_ID=1468607459332456518
+      - IGNORE_PATTERNS=fluxer,sso,modest_raman
       - TZ=Europe/Prague
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - botnet
+      - fluxer_default
+      - sso-net
     deploy:
       resources:
         limits:

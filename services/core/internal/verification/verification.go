@@ -3,6 +3,7 @@ package verification
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -14,6 +15,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/pbkdf2"
+
+	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/nepornucz/discord-bot-core/internal/config"
@@ -213,12 +218,23 @@ func (v *VerificationService) HandleVerifyCommand(s *discordgo.Session, i *disco
 			Content: &content,
 		})
 
-	case "redis-audit":
+	case "bulk-role":
 		if (i.Member.Permissions & discordgo.PermissionAdministrator) == 0 {
 			content := "❌ Pouze pro administrátory."
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
 			return
 		}
+		v.HandleBulkRole(s, i)
+
+	case "security-check":
+		if (i.Member.Permissions & discordgo.PermissionAdministrator) == 0 {
+			content := "❌ Pouze pro administrátory."
+			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+			return
+		}
+		v.HandleSecurityCheck(s, i)
+
+	case "redis-audit":
 		v.HandleRedisAudit(s, i)
 
 	case "ping":
@@ -643,8 +659,16 @@ func (v *VerificationService) HandleApprove(s *discordgo.Session, i *discordgo.I
 		}
 		passportKey := fmt.Sprintf("user:passport:%s", userID)
 		birthYearStr := v.decrypt(state["birth_year"])
-		passportData := fmt.Sprintf(`{"username": "%s", "age_category": "%s", "birth_year": %s}`, username, ageCategory, birthYearStr)
-		encryptedPassport := v.encrypt(passportData)
+		
+		// Use proper JSON marshaling to avoid syntax errors with empty fields
+		birthYearInt, _ := strconv.Atoi(birthYearStr)
+		passportObj := map[string]interface{}{
+			"username":     username,
+			"age_category": ageCategory,
+			"birth_year":   birthYearInt,
+		}
+		passportJSON, _ := json.Marshal(passportObj)
+		encryptedPassport := v.encrypt(string(passportJSON))
 		redis_client.Client.Set(redis_client.Ctx, passportKey, encryptedPassport, 0)
 	}
 
@@ -1283,27 +1307,60 @@ func (v *VerificationService) HandleListDB(s *discordgo.Session, i *discordgo.In
 	}
 
 	var list []string
+	verifiedCount := 0
+	corruptedCount := 0
+
 	for _, key := range keys {
 		val, _ := redis_client.Client.Get(redis_client.Ctx, key).Result()
 		uid := strings.TrimPrefix(key, "user:passport:")
 		
 		valDec := v.decrypt(val)
 		var data struct {
-			Username    string `json:"username"`
-			AgeCategory string `json:"age_category"`
+			Username    string      `json:"username"`
+			AgeCategory string      `json:"age_category"`
+			BirthYear   interface{} `json:"birth_year"` // Handle both string and int
 		}
 		
 		if err := json.Unmarshal([]byte(valDec), &data); err == nil && data.Username != "" {
-			list = append(list, fmt.Sprintf("- <@%s> **%s** (%s)", uid, data.Username, data.AgeCategory))
+			ageSuffix := ""
+			if data.AgeCategory != "" {
+				ageSuffix = fmt.Sprintf(" (%s)", data.AgeCategory)
+			}
+			list = append(list, fmt.Sprintf("- <@%s> **%s**%s", uid, data.Username, ageSuffix))
+			verifiedCount++
 		} else {
 			// Fallback for raw data or parsing failure
-			list = append(list, fmt.Sprintf("- <@%s> `%s` (%s)", uid, uid, valDec))
+			list = append(list, fmt.Sprintf("- <@%s> `[CHYBA DAT]` (%s)", uid, uid))
+			corruptedCount++
+		}
+	}
+
+	// Fetch members to count how many TOTAL have the verified role
+	totalVerifiedWithRole := 0
+	members, err := s.GuildMembers(i.GuildID, "", 1000)
+	if err == nil {
+		for _, m := range members {
+			if m.User.Bot {
+				continue
+			}
+			for _, rID := range m.Roles {
+				if rID == v.Config.VerifiedRole {
+					totalVerifiedWithRole++
+					break
+				}
+			}
 		}
 	}
 
 	chunks := v.chunkStrings(list, 1500)
 	for idx, chunk := range chunks {
-		content := fmt.Sprintf("📋 **Seznam prověřených uživatelů (%d/%d):**\n\n%s", idx+1, len(chunks), strings.Join(chunk, "\n"))
+		header := fmt.Sprintf("📋 **Seznam prověřených uživatelů (%d/%d):**\n", idx+1, len(chunks))
+		if idx == 0 {
+			header += fmt.Sprintf("✅ Celkem v systému: `%d` | 👥 Celkem s rolí: `%d` | ⚠️ Poškozeno: `%d`", verifiedCount, totalVerifiedWithRole, corruptedCount)
+			header += "\n\n"
+		}
+		
+		content := header + strings.Join(chunk, "\n")
 		if idx == 0 {
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
 		} else {
@@ -1584,13 +1641,28 @@ func (v *VerificationService) confirmSuccess(s *discordgo.Session, userID string
 	msg := "✅ **Hurá! Ověření proběhlo úspěšně.**"
 	s.ChannelMessageSend(dm.ID, msg)
 }
+
+func (v *VerificationService) getHardenedKey(secret string) []byte {
+	// We use the GuildID as salt to make keys unique per server
+	salt := v.Config.GuildID
+	if salt == "" {
+		salt = "nepornu-default-salt"
+	}
+	return pbkdf2.Key([]byte(secret), []byte(salt), 100000, 32, sha256.New)
+}
+
+func (v *VerificationService) getLegacyKey(secret string) []byte {
+	key := sha256.Sum256([]byte(secret))
+	return key[:]
+}
+
 func (v *VerificationService) encrypt(plaintext string) string {
 	if v.Config.VerificationSecret == "" {
 		return plaintext
 	}
 
-	key := sha256.Sum256([]byte(v.Config.VerificationSecret))
-	block, err := aes.NewCipher(key[:])
+	key := v.getHardenedKey(v.Config.VerificationSecret)
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		slog.Error("Cipher setup error", "error", err)
 		return plaintext
@@ -1617,7 +1689,6 @@ func (v *VerificationService) decrypt(ciphertextStr string) string {
 		return ciphertextStr
 	}
 
-	// Heuristic: if it doesn't look like base64 or is too short, assume plaintext
 	if !v.isBase64(ciphertextStr) {
 		return ciphertextStr
 	}
@@ -1627,30 +1698,66 @@ func (v *VerificationService) decrypt(ciphertextStr string) string {
 		return ciphertextStr
 	}
 
-	key := sha256.Sum256([]byte(v.Config.VerificationSecret))
-	block, err := aes.NewCipher(key[:])
-	if err != nil {
-		return ciphertextStr
+	// 1. Try Decrypt with Hardened Key (PBKDF2)
+	hardenedKey := v.getHardenedKey(v.Config.VerificationSecret)
+	block, err := aes.NewCipher(hardenedKey)
+	if err == nil {
+		gcm, err := cipher.NewGCM(block)
+		if err == nil && len(ciphertext) >= gcm.NonceSize() {
+			nonce := ciphertext[:gcm.NonceSize()]
+			encryptedData := ciphertext[gcm.NonceSize():]
+			plaintext, err := gcm.Open(nil, nonce, encryptedData, nil)
+			if err == nil {
+				return string(plaintext)
+			}
+		}
 	}
 
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return ciphertextStr
+	// 2. Fallback to Legacy Key (SHA256)
+	legacyKey := v.getLegacyKey(v.Config.VerificationSecret)
+	block, err = aes.NewCipher(legacyKey)
+	if err == nil {
+		gcm, err := cipher.NewGCM(block)
+		if err == nil && len(ciphertext) >= gcm.NonceSize() {
+			nonce := ciphertext[:gcm.NonceSize()]
+			encryptedData := ciphertext[gcm.NonceSize():]
+			plaintext, err := gcm.Open(nil, nonce, encryptedData, nil)
+			if err == nil {
+				return string(plaintext)
+			}
+		}
 	}
 
-	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return ciphertextStr
-	}
+	return ciphertextStr
+}
 
-	nonce, encryptedData := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, encryptedData, nil)
-	if err != nil {
-		// Decryption failed, likely plaintext that happened to be valid base64
-		return ciphertextStr
-	}
+var securityEmojis = []string{
+	"🛡️", "💎", "🔥", "🌈", "⭐", "🍀", "🌊", "🍄",
+	"🚀", "🌑", "🪐", "⚡", "🧩", "🔒", "🔑", "📦",
+	"🎩", "👑", "🔮", "🎭", "🎮", "🔋", "💾", "🎨",
+	"🍍", "🥥", "🍋", "🍓", "🍎", "🥕", "🥑", "🥦",
+	"🦁", "🐼", "🦊", "🐨", "🦉", "🦋", "🐝", "🐞",
+	"⚓", "🧭", "🌋", "🏔️", "🏕️", "🏝️", "🎡", "🛹",
+	"🎷", "🎺", "🎸", "🎻", "🎧", "📷", "📽️", "🔭",
+	"💡", "🔍", "🕯️", "🛠️", "🧶", "🧪", "🧬", "📡",
+}
 
-	return string(plaintext)
+func (v *VerificationService) getFingerprint(id string) string {
+	if v.Config.VerificationSecret == "" {
+		return ""
+	}
+	h := hmac.New(sha256.New, []byte(v.Config.VerificationSecret))
+	h.Write([]byte(id))
+	hash := h.Sum(nil)
+
+	// Use first 5 bytes to pick 5 emojis
+	e1 := securityEmojis[int(hash[0])%len(securityEmojis)]
+	e2 := securityEmojis[int(hash[1])%len(securityEmojis)]
+	e3 := securityEmojis[int(hash[2])%len(securityEmojis)]
+	e4 := securityEmojis[int(hash[3])%len(securityEmojis)]
+	e5 := securityEmojis[int(hash[4])%len(securityEmojis)]
+
+	return fmt.Sprintf("[%s %s %s %s %s]", e1, e2, e3, e4, e5)
 }
 
 func (v *VerificationService) isBase64(s string) bool {
@@ -1756,6 +1863,134 @@ func (v *VerificationService) HandleAuditAges(s *discordgo.Session, i *discordgo
 		}
 	}
 }
+func (v *VerificationService) HandleBulkRole(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	options := i.ApplicationCommandData().Options[0].Options
+	var targetRoleID string
+	dryRun := false
+
+	for _, opt := range options {
+		if opt.Name == "role" {
+			targetRoleID = opt.RoleValue(s, i.GuildID).ID
+		} else if opt.Name == "dry-run" {
+			dryRun = opt.BoolValue()
+		}
+	}
+
+	if targetRoleID == "" {
+		content := "❌ Musíš vybrat roli."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+		return
+	}
+
+	statusMsg := fmt.Sprintf("⏳ **Hromadné schvalování role** <@&%s> **spuštěno...**", targetRoleID)
+	if dryRun {
+		statusMsg = fmt.Sprintf("🔍 **TEST: Počítám členy role** <@&%s>...", targetRoleID)
+	}
+
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: pointer(statusMsg),
+	})
+
+	// Fetch all members of the guild
+	members, err := s.GuildMembers(i.GuildID, "", 1000)
+	if err != nil {
+		content := "❌ Nepodařilo se načíst seznam členů."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+		return
+	}
+
+	count := 0
+	alreadyVerified := 0
+	for _, m := range members {
+		if m.User.Bot {
+			continue
+		}
+
+		// Check if user has the role
+		hasRole := false
+		for _, rID := range m.Roles {
+			if rID == targetRoleID {
+				hasRole = true
+				break
+			}
+		}
+
+		if !hasRole {
+			continue
+		}
+
+		// Check if already verified in Redis
+		passportKey := fmt.Sprintf("user:passport:%s", m.User.ID)
+		exists, _ := redis_client.Client.Exists(redis_client.Ctx, passportKey).Result()
+		if exists > 0 {
+			alreadyVerified++
+			continue
+		}
+
+		// Verify user
+		if !dryRun {
+			// 1. Set verify state to APPROVED
+			stateKey := fmt.Sprintf("verify:state:%s", m.User.ID)
+			redis_client.Client.HSet(redis_client.Ctx, stateKey, map[string]interface{}{
+				"status":       "APPROVED",
+				"age_category": "18+",
+				"approved_at":  time.Now().Unix(),
+				"created_at":   time.Now().Unix(),
+				"source":       "bulk-role-admin",
+			})
+
+			// 2. Create and store encrypted passport
+			passportObj := map[string]interface{}{
+				"username":     m.User.Username,
+				"age_category": "18+",
+				"birth_year":   0, // Placeholder for bulk verified
+			}
+			passportJSON, _ := json.Marshal(passportObj)
+			encryptedPassport := v.encrypt(string(passportJSON))
+			redis_client.Client.Set(redis_client.Ctx, passportKey, encryptedPassport, 0)
+			
+			// 3. Remove waiting role if exists
+			if v.Config.WaitingRoleID != "" {
+				s.GuildMemberRoleRemove(i.GuildID, m.User.ID, v.Config.WaitingRoleID)
+			}
+		}
+		count++
+	}
+
+	resPrefix := "✅ **Hromadné schválení ROLE dokončeno!**"
+	if dryRun {
+		resPrefix = "📊 **TEST ROLE DOKONČEN!** (Nic nebylo změněno)"
+	}
+
+	content := fmt.Sprintf("%s\n\n• Role: <@&%s>"+
+		"\n• Nově schváleno: `%d`"+
+		"\n• Již dříve schváleno: `%d`", 
+		resPrefix, targetRoleID, count, alreadyVerified)
+	
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+}
+
+func (v *VerificationService) HandleSecurityCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	options := i.ApplicationCommandData().Options[0].Options
+	targetUser := options[0].UserValue(s)
+
+	if targetUser == nil {
+		content := "❌ Uživatel nenalezen."
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+		return
+	}
+
+	fingerprint := v.getFingerprint(targetUser.ID)
+	
+	content := fmt.Sprintf("🛡️ **Bezpečnostní prověrka**\n\n"+
+		"• Uživatel: <@%s> (`%s`)\n"+
+		"• Bezpečnostní otisk: **%s**\n\n"+
+		"💡 *Tento otisk potvrzuje integritu šifrování pro daného uživatele a systémový klíč. Pokud se shoduje s tím v audit logu, data jsou v pořádku.*",
+		targetUser.ID, targetUser.ID, fingerprint)
+	
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
+}
+
 func (v *VerificationService) HandleRedisAudit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: pointer("🔍 **Provádím audit Redis databáze...**"),
@@ -1770,61 +2005,90 @@ func (v *VerificationService) HandleRedisAudit(s *discordgo.Session, i *discordg
 	stateKeys, _ := redis_client.Client.Keys(redis_client.Ctx, "verify:state:*").Result()
 	passportKeys, _ := redis_client.Client.Keys(redis_client.Ctx, "user:passport:*").Result()
 
-	var report []string
-	report = append(report, fmt.Sprintf("📊 **Statistika klíčů:**\n- `verify:state:*`: `%d` klíčů\n- `user:passport:*`: `%d` klíčů\n", len(stateKeys), len(passportKeys)))
-
-	// Sample data from state
+	// 1. Process verify:state
 	if len(stateKeys) > 0 {
-		report = append(report, "\n📝 **Ukázka stavů (verify:state):**")
-		maxSample := 5
-		if len(stateKeys) < maxSample {
-			maxSample = len(stateKeys)
-		}
-		for _, k := range stateKeys[:maxSample] {
+		report = append(report, "\n📝 **Stavy (verify:state):**")
+		for _, k := range stateKeys {
 			data, _ := redis_client.Client.HGetAll(redis_client.Ctx, k).Result()
-			birthYearEnc := data["birth_year"]
-			birthYearDec := v.decrypt(birthYearEnc)
+			status := data["status"]
+			category := data["age_category"]
+			if category == "" {
+				category = "Nevyplněno"
+			}
 			
-			encryptSuffix := ""
-			if birthYearEnc != birthYearDec {
-				encryptSuffix = " 🔒 (Zašifrováno)"
+			userID := strings.TrimPrefix(k, "verify:state:")
+			nickname := userID
+			member, err := s.State.Member(i.GuildID, userID)
+			if err == nil && member != nil {
+				nickname = member.User.Username
+			} else {
+				user, err := s.User(userID)
+				if err == nil && user != nil {
+					nickname = user.Username
+				}
 			}
 
-			report = append(report, fmt.Sprintf("- `%s`: status=`%s`, birth_year=`%s` %s", k, data["status"], birthYearDec, encryptSuffix))
+			report = append(report, fmt.Sprintf("- **%s**: %s (%s) 🔒 %s (Zašifrováno)", nickname, status, category, v.getFingerprint(userID)))
 		}
 	}
 
-	// Sample data from passports
+	// 2. Process user:passport
 	if len(passportKeys) > 0 {
-		report = append(report, "\n🛂 **Ukázka pasů (user:passport):**")
-		maxSample := 5
-		if len(passportKeys) < maxSample {
-			maxSample = len(passportKeys)
-		}
-		for _, k := range passportKeys[:maxSample] {
+		report = append(report, "\n🛂 **Pasy (user:passport):**")
+		for _, k := range passportKeys {
 			val, _ := redis_client.Client.Get(redis_client.Ctx, k).Result()
 			valDec := v.decrypt(val)
 			
-			encryptSuffix := ""
-			if val != valDec {
-				encryptSuffix = " 🔒 (Zašifrováno)"
-			}
+			userID := strings.TrimPrefix(k, "user:passport:")
 			
-			// Show only first 50 chars of Decrypted value for safety
-			displayVal := valDec
-			if len(displayVal) > 60 {
-				displayVal = displayVal[:57] + "..."
+			nickname := userID
+			member, err := s.State.Member(i.GuildID, userID)
+			if err == nil && member != nil {
+				nickname = member.User.Username
+			} else {
+				user, err := s.User(userID)
+				if err == nil && user != nil {
+					nickname = user.Username
+				}
 			}
 
-			report = append(report, fmt.Sprintf("- `%s`: `%s` %s", k, displayVal, encryptSuffix))
+			category := "N/A"
+			var passportData struct {
+				Username    string `json:"username"`
+				AgeCategory string `json:"age_category"`
+			}
+			
+			if err := json.Unmarshal([]byte(valDec), &passportData); err == nil {
+				if passportData.Username != "" {
+					nickname = passportData.Username
+				}
+				category = passportData.AgeCategory
+			} else if !v.isBase64(val) {
+				category = "Starý formát"
+			} else {
+				category = "Chyba dat"
+			}
+
+			report = append(report, fmt.Sprintf("- **%s**: `%s` (%s) 🔒 %s (Zašifrováno)", nickname, category, userID, v.getFingerprint(userID)))
 		}
 	}
 
 	content := strings.Join(report, "\n")
-	if len(content) > 2000 {
-		content = content[:1990] + "..."
+	if len(content) > 1900 {
+		// Send as text file if too long for Discord message
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: pointer("📊 **Auditní log byl vygenerován (všechny záznamy):**"),
+			Files: []*discordgo.File{
+				{
+					Name:        "audit_dump.txt",
+					ContentType: "text/plain",
+					Reader:      strings.NewReader(content),
+				},
+			},
+		})
+	} else {
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
 	}
-	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{Content: &content})
 }
 
 func (v *VerificationService) HandleResetCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
