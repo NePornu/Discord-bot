@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Set, Optional
 import discord
-from .common import PatternAlert, K_MSG, K_KW, K_EDIT, K_JOIN, K_DIARY, K_QUESTION, K_STAFF_RESPONSE, K_FIRST, K_MUTE
+from .common import PatternAlert, K_MSG, K_KW, K_EDIT, K_JOIN, K_DIARY, K_QUESTION, K_STAFF_RESPONSE, K_FIRST, K_MUTE, K_LAST_ACTIVITY, K_SENTIMENT, K_AI_DRAFT, K_THREAD, K_THREAD_UID
 
 import subprocess
 from .ai_service import AIService
@@ -42,6 +42,19 @@ class PatternDetectors:
             if total["msg_count"] > 0 else 0
         )
         return total
+
+    async def get_user_sentiment_stats(self, r, gid: int, uid: int, days: int) -> Dict[str, int]:
+        """Aggregates sentiment counts over the last N days."""
+        from .common import K_SENTIMENT
+        now = datetime.now(timezone.utc)
+        totals = {"POSITIVE": 0, "NEUTRAL": 0, "NEGATIVE": 0, "URGENT": 0}
+        for i in range(days):
+            d = (now - timedelta(days=i)).strftime("%Y%m%d")
+            data = await r.hgetall(K_SENTIMENT(gid, uid, d))
+            for s, c in data.items():
+                if s in totals:
+                    totals[s] += int(c)
+        return totals
 
     async def get_keyword_count(self, r, gid: int, uid: int, group: str, days: int) -> int:
         now = datetime.now(timezone.utc)
@@ -510,6 +523,7 @@ class PatternDetectors:
         alerts = await self.scan_user(r, gid, uid, now, today)
         stats_7d = await self.get_user_msg_stats(r, gid, uid, 7)
         stats_30d = await self.get_user_msg_stats(r, gid, uid, 30)
+        sentiment_7d = await self.get_user_sentiment_stats(r, gid, uid, 7)
         days_inactive = await self.days_since_last_activity(r, gid, uid, 365)
         affinities = await self.analyze_user_affinity(r, gid, uid, now, today, stats_7d, stats_30d, days_inactive)
         all_time = await self.get_all_time_stats(r, gid, uid)
@@ -568,7 +582,8 @@ class PatternDetectors:
             "interactivity": interactivity,
             "last_msg_date": last_date,
             "first_msg_date": first_date,
-            "join_days": join_days or 0
+            "join_days": join_days or 0,
+            "sentiment_7d": sentiment_7d
         }
 
         # AI Summary (Optional, only for Discourse GID 999 for now to save tokens)
@@ -612,6 +627,18 @@ class PatternDetectors:
         )
         embed.add_field(name="📊 Klíčové metriky", value=stats_text, inline=True)
         embed.add_field(name="🚑 Naléhavost zásahu", value=ctx["urgency_text"], inline=True)
+        
+        # --- Sentiment Section ---
+        sent = ctx["sentiment_7d"]
+        total_s = sum(sent.values())
+        if total_s > 0:
+            sent_text = (
+                f"😊 **Pozitivní:** {int(sent['POSITIVE']/total_s*100)}%\n"
+                f"😐 **Neutrální:** {int(sent['NEUTRAL']/total_s*100)}%\n"
+                f"😔 **Negativní:** {int(sent['NEGATIVE']/total_s*100)}%\n"
+                f"🚨 **Krize:** {sent['URGENT']}x"
+            )
+            embed.add_field(name="🧠 Emoční naladění (7d)", value=sent_text, inline=False)
         
         # --- Notes Section ---
         notes = ctx["notes"]

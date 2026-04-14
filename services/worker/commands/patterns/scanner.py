@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 import discord
 from discord.ext import tasks
-from .common import K_LAST_SCAN
+from .common import K_LAST_SCAN, K_LAST_ACTIVITY, K_MSG, K_SENTIMENT
 from shared.python.config import config
 
 logger = logging.getLogger("PatternDetector")

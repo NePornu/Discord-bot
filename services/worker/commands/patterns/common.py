@@ -47,6 +47,8 @@ def K_STATUS(gid, uid):          return f"pat:status:{gid}:{uid}"
 def K_FOLLOWUP(gid, uid):        return f"pat:followup:{gid}:{uid}"
 def K_LAST_ACTIVITY(gid, uid):   return f"pat:last_act:{gid}:{uid}"
 def K_DISCOURSE_TOPIC(uid):      return f"pat:discourse_topic:{uid}"
+def K_SENTIMENT(gid, uid, date): return f"pat:sentiment:{gid}:{uid}:{date}"
+def K_AI_DRAFT(gid, uid):       return f"pat:ai_draft:{gid}:{uid}"
 
 PAT_TTL = 730 * 86400  # 2 years
 

@@ -12,6 +12,19 @@ from .common import K_ALERT, K_MUTE, K_MSG, K_THREAD, K_THREAD_UID, K_FOLLOWUP, 
 
 logger = logging.getLogger("PatternDetector")
 
+def extract_user_id(itx: discord.Interaction) -> Optional[int]:
+    """Helper to extract user_id from the embed footer of the message."""
+    if not itx.message or not itx.message.embeds:
+        return None
+    footer = itx.message.embeds[0].footer.text
+    if not footer:
+        return None
+    # Format: "ID: 12345 • NePornu Karta klienta"
+    match = re.search(r"ID: (\d+)", footer)
+    if match:
+        return int(match.group(1))
+    return None
+
 
 class ResolveModal(discord.ui.Modal, title="Vyřešit a uzavřít kartu"):
     resolution = discord.ui.TextInput(
@@ -98,27 +111,35 @@ class ConfirmDeleteView(discord.ui.View):
         await itx.response.send_message("Operace byla zrušena.", ephemeral=True)
 
 class ModeratorAssistantView(discord.ui.View):
-    def __init__(self, user_id: int, guild_id: int):
+    def __init__(self, user_id: Optional[int] = None, guild_id: Optional[int] = None):
         super().__init__(timeout=None)
         self.user_id = user_id
-        self.guild_id = guild_id
+        self.guild_id = guild_id or config.GUILD_ID
 
-    @discord.ui.button(label="📁 Vyřešit", style=discord.ButtonStyle.success, custom_id="pat:resolve")
+    def get_uid(self, itx: discord.Interaction) -> int:
+        uid = self.user_id or extract_user_id(itx)
+        if not uid:
+            raise ValueError("Could not extract User ID from interaction context.")
+        return uid
+
+    @discord.ui.button(label="📁 Vyřešit", style=discord.ButtonStyle.success, custom_id="pat:v3:resolve")
     async def resolve_trigger(self, itx: discord.Interaction, button: discord.ui.Button):
-        await itx.response.send_modal(ResolveModal(self.user_id, self.guild_id))
+        await itx.response.send_modal(ResolveModal(self.get_uid(itx), self.guild_id))
 
-    @discord.ui.button(label="🗑️ Smazat kartu", style=discord.ButtonStyle.danger, custom_id="pat:handled")
+    @discord.ui.button(label="🗑️ Smazat kartu", style=discord.ButtonStyle.danger, custom_id="pat:v3:handled")
     async def mark_handled(self, itx: discord.Interaction, button: discord.ui.Button):
-        view = ConfirmDeleteView(self.user_id, self.guild_id)
+        uid = self.get_uid(itx)
+        view = ConfirmDeleteView(uid, self.guild_id)
         await itx.response.send_message(
             "⚠️ **Opravdu chcete smazat tuto kartu?**\nTato akce je nevratná a vlákno bude odstraněno.", 
             view=view, 
             ephemeral=True
         )
 
-    @discord.ui.button(label="Aktivita", emoji="📊", style=discord.ButtonStyle.secondary, custom_id="pat:activity")
+    @discord.ui.button(label="Aktivita", emoji="📊", style=discord.ButtonStyle.secondary, custom_id="pat:v3:activity")
     async def view_activity(self, itx: discord.Interaction, button: discord.ui.Button):
         await itx.response.defer(ephemeral=True)
+        uid = self.get_uid(itx)
         r = await get_redis_client()
         
         try:
@@ -127,35 +148,114 @@ class ModeratorAssistantView(discord.ui.View):
             
             # Fetch member for mention/name/avatar
             guild = itx.guild
-            mention = f"<@{self.user_id}>"
-            name = f"Uživatel {self.user_id}"
+            mention = f"<@{uid}>"
+            name = f"Uživatel {uid}"
             avatar = None
             
             try:
-                member = guild.get_member(self.user_id) or await guild.fetch_member(self.user_id)
+                member = guild.get_member(uid) or await guild.fetch_member(uid)
                 if member:
                     mention = member.mention
                     name = member.display_name
                     avatar = member.display_avatar.url
             except: pass
 
-            embed = await det.build_diagnostic_embed(r, self.user_id, mention, name, avatar)
+            embed = await det.build_diagnostic_embed(r, uid, mention, name, avatar)
             await itx.followup.send(embed=embed, ephemeral=True)
         finally:
             await r.aclose()
 
-    @discord.ui.button(label="⏳ Sledovat (48h)", style=discord.ButtonStyle.secondary, custom_id="pat:follow")
+    @discord.ui.button(label="⏳ Sledovat (48h)", style=discord.ButtonStyle.secondary, custom_id="pat:v3:follow")
     async def follow_up(self, itx: discord.Interaction, button: discord.ui.Button):
         await itx.response.defer(ephemeral=True)
+        uid = self.get_uid(itx)
         r = await get_redis_client()
         # Set 48h followup
         deadline = int(time.time()) + 48 * 3600
-        await r.set(K_FOLLOWUP(self.guild_id, self.user_id), str(deadline), ex=60 * 3600)
+        await r.set(K_FOLLOWUP(self.guild_id, uid), str(deadline), ex=60 * 3600)
         await r.close()
         
         await itx.followup.send(f"⏳ **Sledování nastaveno.** Pokud klient do 48 hodin nenapíše žádnou zprávu, bot sem do vlákna pošle připomínku.", ephemeral=True)
         if isinstance(itx.channel, discord.Thread):
             await itx.channel.send(f"⏳ {itx.user.mention} nastavil sledování klienta na 48 hodin.")
+
+    @discord.ui.button(label="AI Návrh", emoji="🤖", style=discord.ButtonStyle.secondary, custom_id="pat:v3:ai_draft")
+    async def ai_draft_request(self, itx: discord.Interaction, button: discord.ui.Button):
+        await itx.response.defer(ephemeral=False)
+        uid = self.get_uid(itx)
+        from .ai_service import AIService
+        from .detectors import PatternDetectors
+        from .common import K_AI_DRAFT
+        
+        r = await get_redis_client()
+        try:
+            # 1. Check Cache first
+            cached = await r.get(K_AI_DRAFT(self.guild_id, uid))
+            if cached:
+                await itx.followup.send(f"🤖 **Předpřipravený návrh zprávy (AI):**\n```\n{cached}\n```\n*Tento návrh byl připraven okamžitě po detekci.*")
+                return
+
+            # 2. If no cache, generate fresh
+            det = PatternDetectors(self.guild_id)
+            now = datetime.now(timezone.utc)
+            today = now.strftime("%Y%m%d")
+            alerts = await det.scan_user(r, self.guild_id, uid, now, today)
+            
+            pats = [f"{a.pattern_name}: {a.description}" for a in alerts]
+            draft = await AIService.generate_mentor_draft("(Ruční vyžádání)", pats)
+            
+            if draft:
+                await itx.followup.send(f"🤖 **Nový návrh zprávy (AI - čerstvý):**\n```\n{draft}\n```")
+                await r.set(K_AI_DRAFT(self.guild_id, uid), draft, ex=24 * 3600)
+            else:
+                await itx.followup.send("⏳ **Lokální AI je momentálně vytížená nebo se model ještě načítá.**\nZkuste to prosím znovu za minutu.", ephemeral=True)
+        finally:
+            await r.aclose()
+
+    @discord.ui.button(label="AI Analýza", emoji="🧠", style=discord.ButtonStyle.secondary, custom_id="pat:v3:ai_anal")
+    async def ai_analysis_request(self, itx: discord.Interaction, button: discord.ui.Button):
+        await itx.response.defer(ephemeral=False)
+        uid = self.get_uid(itx)
+        from .ai_service import AIService
+        from .detectors import PatternDetectors
+        
+        r = await get_redis_client()
+        try:
+            det = PatternDetectors(self.guild_id)
+            now = datetime.now(timezone.utc)
+            today = now.strftime("%Y%m%d")
+            ctx = await det.get_diagnostic_context(r, self.guild_id, uid, now, today)
+            
+            # Fetch recent posts (Discourse or Discord)
+            posts = []
+            if self.guild_id == 999:
+                posts = await det.fetch_recent_discourse_posts(uid)
+            else:
+                # Better fallback for Discord: Construct a behavioral profile
+                posts = [f"Detekován vzorec: {a.pattern_name} ({a.description})" for a in ctx["alerts"]]
+                
+                # Add top affinities (trends)
+                affinities = ctx.get("affinities", [])
+                for af in affinities:
+                    if af["score"] > 20: # Only significant trends
+                         posts.append(f"Trend chování: {af['name']} na {af['score']}% ({af['desc']})")
+                
+                # Add key metric strings
+                stats = ctx.get("stats_7d", {})
+                posts.append(f"Metrika: Aktivita za 7d je {stats.get('msg_count', 0)} zpráv.")
+                posts.append(f"Metrika: Průměrná délka zprávy {stats.get('avg_words_per_msg', 0):.1f} slov.")
+
+            if not posts or len(posts) < 2:
+                await itx.followup.send("⚠️ Nedostatek dat pro AI analýzu. Uživatel buď nemá dostatečnou historii, nebo nebyli detekovány žádné vzorce.", ephemeral=True)
+                return
+
+            summary = await AIService.summarize_posts(posts, ctx=ctx)
+            if len(summary) > 1900:
+                summary = summary[:1900] + '... (zkráceno)'
+            
+            await itx.followup.send(f"🧠 **AI Hloubková analýza:**\n{summary}")
+        finally:
+            await r.aclose()
 
 class DiagnosticResultView(discord.ui.View):
     def __init__(self, user_id: int, guild_id: int, alerts_mgr: 'PatternAlerts', detectors: 'PatternDetectors'):
@@ -255,6 +355,10 @@ class PatternAlerts:
             except Exception as e:
                 logger.debug(f"Could not fetch member {user_id}: {e}")
 
+        # AI Mentor Assistant Draft (Background Precompute)
+        if any(a.risk_level in ["critical", "warning"] for a in alerts):
+            asyncio.create_task(self.precompute_ai_draft(user_id, alerts))
+
         # Determine highest risk level
         risk_levels = [a.risk_level for a in alerts]
         color = 0x3498DB # Info
@@ -275,8 +379,6 @@ class PatternAlerts:
         # 3. Handle Notification Logic
         pattern_summaries = ", ".join([f"{a.emoji} {a.pattern_name}" for a in alerts])
         
-        # Pings for critical
-        ping_role = ""
         if emoji == "🔴":
             staff_role_id = os.getenv("CRITICAL_ALERT_ROLE_ID")
             if staff_role_id:
@@ -508,9 +610,36 @@ class PatternAlerts:
                 embed=embed, 
                 view=view
             )
+
+            # 3. Precompute AI draft in background immediately
+            try:
+                now = datetime.now(timezone.utc)
+                today = now.strftime("%Y%m%d")
+                # We need to scan to get the alerts list for the precompute
+                alerts = await detectors.scan_user(r, self._guild_id, user_id, now, today)
+                asyncio.create_task(self.precompute_ai_draft(user_id, alerts))
+            except: pass
+
             return True
         except Exception as e:
             logger.error(f"Error sending diagnostic to manual thread: {e}")
             return False
         finally:
             await r.close()
+
+    async def precompute_ai_draft(self, user_id: int, alerts: List[PatternAlert]):
+        """Runs in background to pre-generate an AI draft for the user."""
+        from .ai_service import AIService
+        from .common import K_AI_DRAFT
+        
+        pats = [f"{a.pattern_name}: {a.description}" for a in alerts]
+        draft = await AIService.generate_mentor_draft("(Automatický předvýpočet)", pats)
+        if draft:
+            r = await get_redis_client()
+            try:
+                await r.set(K_AI_DRAFT(self._guild_id, user_id), draft, ex=24 * 3600)
+                logger.info(f"Precomputed AI draft for user {user_id} saved to cache.")
+            except Exception as e:
+                logger.error(f"Failed to save precomputed draft: {e}")
+            finally:
+                await r.aclose()

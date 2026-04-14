@@ -145,6 +145,66 @@ func main() {
 			},
 		},
 		{
+			Name:        "say",
+			Description: "Pošle zprávu do vybraného kanálu",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionChannel,
+					Name:        "kanal",
+					Description: "Kanál, kam má bot psát",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "zprava",
+					Description: "Text zprávy",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        "edit",
+			Description: "Upraví zprávu bota",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "zprava_id",
+					Description: "ID zprávy k úpravě",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "novy_text",
+					Description: "Nový text zprávy",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionChannel,
+					Name:        "kanal",
+					Description: "Kanál, kde se zpráva nachází (volitelné)",
+					Required:    false,
+				},
+			},
+		},
+		{
+			Name:        "delete",
+			Description: "Smaže konkrétní zprávu bota",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "zprava_id",
+					Description: "ID zprávy ke smazání",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionChannel,
+					Name:        "kanal",
+					Description: "Kanál, kde se zpráva nachází (volitelné)",
+					Required:    false,
+				},
+			},
+		},
+		{
 			Name:        "purge",
 			Description: "Smaže určitý počet zpráv",
 			Options: []*discordgo.ApplicationCommandOption{
@@ -750,9 +810,9 @@ func main() {
 	modPerm := int64(discordgo.PermissionKickMembers)
 	for _, cmd := range cmdList {
 		switch cmd.Name {
-		case "echo", "status", "notify", "stats":
+		case "echo", "status", "notify", "stats", "say", "edit":
 			cmd.DefaultMemberPermissions = &adminPerm
-		case "verify", "automod", "purge":
+		case "verify", "automod", "purge", "delete":
 			cmd.DefaultMemberPermissions = &modPerm
 		}
 	}
@@ -818,6 +878,12 @@ func main() {
 			commands.HandleEcho(s, i)
 		case "purge":
 			commands.HandlePurge(s, i)
+		case "say":
+			commands.HandleSay(s, i)
+		case "edit":
+			commands.HandleEdit(s, i)
+		case "delete":
+			commands.HandleDelete(s, i)
 		case "report":
 			commands.HandleReport(s, i, cfg)
 		case "gdpr":

@@ -86,6 +86,9 @@ services:
       - ALERT_CHANNEL_ID=1468607459332456518
       - IGNORE_PATTERNS=fluxer,sso,modest_raman
       - TZ=Europe/Prague
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
@@ -113,8 +116,11 @@ services:
       - BOT_TOKEN=${BOT_TOKEN}
       - GUILD_ID=${GUILD_ID:-1130541603598585958}
       - TZ=Europe/Prague
-      - AI_PROVIDER=${AI_PROVIDER:-none}
+      - AI_PROVIDER=ollama
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock

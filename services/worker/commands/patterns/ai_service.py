@@ -4,6 +4,7 @@ import logging
 import json
 import base64
 import re
+import asyncio
 from typing import List, Optional, Dict
 from datetime import datetime
 
@@ -23,6 +24,9 @@ CLINICAL_KEYWORDS = {
 }
 
 class AIService:
+    # Global semaphore for local AI calls (shared across all instances)
+    _local_llm_semaphore = asyncio.Semaphore(1)
+
     @staticmethod
     async def summarize_posts(posts: List[str], ctx: Optional[Dict] = None) -> Optional[str]:
         """
@@ -108,23 +112,63 @@ class AIService:
     @staticmethod
     async def _summarize_ollama(posts: List[str]) -> Optional[str]:
         ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-        ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+        # Use smaller model for simple summaries to save resources
+        ollama_model = "smollm2:135m" 
         context_text = "\n---\n".join(posts)[:4000]
         prompt = (
             "Instrukce: Shrň stručně (max 350 znaků) v češtině tyto příspěvky uživatele fóra NePornu.\n\n"
             f"Příspěvky:\n{context_text}"
         )
         try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                response = await client.post(
-                    f"{ollama_host}/api/generate",
-                    json={"model": ollama_model, "prompt": prompt, "stream": False}
-                )
-                response.raise_for_status()
-                return response.json()["response"].strip()
+            async with AIService._local_llm_semaphore:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    response = await client.post(
+                        f"{ollama_host}/api/generate",
+                        json={"model": ollama_model, "prompt": prompt, "stream": False}
+                    )
+                    response.raise_for_status()
+                    return response.json()["response"].strip()
         except Exception as e:
-            logger.error(f"Ollama failed: {e}")
-            return "Chyba při komunikaci s Ollama."
+            logger.error(f"Ollama summary failed: {e}")
+            return "Chyba při komunikaci s lokálním AI modelem."
+
+    @staticmethod
+    async def generate_mentor_draft(text_sample: str, patterns: List[str]) -> Optional[str]:
+        """Generates a suggested mentor message draft using local LLM."""
+        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        # Use llama3.2:1b for extreme speed and efficiency on CPU
+        ollama_model = "llama3.2:1b"
+        
+        pats_str = ", ".join(patterns)
+        prompt = (
+            "Jsi zkušený mentor v komunitě NePornu (pomoc se závislostí). "
+            f"U uživatele byly detekovány tyto vzorce chování: {pats_str}.\n"
+            f"Ukázka zpráv uživatele:\n{text_sample[:1000]}\n\n"
+            "ÚKOL: Navrhni krátkou (max 3-4 věty), empatickou a nehodnotící zprávu, "
+            "kterou mu může mentor poslat pro otevření komunikace. "
+            "Piš v češtině, tykej. Nepoužívej klišé. Buď autentický."
+        )
+        
+        try:
+            async with AIService._local_llm_semaphore:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    response = await client.post(
+                        f"{ollama_host}/api/generate",
+                        json={
+                            "model": ollama_model, 
+                            "prompt": prompt, 
+                            "stream": False,
+                            "options": {
+                                "temperature": 0.7,
+                                "num_predict": 150  # Limit tokens for speed
+                            }
+                        }
+                    )
+                    response.raise_for_status()
+                    return response.json()["response"].strip()
+        except Exception as e:
+            logger.error(f"Ollama draft generation failed: {e}")
+            return None
 
     @staticmethod
     async def _summarize_medical_report(posts: List[str], ctx: Optional[Dict]) -> str:

@@ -64,3 +64,110 @@ func HandlePurge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		Content: &content,
 	})
 }
+
+func HandleSay(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	options := i.ApplicationCommandData().Options
+	var channelID string
+	var content string
+
+	for _, opt := range options {
+		if opt.Name == "kanal" {
+			channelID = opt.ChannelValue(s).ID
+		} else if opt.Name == "zprava" {
+			content = opt.StringValue()
+		}
+	}
+
+	_, err := s.ChannelMessageSend(channelID, content)
+	if err != nil {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Nepodařilo se odeslat zprávu: " + err.Error(),
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: fmt.Sprintf("✅ Zpráva odeslána do <#%s>", channelID),
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+}
+
+func HandleEdit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	options := i.ApplicationCommandData().Options
+	var msgID string
+	var newText string
+	channelID := i.ChannelID
+
+	for _, opt := range options {
+		switch opt.Name {
+		case "zprava_id":
+			msgID = opt.StringValue()
+		case "novy_text":
+			newText = opt.StringValue()
+		case "kanal":
+			channelID = opt.ChannelValue(s).ID
+		}
+	}
+
+	_, err := s.ChannelMessageEdit(channelID, msgID, newText)
+	if err != nil {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Nepodařilo se upravit zprávu: " + err.Error(),
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "✅ Zpráva upravena.",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+}
+
+func HandleDelete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	options := i.ApplicationCommandData().Options
+	var msgID string
+	channelID := i.ChannelID
+
+	for _, opt := range options {
+		switch opt.Name {
+		case "zprava_id":
+			msgID = opt.StringValue()
+		case "kanal":
+			channelID = opt.ChannelValue(s).ID
+		}
+	}
+
+	err := s.ChannelMessageDelete(channelID, msgID)
+	if err != nil {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Nepodařilo se smazat zprávu: " + err.Error(),
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "✅ Zpráva smazána.",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+}

@@ -15,6 +15,8 @@ from .signals import PatternSignals
 from .detectors import PatternDetectors
 from .scanner import PatternScanner
 from .alerts import PatternAlerts, DiagnosticResultView
+from .sentiment_engine import SentimentEngine
+from .health_monitor import CommunityHealthCog
 
 logger = logging.getLogger("PatternDetector")
 
@@ -28,6 +30,12 @@ class PatternDetectorCog(commands.Cog):
         self.detectors = PatternDetectors(self._guild_id)
         self.scanner = PatternScanner(bot, self._guild_id, self._get_redis, self.detectors, self.alerts)
         self.signals = PatternSignals(bot, self._guild_id, self._get_redis)
+        self.sentiment = SentimentEngine(bot, self._guild_id)
+        self.health = CommunityHealthCog(bot)
+        
+        # Register Persistent Views
+        from .alerts import ModeratorAssistantView
+        self.bot.add_view(ModeratorAssistantView())
         
         # Register signals as a listener by adding the cog
         # Actually, we can just delegate from the main Cog to keep it simple
@@ -35,6 +43,7 @@ class PatternDetectorCog(commands.Cog):
         self.bot.add_listener(self.signals.on_message_delete)
         self.bot.add_listener(self.signals.on_raw_message_edit)
         self.bot.add_listener(self.signals.on_member_join)
+        self.bot.add_listener(self.sentiment.on_message)
 
     async def _get_redis(self):
         return await get_redis_client()
@@ -256,6 +265,17 @@ class PatternDetectorCog(commands.Cog):
             await itx.followup.send(f"❌ Nastala chyba při resetu: {e}", ephemeral=True)
         finally:
             await r.aclose()
+
+    @pattern_group.command(name="pulse", description="Okamžitě vygenerovat a odeslat přehled zdraví komunity.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def manual_pulse(self, itx: discord.Interaction):
+        await itx.response.send_message("⏳ Generuji aktuální přehled zdraví komunity...", ephemeral=True)
+        try:
+            # Call the refactored analysis method for immediate results
+            await self.health.run_analysis()
+        except Exception as e:
+            logger.error(f"Manual pulse failed: {e}")
+            await itx.followup.send(f"❌ Selhalo generování přehledu: {e}", ephemeral=True)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(PatternDetectorCog(bot))

@@ -18,8 +18,6 @@ import (
 
 	"golang.org/x/crypto/pbkdf2"
 
-	"golang.org/x/crypto/pbkdf2"
-
 	"github.com/bwmarrin/discordgo"
 	"github.com/nepornucz/discord-bot-core/internal/config"
 	"github.com/nepornucz/discord-bot-core/internal/redis_client"
@@ -2006,6 +2004,7 @@ func (v *VerificationService) HandleRedisAudit(s *discordgo.Session, i *discordg
 	passportKeys, _ := redis_client.Client.Keys(redis_client.Ctx, "user:passport:*").Result()
 
 	// 1. Process verify:state
+	var report []string
 	if len(stateKeys) > 0 {
 		report = append(report, "\n📝 **Stavy (verify:state):**")
 		for _, k := range stateKeys {
