@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import time
@@ -378,6 +379,7 @@ class PatternAlerts:
         
         # 3. Handle Notification Logic
         pattern_summaries = ", ".join([f"{a.emoji} {a.pattern_name}" for a in alerts])
+        ping_role = ""
         
         if emoji == "🔴":
             staff_role_id = os.getenv("CRITICAL_ALERT_ROLE_ID")

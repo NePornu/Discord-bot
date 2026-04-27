@@ -272,7 +272,7 @@ class PatternDetectorCog(commands.Cog):
         await itx.response.send_message("⏳ Generuji aktuální přehled zdraví komunity...", ephemeral=True)
         try:
             # Call the refactored analysis method for immediate results
-            await self.health.run_analysis()
+            await self.health.run_analysis(force=True)
         except Exception as e:
             logger.error(f"Manual pulse failed: {e}")
             await itx.followup.send(f"❌ Selhalo generování přehledu: {e}", ephemeral=True)

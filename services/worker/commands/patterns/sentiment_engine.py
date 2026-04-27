@@ -17,8 +17,8 @@ class SentimentEngine(commands.Cog):
         # Semaphore to ensure we don't slam the CPU with multiple local LLM calls
         self._llm_semaphore = asyncio.Semaphore(1)
         self.ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-        # Use SmollM-135M for fast, local, lightweight analysis
-        self.model = "smollm2:135m"
+        # Use Llama 3.2 (3B) for better accuracy
+        self.model = "llama3.2:3b"
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -26,11 +26,15 @@ class SentimentEngine(commands.Cog):
             return
             
         if is_staff(message.author):
+            logger.debug(f"Skipping sentiment for staff member: {message.author.id}")
             return
 
-        text = message.content or ""
+        text = (message.content or "").strip()
         # Only analyze messages with some substance
-        if len(text) < 10 or len(text) > 2000:
+        if len(text) < 10:
+            return
+        if len(text) > 2000:
+            logger.debug(f"Skipping sentiment for overly long message: {len(text)} chars")
             return
 
         # Trigger analysis in background so we don't block other listeners

@@ -283,6 +283,16 @@ class AvatarNSFW(commands.Cog):
             formatted_score = self.format_nsfw_score(score)
             is_nsfw = score > threshold
 
+            # IDEMPOTENCY CHECK: Prevent duplicate alerts for the same avatar change
+            r = await get_redis_client()
+            lock_key = f"nsfw:scanned:{user.id}:{img_hash}"
+            is_duplicate = not await r.set(lock_key, "1", ex=3600, nx=True)
+            await r.aclose()
+            
+            if is_duplicate:
+                print(f"[NSFW] Skipping duplicate alert for {user} (hash {img_hash})")
+                return
+
             # JOIN TRIGGER: Update mod log in "čekárna" and log to "logu čekárny"
             if trigger == "join":
                 # 1. Update existing join message in Verification Channel

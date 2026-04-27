@@ -135,7 +135,7 @@ async def check_tcp(host, port):
     except Exception as e:
         return False, str(e), 0
 
-async def check_system_health(r, states):
+async def check_system_health(r, states, persistence):
     # Disk
     try:
         usage = shutil.disk_usage("/")
@@ -154,30 +154,44 @@ async def check_system_health(r, states):
     try:
         ram_pct = psutil.virtual_memory().percent
         old_status = states.get("System RAM", "OK")
-        # Increasing threshold from 92 to 96 to reduce noise on 8GB system
-        if ram_pct > 96: new_status = "WARNING"
+        if ram_pct > 97: new_status = "WARNING"
         elif ram_pct < 88: new_status = "OK"
         else: new_status = old_status
             
         if new_status != old_status:
-            await send_alert(r, "System RAM", new_status, fields=[{"name": "Usage", "value": f"{ram_pct}%"}])
-            states["System RAM"] = new_status
+            p = persistence.setdefault("System RAM", {"status": None, "count": 0})
+            if p["status"] == new_status: p["count"] += 1
+            else: p["status"] = new_status; p["count"] = 1
+            
+            required = 3 if new_status == "WARNING" else 5
+            if p["count"] >= required:
+                await send_alert(r, "System RAM", new_status, fields=[{"name": "Usage", "value": f"{ram_pct}%"}])
+                states["System RAM"] = new_status
+                persistence.pop("System RAM", None)
+        else:
+            persistence.pop("System RAM", None)
     except Exception as e: logging.error(f"RAM check error: {e}")
 
     # CPU
     try:
-        # Use interval=None to get average since last call (approx 60s)
         cpu_pct = psutil.cpu_percent(interval=None)
         old_status = states.get("System CPU", "OK")
-        
-        # Increasing threshold from 95 to 98 to account for heavy service load
-        if cpu_pct > 98: new_status = "WARNING"
+        if cpu_pct > 99: new_status = "WARNING"
         elif cpu_pct < 85: new_status = "OK"
         else: new_status = old_status
             
         if new_status != old_status:
-            await send_alert(r, "System CPU", new_status, fields=[{"name": "Load", "value": f"{cpu_pct}%"}])
-            states["System CPU"] = new_status
+            p = persistence.setdefault("System CPU", {"status": None, "count": 0})
+            if p["status"] == new_status: p["count"] += 1
+            else: p["status"] = new_status; p["count"] = 1
+            
+            required = 3 if new_status == "WARNING" else 5
+            if p["count"] >= required:
+                await send_alert(r, "System CPU", new_status, fields=[{"name": "Load", "value": f"{cpu_pct}%"}])
+                states["System CPU"] = new_status
+                persistence.pop("System CPU", None)
+        else:
+            persistence.pop("System CPU", None)
     except Exception as e: logging.error(f"CPU check error: {e}")
 
 async def check_docker(r, states, client):
@@ -205,6 +219,7 @@ async def monitor_loop():
     r = await get_redis_client()
     docker_client = docker.from_env()
     local_states = {}
+    persistence = {}
     
     # Initialize CPU measurement
     psutil.cpu_percent(interval=None)
@@ -232,7 +247,7 @@ async def monitor_loop():
                     await send_alert(r, s['name'], curr, error_details=details, diagnosis=diagnosis, force=True)
                     await r.set(f"monitor:status:svc:{s['name']}", curr)
 
-            await check_system_health(r, local_states)
+            await check_system_health(r, local_states, persistence)
             await check_docker(r, local_states, docker_client)
             
             for k, v in local_states.items(): await r.set(f"monitor:status:{k}", v)

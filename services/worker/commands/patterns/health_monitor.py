@@ -34,18 +34,29 @@ class CommunityHealthCog(commands.Cog):
 
         await self.run_analysis()
 
-    async def run_analysis(self):
+    async def run_analysis(self, force=False):
         """Performs the actual community health pulse analysis."""
         logger.info("Starting community health pulse analysis...")
         r = await get_redis_client()
         try:
+            # 0. Cooldown check (5.5 hours)
+            now = time.time()
+            last_sent = await r.get("bot:health:last_sent")
+            if last_sent and (now - float(last_sent)) < 19800:
+                logger.info(f"Skipping health pulse: Cooldown active ({int(now - float(last_sent))}s since last)")
+                return
+
             today = get_today()
             # 1. Aggregate global sentiment for today
             sentiment_summary, active_users = await self._aggregate_global_sentiment(r, today)
+            total_msgs = sum(sentiment_summary.values())
             
-            if active_users == 0:
-                logger.info("Skipping health report: No active users today.")
+            if not force and (active_users < 5 or total_msgs < 20):
+                logger.info(f"Skipping health report: insufficient activity ({active_users} users, {total_msgs} messages today).")
                 return
+
+            # 1.5 Mark as sent immediately to prevent concurrent runs
+            await r.set("bot:health:last_sent", str(time.time()), ex=21600) # 6h TTL
 
             # 2. Get a sample of recent critical alerts or trending keywords
             recent_alerts = await self._get_recent_alert_summary(r, today)
@@ -85,20 +96,23 @@ class CommunityHealthCog(commands.Cog):
         return totals, len(uids)
 
     async def _get_recent_alert_summary(self, r, today) -> str:
-        # Simplified: just count common pattern alerts from last 24h
+        # Count common pattern alerts from last 24h
         prefix = f"pat:alert_sent:{self._guild_id}:*"
         cursor = "0"
         patterns = {}
+        now = time.time()
         
         while True:
             cursor, keys = await r.scan(cursor=cursor, match=prefix, count=1000)
             for k in keys:
-                pname = k.split(":")[-1]
-                patterns[pname] = patterns.get(pname, 0) + 1
+                val = await r.get(k)
+                if val and (now - float(val)) < 86400: # Last 24 hours
+                    pname = k.split(":")[-1]
+                    patterns[pname] = patterns.get(pname, 0) + 1
             if cursor == 0 or cursor == "0": break
             
         summary = ", ".join([f"{p}: {c}x" for p, c in sorted(patterns.items(), key=lambda x: x[1], reverse=True)[:5]])
-        return summary or "Žádné výrazné vzorce."
+        return summary or "Žádné výrazné vzorce v posledních 24h."
 
     def _get_data_driven_summary(self, sentiment: dict, active_users: int, patterns: str) -> str:
         total = sum(sentiment.values())
